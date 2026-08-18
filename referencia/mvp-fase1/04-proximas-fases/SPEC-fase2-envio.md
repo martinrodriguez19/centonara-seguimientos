@@ -130,7 +130,7 @@ Contrato propuesto para `/enviar`:
   "run_id": "20260805-142648",
   "mensajes": [
     {"contacto": "Rocio", "texto": "Hola Rocio, ..."},
-    {"contacto": "+54 9 11 XXXX-XXXX", "texto": "Hola, ..."}
+    {"contacto": "+54 9 11 3927-3345", "texto": "Hola, ..."}
   ]
 }
 ```

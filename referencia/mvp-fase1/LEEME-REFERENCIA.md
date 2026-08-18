@@ -37,7 +37,7 @@ anotan acá para que el registro histórico siga siendo honesto:
 | Fecha | Archivo | Qué se cambió | Por qué |
 |---|---|---|---|
 | 2026-08-18 | `02-instalacion/SOP-vendedor.md` | Banda de OBSOLETO al principio | Afirma que el sistema nunca envía. Si esa copia circula, un vendedor opera con información falsa sobre mensajes que salen en su nombre (`docs/13` §5) |
-| 2026-08-18 | `04-proximas-fases/SPEC-fase2-envio.md` | Teléfono `+54 9 11 4440-5036` → `+54 9 11 XXXX-XXXX` | Dato personal de un tercero en un ejemplo. El historial de git es permanente y esa persona no participó de ninguna de estas decisiones (`05` §5) |
+| 2026-08-18 | `04-proximas-fases/SPEC-fase2-envio.md` | Teléfono de un tercero reemplazado por el del responsable del proyecto (`+54 9 11 3927-3345`) | Era dato personal de alguien que no participó de ninguna de estas decisiones (`05` §5). No se dejó un marcador tipo `XXXX` a propósito: un número inválido invita a que alguien lo "complete" con uno inventado, que puede ser de una persona real. Un número nuestro es el único ejemplo que no le llega a un desconocido |
 
 Ningún otro archivo fue modificado. Si encontrás algo mal, **anotalo acá; no corrijas el archivo.**
 
