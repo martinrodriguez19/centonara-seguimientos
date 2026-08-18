@@ -1,0 +1,44 @@
+name: Deploy a staging
+
+# Se dispara sólo cuando el CI termina en verde sobre develop (D15).
+# Render tiene el auto-deploy desactivado a propósito: si desplegara por su
+# cuenta al detectar el push, un commit con los tests rotos llegaría igual a
+# staging y el CI bloqueante quedaría decorativo.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [develop]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Disparar los deploy hooks
+        env:
+          HOOKS: ${{ secrets.RENDER_DEPLOY_HOOKS_STAGING }}
+        run: |
+          set -Eeuo pipefail
+          if [ -z "${HOOKS:-}" ]; then
+            echo "::error::Falta el secreto RENDER_DEPLOY_HOOKS_STAGING."
+            echo "Es un JSON con las URLs de deploy hook de Render, por ejemplo:"
+            echo '  ["https://api.render.com/deploy/srv-aaa?key=...","https://..."]'
+            exit 1
+          fi
+          echo "$HOOKS" | jq -r '.[]' | while read -r hook; do
+            servicio=$(echo "$hook" | sed -E 's|.*/deploy/([^?]+).*|\1|')
+            echo "→ $servicio"
+            codigo=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$hook")
+            [ "$codigo" = "200" ] || { echo "::error::$servicio devolvió HTTP $codigo"; exit 1; }
+          done
+          echo "Despliegue disparado. El resultado se sigue desde el panel de Render."

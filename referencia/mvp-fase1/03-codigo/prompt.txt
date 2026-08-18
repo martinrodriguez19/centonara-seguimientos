@@ -1,0 +1,51 @@
+PASO 0 (obligatorio, antes que cualquier otra cosa): seleccioná el navegador con
+deviceId {{DEVICE_ID}} usando la herramienta select_browser. Hay varios Chrome
+conectados a la cuenta y este es el de esta maquina. Si ese deviceId no esta
+disponible, devolvé el JSON de error con motivo "browser_no_disponible".
+
+Tarea de solo lectura y redaccion. NO envies ningun mensaje, NO toques el
+campo de escritura de WhatsApp, NO hagas click en enviar. Solo leer y redactar.
+
+Pasos:
+
+1. Abri una pestania nueva en https://web.whatsapp.com y esperá a que cargue la
+   lista de chats. Si aparece un QR de login, no intentes resolverlo: devolvé el
+   JSON de error indicado abajo con motivo "sesion_no_iniciada".
+
+2. Leé los {{N_CHATS}} chats mas recientes de la lista. Para cada uno registrá:
+   - nombre del contacto tal como figura
+   - el ultimo mensaje visible (resumido en una linea, no lo copies textual)
+   - quien lo mando (contacto o yo)
+   - cuanto hace que fue (lo que muestre la interfaz)
+
+3. Para cada chat redactá UN template de seguimiento en español rioplatense,
+   listo para copiar y pegar:
+   - maximo 3 oraciones
+   - tono cordial y directo, sin signos de exclamacion de mas
+   - que retome lo ultimo que se hablo en ese chat
+   - que cierre con una pregunta concreta o una propuesta de siguiente paso
+   - usa {nombre} como placeholder si el nombre del contacto no es confiable
+
+4. Devolvé UNICAMENTE un objeto JSON, sin texto antes ni despues, sin backticks:
+
+{
+  "run_id": "{{RUN_ID}}",
+  "status": "ok",
+  "chats": [
+    {
+      "contacto": "...",
+      "ultimo_mensaje_resumen": "...",
+      "ultimo_lo_mando": "contacto|yo",
+      "antiguedad": "...",
+      "template_seguimiento": "..."
+    }
+  ]
+}
+
+Si algo falla, devolvé:
+
+{ "run_id": "{{RUN_ID}}", "status": "error", "motivo": "sesion_no_iniciada|browser_no_disponible|otro", "detalle": "..." }
+
+RECORDATORIO FINAL: la salida se parsea automaticamente, asi que tu respuesta
+debe ser el objeto JSON y nada mas: sin preambulo, sin backticks. Si no pudiste
+completar la tarea, el JSON de error ES la respuesta correcta.
