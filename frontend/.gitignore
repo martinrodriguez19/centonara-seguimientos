@@ -1,0 +1,10 @@
+# El .gitignore de la raíz cubre node_modules, .next, .env y *.tsbuildinfo.
+# Acá sólo lo específico de Next que no está allá.
+
+# Lo regenera `next typegen` (y `next dev` / `next build`). No se versiona
+# porque referencia a .next/types/, que tampoco existe hasta que se genera.
+next-env.d.ts
+
+/out/
+/coverage/
+.vercel

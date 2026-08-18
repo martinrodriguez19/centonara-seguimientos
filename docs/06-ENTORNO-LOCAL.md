@@ -144,6 +144,9 @@ SMTP_URL=
 SENTRY_DSN=
 ENTORNO=local                  # local | staging | produccion
 
+# --- frontend ---
+BACKEND_URL=http://localhost:8000   # sólo servidor, sin NEXT_PUBLIC_
+
 # --- agente ---
 AGENTE_BACKEND_URL=http://localhost:8000
 AGENTE_TOKEN=
