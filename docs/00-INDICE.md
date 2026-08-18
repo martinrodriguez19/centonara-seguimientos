@@ -92,6 +92,17 @@ construcción**. Qué se copia, qué se lee y qué se descarta está detallado e
 
 ---
 
+## Runbooks operativos
+
+Procedimientos que se ejecutan, no que se leen una vez.
+
+| Documento | Cuándo se usa | Se prueba |
+|---|---|---|
+| [`RUNBOOK-backups.md`](RUNBOOK-backups.md) | Restaurar la base | primer lunes de cada mes |
+| [`RUNBOOK-rollback.md`](RUNBOOK-rollback.md) | Volver atrás un despliegue | simulacro en cada sprint |
+
+---
+
 ## Decisiones cerradas
 
 **No hay decisiones pendientes.** Las tres que quedaban abiertas se resolvieron y están

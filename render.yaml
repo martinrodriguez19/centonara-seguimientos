@@ -1,0 +1,105 @@
+# Blueprint de Render: define staging y producción como código (D6).
+#
+# La configuración vive acá y no en el panel. Es lo único que hace que los dos
+# entornos sean de verdad iguales, que era el motivo de levantar producción
+# desde el Sprint 0.
+#
+# ⚠️ INCOMPLETO A PROPÓSITO. Faltan backend, frontend y worker: dependen de
+# T0.3 y T0.4, que todavía no existen. No los escribo a ciegas — inventar el
+# comando de arranque de un backend que nadie escribió es adivinar, y 08 §9 dice
+# que un hueco de documentación se reporta, no se improvisa.
+#
+# Lo que hay acá SÍ se puede aplicar hoy y deja andando n8n y los backups.
+#
+# autoDeploy: false en todos: el despliegue lo dispara GitHub Actions después
+# del CI, nunca Render por su cuenta (D15).
+
+services:
+  # ---------------- n8n ----------------
+  # Horarios, avisos e integraciones. Cero lógica de negocio (D8).
+  # No se le pone dominio propio: se entra por el proxy de Render con su URL
+  # interna. Un editor de n8n expuesto es justo lo que D8 quiere evitar.
+  - type: web
+    name: n8n-produccion
+    runtime: image
+    image: { url: docker.io/n8nio/n8n:2.35.3 }
+    plan: starter
+    region: oregon
+    autoDeploy: false
+    disk:
+      name: n8n-produccion-data
+      mountPath: /home/node/.n8n
+      sizeGB: 1
+    envVars:
+      - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
+      - { key: TZ,               value: America/Argentina/Buenos_Aires }
+      - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+      - { key: N8N_ENCRYPTION_KEY, generateValue: true }
+      - { key: N8N_BASIC_AUTH_ACTIVE, value: "true" }
+      - { key: N8N_BASIC_AUTH_USER,  sync: false }
+      - { key: N8N_BASIC_AUTH_PASSWORD, sync: false }
+
+  - type: web
+    name: n8n-staging
+    runtime: image
+    image: { url: docker.io/n8nio/n8n:2.35.3 }
+    plan: starter
+    region: oregon
+    autoDeploy: false
+    disk:
+      name: n8n-staging-data
+      mountPath: /home/node/.n8n
+      sizeGB: 1
+    envVars:
+      - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
+      - { key: TZ,               value: America/Argentina/Buenos_Aires }
+      - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+      - { key: N8N_ENCRYPTION_KEY, generateValue: true }
+      - { key: N8N_BASIC_AUTH_ACTIVE, value: "true" }
+      - { key: N8N_BASIC_AUTH_USER,  sync: false }
+      - { key: N8N_BASIC_AUTH_PASSWORD, sync: false }
+
+  # ---------------- backups (T0.9) ----------------
+  # 08:00 UTC = 05:00 en Argentina. Lejos de la corrida de las 13:00: si el
+  # backup pisara la ventana de envío competiría por la base justo cuando peor
+  # viene.
+  #
+  # AGE_RECIPIENT es la clave PÚBLICA: el servicio puede cifrar y no descifrar.
+  # La privada no está acá ni en ningún servidor.
+  - type: cron
+    name: backup-produccion
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.backup
+    dockerContext: ./infra
+    plan: starter
+    region: oregon
+    schedule: "0 8 * * *"
+    autoDeploy: false
+    dockerCommand: /app/backup.sh
+    envVars:
+      - { key: ENTORNO, value: produccion }
+      - { key: MONGO_URL,     sync: false }   # usuario acotado a la base (D14)
+      - { key: AGE_RECIPIENT, sync: false }
+      - { key: R2_ENDPOINT,   sync: false }
+      - { key: R2_BUCKET,     value: centonara-backups }
+      - { key: R2_ACCESS_KEY_ID,     sync: false }
+      - { key: R2_SECRET_ACCESS_KEY, sync: false }
+
+  - type: cron
+    name: backup-staging
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.backup
+    dockerContext: ./infra
+    plan: starter
+    region: oregon
+    schedule: "0 8 * * *"
+    autoDeploy: false
+    dockerCommand: /app/backup.sh
+    envVars:
+      - { key: ENTORNO, value: staging }
+      - { key: MONGO_URL,     sync: false }
+      - { key: AGE_RECIPIENT, sync: false }
+      - { key: R2_ENDPOINT,   sync: false }
+      - { key: R2_BUCKET,     value: centonara-backups }
+      - { key: R2_ACCESS_KEY_ID,     sync: false }
+      - { key: R2_SECRET_ACCESS_KEY, sync: false }

@@ -1,0 +1,85 @@
+name: Deploy a produccion
+
+# Manual, nunca automático (08 §7).
+#
+# La ventana horaria es una guarda del workflow, no disciplina humana (D15).
+# El override existe a propósito: va a haber un día en que haya que arreglar
+# algo a las 15:00, y una guarda sin salida de emergencia se termina
+# desactivando para siempre. Cada uso queda en el log.
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Desplegar fuera de la ventana (después de las 12:00 o un viernes)"
+        type: boolean
+        default: false
+      motivo:
+        description: "Si forzás, por qué. Queda en el log."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-produccion
+  cancel-in-progress: false
+
+jobs:
+  ventana:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ventana de despliegue
+        env:
+          FORCE:  ${{ inputs.force }}
+          MOTIVO: ${{ inputs.motivo }}
+        run: |
+          set -Eeuo pipefail
+          dia=$(TZ=America/Argentina/Buenos_Aires date +%u)   # 1=lunes … 7=domingo
+          hora=$(TZ=America/Argentina/Buenos_Aires date +%H)
+          ahora=$(TZ=America/Argentina/Buenos_Aires date +'%A %d/%m %H:%M')
+          echo "Hora en Argentina: $ahora"
+
+          fuera=""
+          [ "$hora" -ge 12 ] && fuera="son las ${hora}:xx y la corrida sale a las 13:00"
+          [ "$dia" -eq 5 ]   && fuera="${fuera:+$fuera; }es viernes"
+
+          if [ -z "$fuera" ]; then echo "Dentro de ventana."; exit 0; fi
+
+          if [ "$FORCE" = "true" ]; then
+            echo "::warning::Desplegando FUERA DE VENTANA ($fuera)."
+            echo "::warning::Motivo: ${MOTIVO:-<sin motivo>}"
+            echo "Forzado por @${GITHUB_ACTOR}."
+            exit 0
+          fi
+
+          echo "::error::Fuera de ventana: $fuera."
+          echo "Desplegar dos horas antes de la corrida no deja margen para revertir."
+          echo "Si hace falta igual, volvé a lanzarlo marcando 'force' y escribiendo el motivo."
+          exit 1
+
+  desplegar:
+    needs: ventana
+    runs-on: ubuntu-latest
+    environment: produccion
+    steps:
+      - name: Disparar los deploy hooks
+        env:
+          HOOKS: ${{ secrets.RENDER_DEPLOY_HOOKS_PRODUCCION }}
+        run: |
+          set -Eeuo pipefail
+          if [ -z "${HOOKS:-}" ]; then
+            echo "::error::Falta el secreto RENDER_DEPLOY_HOOKS_PRODUCCION."; exit 1
+          fi
+          echo "$HOOKS" | jq -r '.[]' | while read -r hook; do
+            servicio=$(echo "$hook" | sed -E 's|.*/deploy/([^?]+).*|\1|')
+            echo "→ $servicio"
+            codigo=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$hook")
+            [ "$codigo" = "200" ] || { echo "::error::$servicio devolvió HTTP $codigo"; exit 1; }
+          done
+
+      - name: Recordatorio
+        run: |
+          echo "Desplegado. Si algo salió mal: docs/RUNBOOK-rollback.md"
+          echo "El rollback vuelve la aplicación, NO los datos."
