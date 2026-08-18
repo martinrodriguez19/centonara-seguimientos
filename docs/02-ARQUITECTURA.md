@@ -238,7 +238,8 @@ Tres workflows, nada más:
   variables acotadas y validadas, no instrucciones. Un backend comprometido no debe poder hacer
   que el agente ejecute algo arbitrario
 - Rate limiting en los endpoints del agente
-- MongoDB no expuesto a internet
+- MongoDB en Atlas: endpoint público con TLS, lista de IPs y un usuario acotado por entorno.
+  El aislamiento es por credenciales, no por red (D14)
 - Secretos en variables de entorno, nunca en archivos versionados
 
 ## 6. Qué NO hacemos y por qué

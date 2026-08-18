@@ -39,7 +39,7 @@ sprints posteriores.**
 
 | # | Qué | Bloquea | Responsable |
 |---|---|---|---|
-| E1 | VPS contratado y dominio delegado | S0 | Tech lead |
+| E1 | Render, MongoDB Atlas y dominio en Cloudflare | S0 | Tech lead |
 | E2 | **8 asientos de plan Anthropic** (D2) | S2 | Cliente |
 | E3 | **Máquina Windows 11 de pruebas dedicada** | S4 | Cliente |
 | E4 | **Línea de WhatsApp de pruebas** (que no sea de nadie del equipo ni de un vendedor) | S4 | Cliente |
