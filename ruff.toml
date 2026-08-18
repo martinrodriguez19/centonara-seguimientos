@@ -1,0 +1,10 @@
+# Configuración de Ruff para la raíz del repositorio.
+#
+# El backend trae la suya en backend/pyproject.toml (T0.3): Ruff resuelve la
+# configuración más cercana, así que esta no la pisa.
+#
+# Lo único que importa acá es que referencia/ queda afuera. Es código congelado
+# de 2026 que no cumple ninguna convención de 08-CONVENCIONES.md ni tiene por
+# qué: lintearlo sería pedirle a un registro histórico que se ponga al día.
+line-length = 100
+extend-exclude = ["referencia"]
