@@ -4,8 +4,8 @@
 # entornos sean de verdad iguales, que era el motivo de levantar producción
 # desde el Sprint 0.
 #
-# ⚠️ TODAVÍA INCOMPLETO. Falta el frontend (T0.4) y el worker de APScheduler,
-# que no tiene ticket asignado en el Sprint 0. El backend entró con T0.3.
+# ⚠️ Falta el worker de APScheduler, que aparece en el diagrama de 02 §1 y no
+# tiene ticket asignado en el Sprint 0. Backend y frontend ya están.
 #
 # autoDeploy: false en todos: el despliegue lo dispara GitHub Actions después
 # del CI, nunca Render por su cuenta (D15).
@@ -59,6 +59,52 @@ services:
       - { key: AUTH_EMAIL_FROM,  sync: false }
       - { key: SMTP_URL,         sync: false }
       - { key: SENTRY_DSN,       sync: false }
+
+  # ---------------- frontend (T0.4) ----------------
+  # healthCheckPath apunta a /healthz y NO a "/" ni a /api/estado-backend:
+  #
+  #   "/"                    consulta al backend para pintar el diagnóstico. Con
+  #                          el backend caído, Render vería un frontend enfermo
+  #                          estando sano y lo sacaría de rotación: dos servicios
+  #                          cayéndose por el precio de uno.
+  #   /api/estado-backend    contesta 200 siempre, a propósito, porque es un dato
+  #                          para la pantalla. Como sonda diría "sano" pase lo que
+  #                          pase.
+  #   /healthz               200 sin tocar nada externo. Es la única de las tres
+  #                          que responde la pregunta que hace un balanceador.
+  #
+  # BACKEND_URL va sin prefijo NEXT_PUBLIC_ a propósito: la lee sólo el servidor
+  # de Next. El navegador nunca habla con el backend directo, así que el backend
+  # no necesita CORS.
+  - type: web
+    name: frontend-produccion
+    runtime: node
+    rootDir: frontend
+    plan: starter
+    region: oregon
+    autoDeploy: false
+    healthCheckPath: /healthz
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - { key: NODE_VERSION, value: "22" }
+      - { key: BACKEND_URL,  sync: false }   # URL pública de backend-produccion
+      - { key: SENTRY_DSN,   sync: false }
+
+  - type: web
+    name: frontend-staging
+    runtime: node
+    rootDir: frontend
+    plan: starter
+    region: oregon
+    autoDeploy: false
+    healthCheckPath: /healthz
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - { key: NODE_VERSION, value: "22" }
+      - { key: BACKEND_URL,  sync: false }   # URL pública de backend-staging
+      - { key: SENTRY_DSN,   sync: false }
 
   # ---------------- n8n ----------------
   # Horarios, avisos e integraciones. Cero lógica de negocio (D8).
