@@ -105,4 +105,7 @@ después en el código.
 | D3 | PC apagada a la hora de envío | El mensaje vence y se descarta. Aparece al día siguiente en revisión posterior | `03`, `09` |
 | D4 | Modelo de control humano | Veto con ventana 08:00→13:00, no aprobación. La inacción envía | `01`, `05` |
 | D5 | Motor de envío | Determinístico (Playwright). El LLM sólo lee y redacta | `02`, `07` |
-| D6 | Dónde vive el backend | VPS en la nube, agentes con polling saliente | `02`, `06` |
+| D6 | Dónde vive el backend | Render + MongoDB Atlas, agentes con polling saliente | `02`, `06` |
+| D13 | DNS y borde | Cloudflare delante de Render, plan Free. Corta a los 100 s | `02` |
+| D14 | Cómo se protege MongoDB | Aislamiento por credenciales, no por red | `05` |
+| D15 | Quién dispara el despliegue | GitHub Actions tras el CI, con guarda horaria | `08` |

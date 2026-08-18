@@ -49,7 +49,7 @@ en `10-DECISIONES.md`.
 
 | Sem | Sprint | Carril A (técnico) | Carril B (cliente) | Carril C (docs) |
 |---|---|---|---|---|
-| 1 | S0 | Repo, Docker, esqueletos, CI, VPS, backups | **Pedir E1–E8 por escrito.** Arrancar conversación con los 8 vendedores | — |
+| 1 | S0 | Repo, Docker, esqueletos, CI, Render/Atlas, backups | **Pedir E1–E8 por escrito.** Arrancar conversación con los 8 vendedores | — |
 | 2 | S1 | Modelo de datos, E164, estados, cola | Seguimiento de E2 (asientos) y E3 (PC de pruebas) | `03` si el modelo cambia |
 | 3 | S1 | Auth, endpoints de agente, polling, kill switch | Idem | `04` si la API cambia |
 | 4 | S2 | Migrar prompt, `LISTAR_CHATS`, `REDACTAR`, medir costo | **H1: presentar el costo medido** | `10` con el resultado de H1 |
@@ -134,7 +134,7 @@ Regla general: **primero lo que otros necesitan, después lo que sólo usás vos
 
 | Sprint | Primero | Después | Al final |
 |---|---|---|---|
-| S0 | Repo y estructura | Docker, esqueletos | CI, VPS, backups |
+| S0 | Repo y estructura | Docker, esqueletos | CI, Render/Atlas, backups |
 | S1 | Modelo de datos, E164 | Estados, cola, auth | Endpoints, agente, panel de salud |
 | S2 | Migrar el prompt | `LISTAR_CHATS`, `REDACTAR` | Persistencia, medición |
 | S3 | Triage, ventana, vencimientos | Sala de salida | Historial, config, E2E |

@@ -90,11 +90,10 @@ seguimiento/
 │   └── workflows/              # exportados como JSON, versionados
 │
 ├── infra/
-│   ├── docker-compose.yml      # producción
-│   ├── docker-compose.dev.yml  # local
-│   ├── Caddyfile
-│   └── scripts/backup.sh
+│   ├── docker-compose.dev.yml  # local. Producción corre en Render, no con Compose (D6)
+│   └── scripts/backup.sh       # backup cifrado de Atlas hacia R2
 │
+├── render.yaml                 # servicios de staging y producción (D6)
 ├── docs/                       # esta documentación
 └── .github/workflows/
 ```
@@ -104,8 +103,8 @@ seguimiento/
 ## 3. Levantar todo
 
 ```bash
-git clone git@github.com:{org}/seguimiento.git
-cd seguimiento
+git clone git@github.com:martinrodriguez19/centonara-seguimientos.git
+cd centonara-seguimientos
 cp .env.example .env          # los valores por defecto sirven para local
 docker compose -f infra/docker-compose.dev.yml up -d
 ```
