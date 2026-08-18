@@ -1,0 +1,17 @@
+# Imagen del Cron Job de backup en Render (T0.9).
+#
+# Base mongo:7 porque ya trae mongodump, mongorestore y mongosh en la misma
+# versión que el servidor. Pesa más que una imagen a medida; a cambio, no hay
+# desajuste de versiones entre la herramienta y la base.
+FROM mongo:7
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends age rclone ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY scripts/backup.sh scripts/restaurar.sh /app/
+RUN chmod +x /app/*.sh
+
+# Sin CMD: el Cron Job de Render define el comando. Así la misma imagen sirve
+# para el backup diario y para una restauración manual.
