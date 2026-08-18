@@ -1,0 +1,57 @@
+[project]
+name = "seguimiento-backend"
+version = "0.1.0"
+description = "API del Sistema de Seguimiento Comercial v2"
+requires-python = "==3.12.*"
+
+# El esqueleto (T0.3) trae lo mínimo para arrancar, conectar y responder.
+# Lo demás llega cuando lo necesite el sprint que lo usa: Argon2 y JWT en el
+# Sprint 1, APScheduler cuando exista el scheduler. Una dependencia que todavía
+# no usa nadie es una dependencia que nadie actualiza.
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "motor>=3.6.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "structlog>=24.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+]
+
+# --- Ruff -------------------------------------------------------------------
+# La raíz del repo tiene su propio ruff.toml; Ruff resuelve la configuración más
+# cercana, así que para todo lo que cuelga de backend/ manda ésta.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle
+    "W",
+    "F",      # pyflakes
+    "I",      # imports ordenados
+    "UP",     # sintaxis moderna
+    "B",      # bugbear
+    "SIM",    # simplificaciones
+    "ASYNC",  # llamadas bloqueantes dentro de código async (08 §2)
+    "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# En los tests, `assert` es la herramienta, no un descuido.
+"tests/*" = ["S101"]
+
+# --- pytest -----------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--strict-markers"

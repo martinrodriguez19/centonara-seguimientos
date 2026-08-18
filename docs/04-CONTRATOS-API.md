@@ -230,6 +230,26 @@ GET /api/metricas?desde=&hasta=
 `tasa_edicion` es la métrica de calidad del prompt: si el humano reescribe el 80%, el sistema no
 está aportando valor.
 
+#### `GET /health` — salud del proceso (T0.3)
+
+```http
+GET /health          ← sin autenticación, y fuera de `/api`
+```
+
+```json
+{ "ok": true, "mongo": true, "entorno": "local" }
+```
+
+No confundir con `GET /api/salud`: aquél es el estado de las ocho máquinas, éste es el del proceso
+del backend. Lo consultan el balanceador de Render y la página de estado del panel.
+
+- `200` cuando todo responde; **`503` cuando Mongo no** — un chequeo de salud que contesta `200`
+  con `ok: false` no lo mira nadie, y Render necesita el código de estado para sacar la instancia
+  de rotación.
+- Sin autenticación: quien lo consulta no tiene con qué autenticarse.
+- `entorno` es el valor de `ENTORNO` (`local` | `staging` | `produccion`). Está para saber contra
+  qué se está hablando.
+
 ### 3.6 Configuración y vendedores
 
 ```http

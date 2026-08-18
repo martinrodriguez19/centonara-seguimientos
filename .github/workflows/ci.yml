@@ -62,7 +62,13 @@ jobs:
       - uses: actions/checkout@v4
       # Sin version: la lee de "packageManager" en package.json, que es la forma
       # de que CI y las máquinas del equipo usen exactamente el mismo pnpm.
+      #
+      # package_json_file es OBLIGATORIO acá: la acción lo resuelve desde la raíz
+      # del repositorio, y defaults.run.working-directory no la afecta — eso sólo
+      # aplica a los pasos `run`, no a las entradas de una acción.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22          # el mínimo documentado en 06 §1, no el más nuevo
