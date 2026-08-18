@@ -29,11 +29,17 @@ jobs:
           HOOKS: ${{ secrets.RENDER_DEPLOY_HOOKS_STAGING }}
         run: |
           set -Eeuo pipefail
+          # Todavía no hay servicios en Render: T0.7 espera a que se mergeen los
+          # esqueletos. Mientras tanto esto NO es un error — es un entorno que
+          # aún no existe. Fallar acá manda un mail rojo en cada merge a develop
+          # y enseña al equipo a ignorar los avisos del CI, que es exactamente
+          # lo que no queremos el día que uno importe.
           if [ -z "${HOOKS:-}" ]; then
-            echo "::error::Falta el secreto RENDER_DEPLOY_HOOKS_STAGING."
-            echo "Es un JSON con las URLs de deploy hook de Render, por ejemplo:"
+            echo "::notice::Staging todavía no está configurado en Render. No hay nada que desplegar."
+            echo "Cuando existan los servicios, cargá el secreto RENDER_DEPLOY_HOOKS_STAGING"
+            echo "con un JSON de URLs de deploy hook:"
             echo '  ["https://api.render.com/deploy/srv-aaa?key=...","https://..."]'
-            exit 1
+            exit 0
           fi
           echo "$HOOKS" | jq -r '.[]' | while read -r hook; do
             servicio=$(echo "$hook" | sed -E 's|.*/deploy/([^?]+).*|\1|')

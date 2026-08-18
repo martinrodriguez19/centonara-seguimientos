@@ -19,6 +19,7 @@ node_modules/
 .next/
 .pnpm-store/
 *.tsbuildinfo
+next-env.d.ts        # lo regenera `next typegen` en cada build
 
 # --- backups locales: no van al repo ---
 *.dump

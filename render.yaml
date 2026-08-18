@@ -4,17 +4,62 @@
 # entornos sean de verdad iguales, que era el motivo de levantar producción
 # desde el Sprint 0.
 #
-# ⚠️ INCOMPLETO A PROPÓSITO. Faltan backend, frontend y worker: dependen de
-# T0.3 y T0.4, que todavía no existen. No los escribo a ciegas — inventar el
-# comando de arranque de un backend que nadie escribió es adivinar, y 08 §9 dice
-# que un hueco de documentación se reporta, no se improvisa.
-#
-# Lo que hay acá SÍ se puede aplicar hoy y deja andando n8n y los backups.
+# ⚠️ TODAVÍA INCOMPLETO. Falta el frontend (T0.4) y el worker de APScheduler,
+# que no tiene ticket asignado en el Sprint 0. El backend entró con T0.3.
 #
 # autoDeploy: false en todos: el despliegue lo dispara GitHub Actions después
 # del CI, nunca Render por su cuenta (D15).
 
 services:
+  # ---------------- backend (T0.3) ----------------
+  # Chequeo de salud por CÓDIGO DE ESTADO: /health devuelve 503 si Mongo no
+  # responde. Un chequeo que contesta 200 con "ok: false" no lo lee nadie.
+  #
+  # MONGO_TIMEOUT_MS en 1500 y no en 2000: medido contra el backend levantado,
+  # con 2000 la peor respuesta con Mongo caído fue de 2,503 s. El tiempo de
+  # espera del chequeo de Render no se configura desde acá, así que el margen se
+  # gana bajando el timeout. Un chequeo que expira al borde saca instancias
+  # sanas de rotación, y el síntoma es un servicio que "se reinicia solo".
+  - type: web
+    name: backend-produccion
+    runtime: python
+    rootDir: backend
+    plan: starter
+    region: oregon
+    autoDeploy: false
+    healthCheckPath: /health
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run fastapi run app/main.py --port $PORT
+    envVars:
+      - { key: ENTORNO,          value: produccion }
+      - { key: MONGO_DB,         value: seguimiento }
+      - { key: MONGO_TIMEOUT_MS, value: "1500" }
+      - { key: MONGO_URL,        sync: false }   # usuario acotado a la base (D14)
+      - { key: JWT_SECRET,       generateValue: true }
+      - { key: AUTH_EMAIL_FROM,  sync: false }
+      - { key: SMTP_URL,         sync: false }
+      - { key: SENTRY_DSN,       sync: false }
+
+  - type: web
+    name: backend-staging
+    runtime: python
+    rootDir: backend
+    plan: starter
+    region: oregon
+    autoDeploy: false
+    healthCheckPath: /health
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run fastapi run app/main.py --port $PORT
+    envVars:
+      - { key: ENTORNO,          value: staging }
+      - { key: MONGO_DB,         value: seguimiento }
+      - { key: MONGO_TIMEOUT_MS, value: "1500" }
+      - { key: MONGO_URL,        sync: false }
+      - { key: JWT_SECRET,       generateValue: true }
+      - { key: AUTH_EMAIL_FROM,  sync: false }
+      - { key: SMTP_URL,         sync: false }
+      - { key: SENTRY_DSN,       sync: false }
+
   # ---------------- n8n ----------------
   # Horarios, avisos e integraciones. Cero lógica de negocio (D8).
   # No se le pone dominio propio: se entra por el proxy de Render con su URL
