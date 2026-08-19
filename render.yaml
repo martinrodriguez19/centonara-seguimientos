@@ -158,6 +158,17 @@ services:
       # La API pública es una vía de autenticación aparte, con sus propias
       # claves. No la usamos: menos superficie.
       - { key: N8N_PUBLIC_API_DISABLED, value: "true" }
+      # Sin esto el servicio se aborta al arrancar con "Ineffective mark-compacts
+      # near heap limit" y sale con estado 134 — que es V8 abortándose por su
+      # propio límite de heap, no el kernel matando el contenedor (eso sería 137).
+      # En el plan starter (512 MB) Node lee el límite del cgroup y fija el heap
+      # viejo en la mitad, ~256 MB, y n8n no arranca ahí. 400 deja margen para el
+      # resto del proceso dentro de los mismos 512 MB.
+      #
+      # Es el techo de lo que se puede exprimir de starter. Si vuelve a morir y
+      # ahora sale con 137, ya no es el heap: es el contenedor, y la única salida
+      # es plan: standard (2 GB).
+      - { key: NODE_OPTIONS, value: "--max-old-space-size=400" }
 
   - type: web
     name: n8n-staging
@@ -185,6 +196,17 @@ services:
       # La API pública es una vía de autenticación aparte, con sus propias
       # claves. No la usamos: menos superficie.
       - { key: N8N_PUBLIC_API_DISABLED, value: "true" }
+      # Sin esto el servicio se aborta al arrancar con "Ineffective mark-compacts
+      # near heap limit" y sale con estado 134 — que es V8 abortándose por su
+      # propio límite de heap, no el kernel matando el contenedor (eso sería 137).
+      # En el plan starter (512 MB) Node lee el límite del cgroup y fija el heap
+      # viejo en la mitad, ~256 MB, y n8n no arranca ahí. 400 deja margen para el
+      # resto del proceso dentro de los mismos 512 MB.
+      #
+      # Es el techo de lo que se puede exprimir de starter. Si vuelve a morir y
+      # ahora sale con 137, ya no es el heap: es el contenedor, y la única salida
+      # es plan: standard (2 GB).
+      - { key: NODE_OPTIONS, value: "--max-old-space-size=400" }
 
   # ---------------- backups (T0.9) ----------------
   # 08:00 UTC = 05:00 en Argentina. Lejos de la corrida de las 13:00: si el
