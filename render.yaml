@@ -9,6 +9,13 @@
 #
 # autoDeploy: false en todos: el despliegue lo dispara GitHub Actions después
 # del CI, nunca Render por su cuenta (D15).
+#
+# branch: es OBLIGATORIO en cada servicio que se construye del repositorio. Sin
+# esa clave, TODOS toman la rama desde la que se creó la instancia del Blueprint
+# — y con eso producción terminaría corriendo código de develop, que es lo
+# contrario de 08 §7. Producción va de main, staging de develop, y eso queda
+# escrito en el archivo y no en la memoria de quien creó el Blueprint.
+# Los servicios de n8n no la llevan: corren de una imagen publicada, sin build.
 
 services:
   # ---------------- backend (T0.3) ----------------
@@ -22,6 +29,7 @@ services:
   # sanas de rotación, y el síntoma es un servicio que "se reinicia solo".
   - type: web
     name: backend-produccion
+    branch: main
     runtime: python
     rootDir: backend
     plan: starter
@@ -42,6 +50,7 @@ services:
 
   - type: web
     name: backend-staging
+    branch: develop
     runtime: python
     rootDir: backend
     plan: starter
@@ -78,6 +87,7 @@ services:
   # no necesita CORS.
   - type: web
     name: frontend-produccion
+    branch: main
     runtime: node
     rootDir: frontend
     plan: starter
@@ -93,6 +103,7 @@ services:
 
   - type: web
     name: frontend-staging
+    branch: develop
     runtime: node
     rootDir: frontend
     plan: starter
@@ -159,6 +170,7 @@ services:
   # La privada no está acá ni en ningún servidor.
   - type: cron
     name: backup-produccion
+    branch: main
     runtime: docker
     dockerfilePath: ./infra/Dockerfile.backup
     dockerContext: ./infra
@@ -178,6 +190,7 @@ services:
 
   - type: cron
     name: backup-staging
+    branch: develop
     runtime: docker
     dockerfilePath: ./infra/Dockerfile.backup
     dockerContext: ./infra
