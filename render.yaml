@@ -119,8 +119,19 @@ services:
 
   # ---------------- n8n ----------------
   # Horarios, avisos e integraciones. Cero lógica de negocio (D8).
-  # No se le pone dominio propio: se entra por el proxy de Render con su URL
-  # interna. Un editor de n8n expuesto es justo lo que D8 quiere evitar.
+  # No se le pone dominio propio: se entra por la URL que asigna Render.
+  #
+  # ⚠️ CÓMO SE PROTEGE, Y POR QUÉ NO CON VARIABLES.
+  # n8n eliminó N8N_BASIC_AUTH_* en la versión 1.0 y no avisa: si las cargás,
+  # las ignora en silencio y te quedás creyendo que el editor está protegido.
+  # Desde entonces usa gestión de usuarios: en el PRIMER acceso, quien entre
+  # crea la cuenta de dueño.
+  #
+  # Consecuencia operativa, y hay que tratarla como un paso del despliegue:
+  # entre que el servicio queda Live y que alguien reclama la cuenta, CUALQUIERA
+  # que llegue a la URL puede quedarse con ella. Y n8n dispara la corrida de las
+  # 08:00. Reclamar la cuenta es lo primero que se hace al desplegarlo, no algo
+  # para después. Ver docs/RUNBOOK-n8n.md.
   - type: web
     name: n8n-produccion
     runtime: image
@@ -136,10 +147,17 @@ services:
       - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
       - { key: TZ,               value: America/Argentina/Buenos_Aires }
       - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+      # n8n NO lee la variable PORT: escucha en N8N_PORT, y por defecto en 5678.
+      # Render publica el servicio en el puerto que indica PORT, que por defecto
+      # es 10000, y si no detecta nada escuchando ahí da el despliegue por
+      # fallido. Verificado corriendo la imagen con PORT=10000: seguía en 5678.
+      - { key: N8N_PORT, value: "10000" }
+      # Cifra las credenciales que n8n guarda. La genera Render y nadie la ve.
+      # Si se pierde, las credenciales guardadas quedan ilegibles.
       - { key: N8N_ENCRYPTION_KEY, generateValue: true }
-      - { key: N8N_BASIC_AUTH_ACTIVE, value: "true" }
-      - { key: N8N_BASIC_AUTH_USER,  sync: false }
-      - { key: N8N_BASIC_AUTH_PASSWORD, sync: false }
+      # La API pública es una vía de autenticación aparte, con sus propias
+      # claves. No la usamos: menos superficie.
+      - { key: N8N_PUBLIC_API_DISABLED, value: "true" }
 
   - type: web
     name: n8n-staging
@@ -156,10 +174,17 @@ services:
       - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
       - { key: TZ,               value: America/Argentina/Buenos_Aires }
       - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+      # n8n NO lee la variable PORT: escucha en N8N_PORT, y por defecto en 5678.
+      # Render publica el servicio en el puerto que indica PORT, que por defecto
+      # es 10000, y si no detecta nada escuchando ahí da el despliegue por
+      # fallido. Verificado corriendo la imagen con PORT=10000: seguía en 5678.
+      - { key: N8N_PORT, value: "10000" }
+      # Cifra las credenciales que n8n guarda. La genera Render y nadie la ve.
+      # Si se pierde, las credenciales guardadas quedan ilegibles.
       - { key: N8N_ENCRYPTION_KEY, generateValue: true }
-      - { key: N8N_BASIC_AUTH_ACTIVE, value: "true" }
-      - { key: N8N_BASIC_AUTH_USER,  sync: false }
-      - { key: N8N_BASIC_AUTH_PASSWORD, sync: false }
+      # La API pública es una vía de autenticación aparte, con sus propias
+      # claves. No la usamos: menos superficie.
+      - { key: N8N_PUBLIC_API_DISABLED, value: "true" }
 
   # ---------------- backups (T0.9) ----------------
   # 08:00 UTC = 05:00 en Argentina. Lejos de la corrida de las 13:00: si el

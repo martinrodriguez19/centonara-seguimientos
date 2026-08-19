@@ -100,6 +100,7 @@ Procedimientos que se ejecutan, no que se leen una vez.
 |---|---|---|
 | [`RUNBOOK-backups.md`](RUNBOOK-backups.md) | Restaurar la base | primer lunes de cada mes |
 | [`RUNBOOK-rollback.md`](RUNBOOK-rollback.md) | Volver atrás un despliegue | simulacro en cada sprint |
+| [`RUNBOOK-n8n.md`](RUNBOOK-n8n.md) | Desplegar o recuperar n8n | al crear cada instancia |
 
 ---
 
