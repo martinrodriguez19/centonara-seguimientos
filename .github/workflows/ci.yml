@@ -1,0 +1,156 @@
+name: CI
+
+# Bloqueante para el merge (T0.6). El despliegue NO se dispara acá: lo hace un
+# workflow aparte, y sólo después de que esto pase en verde (D15).
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Los esqueletos de backend y frontend llegan en T0.3 y T0.4. Hasta entonces
+  # sus jobs quedan en salteado en vez de en rojo: un CI que siempre falla se
+  # aprende a ignorar, y para cuando importa ya nadie lo mira.
+  detectar:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.hay.outputs.backend }}
+      frontend: ${{ steps.hay.outputs.frontend }}
+      agente: ${{ steps.hay.outputs.agente }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: hay
+        run: |
+          test -f backend/pyproject.toml  && r=true || r=false; echo "backend=$r"  >> "$GITHUB_OUTPUT"
+          test -f frontend/package.json   && r=true || r=false; echo "frontend=$r" >> "$GITHUB_OUTPUT"
+          test -f agente/pyproject.toml   && r=true || r=false; echo "agente=$r"   >> "$GITHUB_OUTPUT"
+
+  backend:
+    needs: detectar
+    if: needs.detectar.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Formato (ruff)
+        run: uv run ruff format --check .
+      - name: Tests
+        run: uv run pytest -q
+
+  frontend:
+    needs: detectar
+    if: needs.detectar.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      # Sin version: la lee de "packageManager" en package.json, que es la forma
+      # de que CI y las máquinas del equipo usen exactamente el mismo pnpm.
+      #
+      # package_json_file es OBLIGATORIO acá: la acción lo resuelve desde la raíz
+      # del repositorio, y defaults.run.working-directory no la afecta — eso sólo
+      # aplica a los pasos `run`, no a las entradas de una acción.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22          # el mínimo documentado en 06 §1, no el más nuevo
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Tipos
+        run: pnpm typecheck
+
+  # El agente corre en la PC del vendedor (Windows) pero se desarrolla en modo
+  # simulado desde Linux y macOS hasta el Sprint 4 (06 §5). El criterio de
+  # salida de T0.5 es literalmente "corre en los tres sin cambios de código":
+  # se verifica acá, no a mano.
+  agente:
+    needs: detectar
+    if: needs.detectar.outputs.agente == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: agente } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      # Lint y formato una sola vez: en Windows el checkout usa CRLF y el
+      # chequeo de formato daría un falso positivo.
+      - name: Lint (ruff)
+        if: matrix.os == 'ubuntu-latest'
+        run: uv run ruff check .
+      - name: Formato (ruff)
+        if: matrix.os == 'ubuntu-latest'
+        run: uv run ruff format --check .
+      - name: Tests
+        run: uv run pytest -q
+      # Los tests corren dentro del proceso de pytest; esto verifica lo otro:
+      # que `python -m agente.main` arranque como programa en este sistema.
+      - name: El módulo arranca como programa
+        run: uv run python -m agente.main --version
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: El Compose local es válido
+        run: docker compose -f infra/docker-compose.dev.yml config --quiet
+
+  secretos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ningún secreto versionado (05 §5)
+        run: |
+          set -e
+          malos=$(git ls-files | grep -E '(^|/)\.env($|\.)|\.(pem|p12|pfx)$|(^|/)id_(rsa|ed25519)$' \
+                  | grep -v '\.env\.example$' || true)
+          if [ -n "$malos" ]; then
+            echo "::error::Hay secretos versionados:"; echo "$malos"; exit 1
+          fi
+          echo "Sin secretos versionados."
+
+  sin-envio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # R7 / D11: del Sprint 0 al 3 el código de envío no existe en el repo.
+      # Un tope configurado se desconfigura; un archivo que no existe, no.
+      # BORRAR ESTE JOB EN EL SPRINT 4, junto con el motor de envío.
+      - name: El código de envío no existe todavía (R7)
+        run: |
+          set -e
+          prohibidos=$(git ls-files | grep -E 'adaptadores/whatsapp_web\.py$|jobs/enviar\.py$' || true)
+          if [ -n "$prohibidos" ]; then
+            echo "::error::R7: el código de envío no existe hasta el Sprint 4. Encontrado:"
+            echo "$prohibidos"
+            echo "Si estás en el Sprint 4, borrá el job 'sin-envio' de .github/workflows/ci.yml"
+            exit 1
+          fi
+          echo "Sin código de envío. Es técnicamente imposible que salga un mensaje."

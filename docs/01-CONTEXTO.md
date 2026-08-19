@@ -144,7 +144,7 @@ Términos que vas a ver en toda la documentación.
 | Término | Significa |
 |---|---|
 | **Agente** | El programa que corre en la PC de cada vendedor. No confundir con "agente de IA" |
-| **Backend** | El servidor central (FastAPI) en el VPS. El cerebro |
+| **Backend** | El servidor central (FastAPI), en Render. El cerebro |
 | **Panel** | La aplicación web (Next.js) que usa el dueño |
 | **Corrida** (`run`) | Una ejecución completa del ciclo de un día |
 | **Job** | Una unidad mínima de trabajo. Ej.: "redactar el mensaje para este chat" |
@@ -172,7 +172,7 @@ Términos que vas a ver en toda la documentación.
 | Cola de trabajos | MongoDB (sin Redis — el volumen no lo justifica) |
 | Orquestación | n8n (sólo horarios y notificaciones) |
 | Agente | Python + Playwright, empaquetado con PyInstaller |
-| Infraestructura | Docker Compose sobre un VPS + Caddy (TLS automático) |
+| Infraestructura | Render (servicios administrados) + MongoDB Atlas + Cloudflare. Docker Compose sólo en local |
 | Errores | Sentry |
 | CI | GitHub Actions |
 

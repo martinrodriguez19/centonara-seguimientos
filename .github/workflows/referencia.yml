@@ -1,0 +1,45 @@
+name: Referencia
+
+# Hace cumplir la regla 1 de docs/13-QUE-HACER-CON-EL-MVP.md §1:
+# no se importa nada desde referencia/.
+#
+# El documento explica el porqué mejor que cualquier comentario: "si agent.py
+# está en el repo y funciona, alguien lo va a copiar y pegar un martes a las 7
+# de la tarde. Es la ruta de menor esfuerzo y hay que cerrarla."
+#
+# Un README pidiendo que no se haga no cierra nada. Un CI en rojo, sí.
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  sin-importar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nadie importa desde referencia/
+        run: |
+          set -Eeuo pipefail
+          archivos=$(git ls-files -- \
+            ':!referencia/**' ':!docs/**' ':!*.md' ':!.github/workflows/referencia.yml')
+          [ -z "$archivos" ] && { echo "Nada que revisar."; exit 0; }
+
+          hallazgos=$(printf '%s\n' "$archivos" | xargs -r grep -InE \
+            "^[[:space:]]*(from|import)[[:space:]]+referencia|from[[:space:]]+['\"][^'\"]*referencia|require\(['\"][^'\"]*referencia|sys\.path.*referencia" \
+            || true)
+
+          if [ -n "$hallazgos" ]; then
+            echo "::error::Alguien está importando desde referencia/. Está prohibido (docs/13 §1)."
+            echo "$hallazgos"
+            echo ""
+            echo "referencia/ es un registro histórico congelado, no una biblioteca."
+            echo "Si necesitás algo de ahí, copialo al lugar que corresponde y adaptalo."
+            exit 1
+          fi
+          echo "Nadie importa desde referencia/."

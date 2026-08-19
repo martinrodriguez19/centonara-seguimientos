@@ -1,0 +1,52 @@
+[project]
+name = "seguimiento-agente"
+version = "0.1.0"
+description = "Agente local del Sistema de Seguimiento Comercial v2"
+requires-python = "==3.12.*"
+
+# El esqueleto (T0.5) sólo lee configuración y loguea. Nada de red, nada de
+# navegador, nada de envío. Cada dependencia entra en el sprint que la usa:
+#   httpx      → Sprint 1, cuando exista el long-poll
+#   playwright → Sprint 4, con el motor de envío (R7)
+#   pystray    → Sprint 7, con la bandeja y el instalador
+# Una dependencia que todavía no usa nadie es una dependencia que nadie
+# actualiza — y en el agente, además, es peso muerto dentro del .exe.
+dependencies = [
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "structlog>=24.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "ruff>=0.7.0",
+]
+
+# --- Ruff -------------------------------------------------------------------
+# Misma configuración que backend/: un solo estilo en todo el Python del repo.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle
+    "W",
+    "F",      # pyflakes
+    "I",      # imports ordenados
+    "UP",     # sintaxis moderna
+    "B",      # bugbear
+    "SIM",    # simplificaciones
+    "ASYNC",
+    "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+# --- pytest -----------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--strict-markers"

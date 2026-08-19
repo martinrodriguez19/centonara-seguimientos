@@ -32,10 +32,16 @@ MongoDB 7, n8n y Mailpit. Volúmenes persistentes, healthchecks, red interna.
 FastAPI con `/health`, configuración por Pydantic Settings, conexión a Mongo, structlog.
 **Terminado cuando:** `GET /health` devuelve `{"ok": true, "mongo": true, "entorno": "local"}`.
 
+> Al crear `pyproject.toml`, excluir `referencia/` de `pytest` y de la cobertura. Ruff ya la
+> excluye desde la raíz. Ver `13-QUE-HACER-CON-EL-MVP.md` §1, regla 3.
+
 ### T0.4 — Esqueleto del frontend
 Next.js 15 + Tailwind + shadcn/ui. Una página que consulta `/health` del backend y muestra el
 estado.
 **Terminado cuando:** `pnpm dev` levanta y la página muestra el estado real del backend.
+
+> Al crear la configuración, excluir `referencia/` de ESLint y del `include` de `tsconfig.json`.
+> Ver `13-QUE-HACER-CON-EL-MVP.md` §1, regla 3.
 
 ### T0.5 — Esqueleto del agente
 Estructura del paquete, lectura de configuración, modo `--simulado` que loguea cada 10 s.

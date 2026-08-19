@@ -1,0 +1,4 @@
+# referencia/ es material histórico congelado. Marcarla como "vendored" hace que
+# GitHub no la cuente en las estadísticas del lenguaje y colapse sus diffs, para
+# que un cambio ahí no se pierda entre 2000 líneas de un archivo que nadie tocó.
+referencia/** linguist-vendored

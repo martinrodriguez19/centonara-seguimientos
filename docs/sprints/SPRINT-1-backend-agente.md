@@ -89,6 +89,6 @@ trabajo: menos de 10 s.
 
 | Riesgo | Mitigación |
 |---|---|
-| El long-poll consume conexiones | Timeout de 25 s y límite de conexiones en Caddy. Con 8 agentes no es un problema real |
+| El long-poll consume conexiones | Timeout de 25 s y límite de conexiones en uvicorn. Con 8 agentes no es un problema real |
 | La normalización E.164 se subestima | Es la tarea con más tests del sprint. Los formatos argentinos son un caos |
 | Alguien agrega un `enviar()` "para después" | Regla R7. Se rechaza en la revisión de código |
