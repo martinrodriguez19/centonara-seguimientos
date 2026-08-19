@@ -57,3 +57,15 @@ workflow encontrás algo que decide *si* un mensaje sale —un tope, una ventana
 destinatarios— eso incumple D8 y R1: se reporta y se mueve a FastAPI.
 
 n8n decide **cuándo se dispara** una corrida. Nunca **si** un mensaje sale.
+
+## 5. Si el despliegue falla sin errores en el log de n8n
+
+n8n **no lee la variable `PORT`**. Escucha en `N8N_PORT`, y por defecto en 5678. Render publica el
+servicio en el puerto que indica `PORT` —10000 por defecto— y si no detecta nada escuchando ahí, da
+el despliegue por fallido aunque n8n haya arrancado perfecto.
+
+El síntoma es confuso: el log de n8n dice `n8n ready on ::, port 5678` y todo parece bien, pero
+Render marca el deploy en rojo.
+
+Por eso el blueprint fija `N8N_PORT: 10000`. Si alguna vez volvés a ver ese síntoma, revisá que esa
+variable siga puesta.

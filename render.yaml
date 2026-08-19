@@ -147,6 +147,11 @@ services:
       - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
       - { key: TZ,               value: America/Argentina/Buenos_Aires }
       - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+      # n8n NO lee la variable PORT: escucha en N8N_PORT, y por defecto en 5678.
+      # Render publica el servicio en el puerto que indica PORT, que por defecto
+      # es 10000, y si no detecta nada escuchando ahí da el despliegue por
+      # fallido. Verificado corriendo la imagen con PORT=10000: seguía en 5678.
+      - { key: N8N_PORT, value: "10000" }
       # Cifra las credenciales que n8n guarda. La genera Render y nadie la ve.
       # Si se pierde, las credenciales guardadas quedan ilegibles.
       - { key: N8N_ENCRYPTION_KEY, generateValue: true }
@@ -169,6 +174,11 @@ services:
       - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
       - { key: TZ,               value: America/Argentina/Buenos_Aires }
       - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
+      # n8n NO lee la variable PORT: escucha en N8N_PORT, y por defecto en 5678.
+      # Render publica el servicio en el puerto que indica PORT, que por defecto
+      # es 10000, y si no detecta nada escuchando ahí da el despliegue por
+      # fallido. Verificado corriendo la imagen con PORT=10000: seguía en 5678.
+      - { key: N8N_PORT, value: "10000" }
       # Cifra las credenciales que n8n guarda. La genera Render y nadie la ve.
       # Si se pierde, las credenciales guardadas quedan ilegibles.
       - { key: N8N_ENCRYPTION_KEY, generateValue: true }
