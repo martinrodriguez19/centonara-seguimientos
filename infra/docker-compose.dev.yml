@@ -42,7 +42,6 @@ services:
       GENERIC_TIMEZONE: America/Argentina/Buenos_Aires
       N8N_SECURE_COOKIE: "false"           # local va por http, no https
       N8N_DIAGNOSTICS_ENABLED: "false"
-      N8N_RUNNERS_ENABLED: "true"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
       interval: 10s
