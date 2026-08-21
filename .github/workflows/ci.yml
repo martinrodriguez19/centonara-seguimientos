@@ -184,13 +184,31 @@ jobs:
       # garantia estructural. Esta sigue sirviendo despues.
       - name: La lista de destinos no quedo abierta en el repositorio
         run: |
-          set -e
-          abiertos=$(grep -rn 'destinos_permitidos' --include='*.py' --include='*.json' . || true)
-          abiertos=$(echo "$abiertos" | grep -v '_historico' | grep '"[*]"' || true)
+          set -euo pipefail
+
+          # Los tests SI abren la lista a proposito: hay que poder ejercitar la rama
+          # permisiva de destino_permitido(). Un fixture no se despliega a ningun lado,
+          # asi que se excluyen. Lo que se busca es una lista abierta en codigo de
+          # aplicacion, que es lo unico que puede llegar a produccion.
+          abiertos=$(grep -rn 'destinos_permitidos' \
+            --include='*.py' --include='*.json' \
+            --exclude-dir='_historico' --exclude-dir='tests' --exclude='test_*.py' \
+            . | grep '"[*]"' || true)
+
           if [ -n "$abiertos" ]; then
             echo "::error::Hay un destinos_permitidos abierto a todos, versionado:"
             echo "$abiertos"
             echo "Esa lista se cambia desde el panel, no desde el codigo."
             exit 1
           fi
-          echo "Sin listas de destinos abiertas en el repositorio."
+
+          # Y el valor de fabrica tiene que seguir siendo la lista vacia, que significa
+          # "a nadie". Un default abierto es la forma callada de que esto falle: nadie
+          # configura nada y el sistema arranca pudiendo escribirle a cualquiera.
+          if ! grep -q '"destinos_permitidos": \[\]' backend/app/core/configuracion.py; then
+            echo "::error::El valor por defecto de destinos_permitidos dejo de ser la lista vacia."
+            echo "Lista vacia significa 'a nadie'. Ver R4 / D21 en docs/03-REGLAS.md."
+            exit 1
+          fi
+
+          echo "Sin listas abiertas en codigo de aplicacion, y el default sigue cerrado."
