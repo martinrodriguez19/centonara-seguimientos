@@ -54,6 +54,14 @@ class Senal(StrEnum):
     CHAT_NO_COMERCIAL = "CHAT_NO_COMERCIAL"
     """No parece una conversación de trabajo. Las líneas mezclan lo personal."""
 
+    SIN_CONTEXTO = "SIN_CONTEXTO"
+    """El modelo no encontró con qué escribir y se negó a inventar.
+
+    No la enciende `evaluar()` sino el resultado de `REDACTAR`, y es la única
+    que llega sin texto. El prompt la ofrece como alternativa explícita a
+    redactar un seguimiento genérico, así que es una respuesta correcta: el chat
+    queda apartado para que lo escriba una persona, o para que lo descarte."""
+
 
 def _sin_acentos(texto: str) -> str:
     """Para comparar palabras sin que un acento las haga distintas.

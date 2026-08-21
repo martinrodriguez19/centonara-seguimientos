@@ -287,10 +287,18 @@ def test_un_hallazgo_se_lee_solo() -> None:
     assert "reclamo" in str(hallazgo)
 
 
-def test_son_cinco_senales() -> None:
+def test_son_cinco_senales_de_triage_y_una_de_redaccion() -> None:
     """Eran siete. Se sacaron dos: la antigüedad —que contradecía el criterio
-    validado del MVP— y el largo, que ya cubre un guardrail."""
-    assert len(Senal) == 5
+    validado del MVP— y el largo, que ya cubre un guardrail.
+
+    `SIN_CONTEXTO` se cuenta aparte porque no la enciende `evaluar()`: la trae el
+    resultado de `REDACTAR` cuando el modelo se niega a inventar un seguimiento.
+    Es una señal del mismo tipo —por qué se apartó un mensaje, y el panel la
+    muestra igual— pero no sale de mirar el texto, porque no hay texto.
+    """
+    del_triage = set(Senal) - {Senal.SIN_CONTEXTO}
+    assert len(del_triage) == 5
+    assert len(Senal) == 6
 
 
 # ---------------------------------------------------------------------------

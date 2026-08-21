@@ -149,16 +149,25 @@ async def encolar(
     maquina: str,
     corrida_id: ObjectId | None = None,
     payload: dict[str, Any] | None = None,
+    contexto: dict[str, Any] | None = None,
     disponible_desde: datetime | None = None,
     ahora: datetime | None = None,
 ) -> ObjectId:
-    """Pone un job en la cola. Disponible ya, salvo que se diga otra cosa."""
+    """Pone un job en la cola. Disponible ya, salvo que se diga otra cosa.
+
+    `contexto` es lo que el backend necesita recordar para interpretar el
+    resultado, y que **el agente no recibe**: `JobEntregado` sólo lleva
+    `payload`. La distincion importa en `REDACTAR`, que redacta sin navegador y
+    por eso no lleva telefono: el numero del contacto queda de este lado, pegado
+    al job que lo va a necesitar cuando vuelva el texto.
+    """
     momento = _ahora(ahora)
     documento = {
         "tipo": str(tipo),
         "maquina": maquina,
         "corrida_id": corrida_id,
         "payload": payload or {},
+        "contexto": contexto or {},
         "estado": str(EstadoJob.PENDIENTE),
         "disponible_desde": disponible_desde or momento,
         "intentos": 0,

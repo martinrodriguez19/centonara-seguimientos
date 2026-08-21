@@ -124,6 +124,7 @@ export const textos = {
     IDENTIDAD_AMBIGUA: "No está claro a quién se le escribiría",
     COMPROMISO_CONCRETO: "El mensaje promete un precio, una fecha o una cantidad",
     CHAT_NO_COMERCIAL: "No parece una conversación de trabajo",
+    SIN_CONTEXTO: "No había con qué escribir: hay que redactarlo a mano",
     G1_IDENTIDAD: "El contacto del chat no coincide",
     G2_DESTINO_NO_PERMITIDO: "El número no está en los destinos permitidos",
     G3_TEXTO_INVALIDO: "El texto quedó mal armado",

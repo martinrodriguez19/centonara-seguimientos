@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import db
-from app.core import cola, configuracion, corridas, mensajes, vendedores
+from app.core import cola, configuracion, corridas, generacion, mensajes, vendedores
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -212,6 +212,15 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
         await _resolver_mensaje(base, job, cuerpo, reporte, maquina["maquina"])
         await corridas.revisar_canario(base, job["corrida_id"], quien=maquina["maquina"])
 
+    # El resto de la cadena de generacion. Va despues de `cola.reportar` a
+    # proposito: si esto falla, el job ya quedo cerrado con su `raw`, y lo que se
+    # pierde es el paso siguiente y no la evidencia de lo que contesto el modelo.
+    if cuerpo.ok and job["tipo"] == cola.Tipo.LISTAR:
+        await _encolar_redacciones(base, job, cuerpo)
+
+    if cuerpo.ok and job["tipo"] == cola.Tipo.REDACTAR:
+        await generacion.guardar_borrador(base, job=job, detalle=cuerpo.detalle)
+
     if reporte.frena_corrida:
         # El DOM de WhatsApp cambió: los envíos siguientes tienen exactamente el
         # mismo problema. Frenar todo es más barato que gastar intentos y
@@ -238,6 +247,37 @@ async def latido(cuerpo: Latido, maquina: Maquina) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # El puente entre un job de envío y el estado de su mensaje
 # ---------------------------------------------------------------------------
+
+
+async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) -> None:
+    """Los chats que leyo `LISTAR` se convierten en un `REDACTAR` cada uno.
+
+    Los chats vienen en `detalle`, ya revisados por el agente: los mal formados
+    se descartaron alla y estan contados en `detalle["descartados"]`.
+    """
+    chats = cuerpo.detalle.get("chats") or []
+    if not isinstance(chats, list) or not chats:
+        log.warning("listar_sin_chats", corrida=str(job.get("corrida_id")), maquina=job["maquina"])
+        return
+
+    encoladas = await generacion.encolar_redacciones(
+        base,
+        corrida_id=job["corrida_id"],
+        maquina=job["maquina"],
+        chats=chats,
+    )
+
+    # Que no se encole nada no es lo mismo segun por que. Sin destinos
+    # permitidos es el sistema haciendo lo que le pidieron (R4); sin telefono es
+    # el modelo negandose a inventar uno. Las dos cosas hay que poder verlas.
+    if encoladas.total == 0 and not encoladas.repetido:
+        log.warning(
+            "ninguna_redaccion_encolada",
+            corrida=str(job.get("corrida_id")),
+            leidos=len(chats),
+            sin_telefono=encoladas.sin_telefono,
+            no_permitidos=encoladas.no_permitidos,
+        )
 
 
 async def _marcar_enviando(base, job: dict[str, Any]) -> None:
