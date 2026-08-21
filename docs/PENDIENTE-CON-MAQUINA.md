@@ -8,20 +8,30 @@
 
 ---
 
+> **21 de agosto de 2026.** Las tres cosas de esta sección están confirmadas, y la
+> máquina de desarrollo (Windows) quedó configurada: el diagnóstico da
+> `diagnostico_ok`, los nueve chequeos. Los tres números de prueba están en
+> `destinos_permitidos` de la base **local**, normalizados a E.164, con el tope
+> por corrida en 3. La lista de producción sigue vacía, que significa "a nadie".
+>
+> El permiso de sitio ya está concedido y **verificado corriendo**, con
+> `--sonda`: la extensión entra a `web.whatsapp.com` y la sesión está
+> iniciada. Los cuatro ítems de "configurar esta máquina" están cerrados.
+
 ## Antes de nada: tres cosas que no dependen del equipo técnico
 
 Ninguna se resuelve escribiendo código, y las tres tienen plazo de otra persona.
 Conviene pedirlas ya, aunque el resto no arranque hoy.
 
-- [ ] **Una línea de WhatsApp de prueba.** Que no sea de nadie del equipo ni de
+- [x] **Una línea de WhatsApp de prueba.** Que no sea de nadie del equipo ni de
       un vendedor. Se le van a mandar mensajes de verdad y puede terminar
       bloqueada.
-- [ ] **Confirmar con el administrador del Claude Enterprise** que la extensión
+- [x] **Confirmar con el administrador del Claude Enterprise** que la extensión
       **Claude in Chrome esté habilitada por política de la organización.**
       ⚠️ Si está restringida, el sistema no funciona en ninguna máquina y no es
       algo que se arregle desde el código. Es una llamada, no una tarea técnica,
       y es lo único que puede frenar el proyecto entero.
-- [ ] **Tres contactos propios** que acepten recibir mensajes de prueba, para el
+- [x] **Tres contactos propios** que acepten recibir mensajes de prueba, para el
       final de la fase 4.
 
 ---
@@ -68,26 +78,44 @@ uv run python -m agente.main --diagnostico
 
 Hoy marca tres cosas en rojo, y son exactamente las que hay que resolver:
 
-- [ ] **`claude_bin`** — poner la ruta COMPLETA al ejecutable en `CLAUDE_BIN`.
+- [x] **`claude_bin`** — poner la ruta COMPLETA al ejecutable en `CLAUDE_BIN`.
       No `claude` a secas: el PATH del proceso que lanza el agente no es el de
       tu terminal (problema #2 del MVP).
-- [ ] **`permiso_mcp`** — `~/.claude/settings.json` con
+- [x] **`permiso_mcp`** — `~/.claude/settings.json` con
       `{"permissions":{"allow":["mcp__claude-in-chrome"]}}`. Sin esto, en modo
       headless se auto-deniega todo y el error es un 502 mudo (problema #3).
-- [ ] **`device_id`** — fijar `AGENTE_DEVICE_ID` con el deviceId del Chrome de
+- [x] **`device_id`** — fijar `AGENTE_DEVICE_ID` con el deviceId del Chrome de
       esta máquina. Con más de un Chrome conectado a la cuenta, headless no sabe
       a cuál ir (problema #5).
 
 Y uno que el diagnóstico **no puede verificar** y es el que se olvida:
 
-- [ ] **Permiso de sitio de la extensión** para `web.whatsapp.com`. Es una capa
+- [x] **Permiso de sitio de la extensión** para `web.whatsapp.com`. Es una capa
       **distinta** del permiso MCP: aunque `settings.json` esté bien, sin esto
       falla con "requires permission" (problema #4). Se concede a mano en el
       navegador, una vez por máquina.
 
+### F3.0 — El puente del backend · **no estaba en esta lista**
+
+Esta sección listaba F3 como dos ejecutores. Son tres piezas: **el backend no
+conectaba una con la otra.** `reportar_resultado()` sólo trataba el caso
+`ENVIAR`, y `Tipo.REDACTAR` no lo encolaba ningún código, así que un resultado
+de `LISTAR` se guardaba y ahí moría.
+
+- [x] `app/core/generacion.py`: `LISTAR` → N `REDACTAR`, y `REDACTAR` → un
+      borrador. La validación que ya existía hace el resto.
+- [x] El teléfono viaja en `contexto` y no en `payload`: `REDACTAR` no envía
+      nada y `PayloadRedactar` no lo acepta, pero el borrador y el triage lo
+      necesitan. `JobEntregado` sólo manda `payload`, así que el número no sale
+      del backend.
+- [x] No se redacta para números fuera de `destinos_permitidos`. Es R4, y es
+      plata: con la lista en los tres de prueba, es la diferencia entre pagar
+      tres redacciones y pagar veinte.
+- [x] Idempotencia: un `LISTAR` reportado dos veces no encola todo de nuevo.
+
 ### F3.1 — El job `LISTAR`
 
-- [ ] Implementar el ejecutor con la invocación validada del MVP (`--chrome`,
+- [x] Implementar el ejecutor con la invocación validada del MVP (`--chrome`,
       prompt por stdin, `encoding="utf-8"`, `cwd` en la carpeta del agente).
 - [ ] **Correrlo contra WhatsApp Web y ver qué se rompe.** Es la primera vez que
       el sistema nuevo toca la página, y el MVP se validó contra versiones
@@ -99,7 +127,7 @@ El prompt ya está escrito y migrado sin cambios funcionales, en
 
 ### F3.2 — El job `REDACTAR`
 
-- [ ] Implementarlo. **No abre el navegador**: es una llamada de texto plano.
+- [x] Implementarlo. **No abre el navegador**: es una llamada de texto plano.
       Criterio verificable: redactar 20 borradores no abre ninguna pestaña.
 - [ ] Verificar que el costo baje como esperamos. Sacar el paso más frecuente
       del circuito del navegador es donde está el ahorro del proyecto.

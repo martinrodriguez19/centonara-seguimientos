@@ -184,6 +184,31 @@ Sin navegador. Llamada de texto plano con el contexto que ya extrajo `LISTAR`.
 Criterio verificable: redactar 20 borradores no abre ninguna pestaña. Es donde está el ahorro de
 costo del proyecto.
 
+### Lo que costó de verdad
+
+**21 de agosto de 2026**, primera corrida completa contra WhatsApp Web real, 8 chats, en Windows:
+
+| | Costo | Por unidad |
+|---|---|---|
+| `LISTAR` — 8 chats, con navegador | **USD 3,128** | USD 0,39 por chat |
+| `REDACTAR` — 3 borradores, sin navegador | **USD 0,334** | **USD 0,111** por borrador |
+| Corrida entera | USD 3,463 | |
+
+Y la sonda, que abre la página y sólo cuenta los chats sin leer ninguno: **USD 0,50**. Ese es el
+costo de existir del navegador, antes de leer una sola palabra.
+
+**Lo que dice el número:** leer un chat con el navegador cuesta unas **3,5 veces** lo que redactar
+uno sin él. Es menos dramático que la cuenta que se hacía a ojo, y sigue siendo la decisión
+correcta — pero por un motivo distinto al que se creía. `LISTAR` es **uno por máquina** y
+`REDACTAR` es **uno por chat**: con 20 chats, el navegador se paga una vez y el texto veinte. Si
+`REDACTAR` abriera el navegador, esos veinte pasarían de USD 2,2 a USD 7,8.
+
+⚠️ **La medición de `LISTAR` es de 8 chats y no escala lineal**: el prompt pide leer una lista, y
+el costo depende de cuánto haya que abrir y resumir. Volver a medirlo con 20 antes de sacar
+conclusiones de plata para el cliente.
+
+
+
 ---
 
 ## 7. Ejecución de `ENVIAR` — Playwright
@@ -306,7 +331,7 @@ mano.
 | Cuenta de Claude | **Una por máquina**, del Enterprise del cliente (D2). Una API key **no sirve**: desactiva la integración con Chrome |
 | `~/.claude/settings.json` | `{"permissions":{"allow":["mcp__claude-in-chrome"]}}` |
 | Permiso de sitio | Manual en la extensión, para `web.whatsapp.com`. **Capa independiente** de la anterior |
-| `deviceId` | Fijo por máquina. Con más de un Chrome, headless no sabe cuál usar |
+| `deviceId` | Fijo por máquina. Con más de un Chrome, headless no sabe cuál usar. **Cómo obtenerlo, más abajo** |
 | Permisos de macOS | Automatización, e ítem de inicio |
 
 Sobre las cuentas: el cliente tiene Claude Enterprise, así que no hay que comprar suscripciones
@@ -318,6 +343,96 @@ arregle desde el código. Ver D2.
 Una cuenta compartida entre varias máquinas no sirve: además del problema de términos de servicio,
 las máquinas compiten por la misma cuota y se frenan entre ellas justo cuando corren todas juntas,
 que es siempre.
+
+### El permiso de sitio, que son dos capas y no una
+
+El chequeo `permiso_sitio` figura como `n/a` porque no se puede verificar desde el código. Se
+concede a mano, una vez por máquina, y es el paso que más se olvida — pero el motivo por el que se
+olvida no es el descuido: es que **hay dos permisos distintos con el mismo nombre**, y mirar el
+equivocado hace pensar que ya está.
+
+| Capa | Quién la da | Dónde se ve |
+|---|---|---|
+| Permiso de host de Chrome | Chrome, al instalar la extensión | Menú de la extensión → "Acceso al sitio" |
+| Lista de sitios de la extensión | La extensión, a pedido | Ícono de Claude → configuración → permisos de sitios |
+
+**La primera ya viene resuelta y no es la que falta.** En una instalación normal Chrome le concede
+`<all_urls>`, así que el menú de Chrome muestra acceso a todos los sitios y todo parece en orden.
+La que hace falta habilitar es la segunda, para `web.whatsapp.com`.
+
+Sin ella, el error es `Claude in Chrome requires permission`, **y lo emite el navegador, no el
+CLI**: no aparece en ningún log del agente. Es el problema #4 del MVP.
+
+La de Chrome se puede leer del disco, y sirve para descartarla:
+
+```bash
+python -c "import json,pathlib;d=json.loads(pathlib.Path(r'<PERFIL>/Secure Preferences').read_text(encoding='utf-8'));print(d['extensions']['settings']['fcoeoabgfenejglbffodgkkbkcdhcgfn']['granted_permissions'])"
+```
+
+**La de la extensión no.** Buscarla en su almacenamiento (`Local Extension Settings`) no sirve:
+`web.whatsapp.com` no aparece ahí ni con el permiso concedido, así que un `grep` da lo mismo en
+los dos casos y hace creer que falta cuando está. Se comprobó en una máquina con el permiso ya
+dado.
+
+La única forma de saberlo es **usarlo**, y para eso está la sonda:
+
+```bash
+uv run --directory agente python -m agente.main --sonda
+```
+
+Abre WhatsApp Web una vez por el mismo camino que va a usar `LISTAR` —headless, `--chrome`, el
+`deviceId` de esta máquina— y contesta los dos chequeos que el diagnóstico deja en `n/a`:
+
+```
+[OK ] permiso_sitio    la extensión puede entrar a web.whatsapp.com
+[OK ] whatsapp_sesion  sesión iniciada, 8 chats a la vista
+```
+
+No lee ningún chat: abre la lista y la cuenta. Cuesta alrededor de **USD 0,50** y tarda un par de
+minutos, que es exactamente el motivo por el que no está adentro de `--diagnostico` — el
+diagnóstico corre al arrancar y en cada latido; esto se corre a mano, una vez por máquina.
+
+Ese medio dólar es el piso: abrir la página y contar, sin leer nada. Lo que cuesta leer de verdad
+está medido más abajo.
+
+### Cómo se obtiene el `deviceId`
+
+El chequeo `device_id` del diagnóstico pide este valor, y es el único de los nueve que no se
+resuelve solo. Es el identificador que la extensión se asigna a sí misma en **ese** Chrome, y sale
+de su propio almacenamiento, bajo la clave `bridgeDeviceId`.
+
+La extensión se instala en **un perfil de Chrome**, no en Chrome entero. Si hay varios perfiles hay
+que dar con el correcto: es el único que tiene la carpeta de la extensión.
+
+En macOS, que es donde va a correr esto:
+
+```bash
+grep -ao 'bridgeDeviceId.\{0,60\}' \
+  ~/Library/Application\ Support/Google/Chrome/*/Local\ Extension\ Settings/fcoeoabgfenejglbffodgkkbkcdhcgfn/*.log
+```
+
+En Windows, para probar antes de tener las Macs:
+
+```bash
+grep -ao 'bridgeDeviceId.\{0,60\}' \
+  "$LOCALAPPDATA/Google/Chrome/User Data"/*/"Local Extension Settings"/fcoeoabgfenejglbffodgkkbkcdhcgfn/*.log
+```
+
+Sale algo así, con el UUID a continuación de la clave:
+
+```
+bridgeDeviceId&"f83d5f3e-3278-46c6-8ccc-148e58805116"
+```
+
+Ese UUID es el que va en `AGENTE_DEVICE_ID`.
+
+**Lo que NO sirve como fuente:** listar los navegadores conectados a la cuenta. Devuelve todos los
+Chrome de todas las máquinas con nombres genéricos —`Browser 1`, `Browser 2`— que no dicen cuál es
+cuál, y el nombre que se le pone al conectarlo no se refleja ahí enseguida. Con dos Chrome en la
+misma máquina es exactamente el problema #5 del MVP: no hay forma de distinguirlos desde afuera.
+El almacén de la extensión sí es inequívoco, porque está en el disco de esa máquina.
+
+Cuando el instalador de F5.3 exista, este es el paso que tiene que automatizar.
 
 ---
 
