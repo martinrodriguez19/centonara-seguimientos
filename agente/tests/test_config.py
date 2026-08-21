@@ -9,7 +9,7 @@ from agente.config import Configuracion
 
 
 def test_lee_las_variables_del_agente(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGENTE_BACKEND_URL", "https://staging.ejemplo.com")
+    monkeypatch.setenv("AGENTE_BACKEND_URL", "https://api.ejemplo.com")
     monkeypatch.setenv("AGENTE_TOKEN", "tok-123")
     monkeypatch.setenv("AGENTE_MACHINE_ID", "PC-7")
     monkeypatch.setenv("AGENTE_DEVICE_ID", "dev-abc")
@@ -17,7 +17,7 @@ def test_lee_las_variables_del_agente(monkeypatch: pytest.MonkeyPatch) -> None:
 
     config = Configuracion()
 
-    assert config.backend_url == "https://staging.ejemplo.com"
+    assert config.backend_url == "https://api.ejemplo.com"
     assert config.token == "tok-123"
     assert config.machine_id == "PC-7"
     assert config.device_id == "dev-abc"
@@ -61,7 +61,7 @@ def test_el_resumen_para_log_no_incluye_el_token() -> None:
 
 def test_los_logs_van_en_json_fuera_de_local() -> None:
     assert Configuracion(entorno="local").logs_en_json is False
-    assert Configuracion(entorno="staging").logs_en_json is True
+    assert Configuracion(entorno="produccion").logs_en_json is True
     assert Configuracion(entorno="produccion").logs_en_json is True
     # El override manual gana sobre la heurística.
     assert Configuracion(entorno="local", log_json=True).logs_en_json is True

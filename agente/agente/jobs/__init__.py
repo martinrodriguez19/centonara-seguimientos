@@ -1,1 +1,1 @@
-"""Ejecutores de jobs. Ver README.md — el envio no vive aca todavia (R7)."""
+"""Ejecutores de jobs: LISTAR, REDACTAR, ENVIAR, DIAGNOSTICO. Ver README.md."""

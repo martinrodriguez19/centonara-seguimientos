@@ -1,7 +1,7 @@
 """Piezas comunes de los tests del agente.
 
 Ninguno de estos tests abre una conexión, lanza un proceso ni toca el
-navegador: el esqueleto no sabe hacer nada de eso, y cuando sepa (Sprint 4) va
+navegador: el esqueleto no sabe hacer nada de eso, y cuando sepa (fase 3) va
 a probarse con `DryRunAdapter` (08 §4).
 """
 

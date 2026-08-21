@@ -1,1 +1,1 @@
-# prompts — se releen en cada job, sin reiniciar el proceso. `CLAUDE.md` se toca en el Sprint 4, ver 06 §6.
+# prompts — el prompt es fijo y vive acá; el backend sólo manda variables acotadas. Se relee en cada job.

@@ -2,16 +2,17 @@
 
     uv run python -m agente.main --simulado
 
-Esqueleto del Sprint 0 (T0.5): lee la configuración, la valida y loguea un
-latido cada 10 segundos. **Nada más.** No hay long-poll (Sprint 1), no hay
-autodiagnóstico (Sprint 1), no hay navegador y no hay envío (Sprint 4, R7).
+Esqueleto: lee la configuración, la valida y loguea un latido cada 10 segundos.
+**Nada más.** No hay bucle de consulta ni diagnóstico (fase 1), y no hay
+navegador ni envío (fase 3).
 
-Es la forma en que trabaja todo el equipo hasta el Sprint 4 (06 §3 y §5), así
-que corre igual en Linux, macOS y Windows: sin rutas de Windows, sin
-`os.system`, sin nada que dependa del sistema operativo.
+Es la forma en que trabaja el equipo mientras no haya una Mac disponible
+(04-AGENTE.md §11), así que corre igual en macOS, Linux y Windows: sin rutas de
+un sistema en particular, sin `os.system`, sin nada que dependa del SO.
 """
 
 import argparse
+import asyncio
 import signal
 import sys
 import threading
@@ -20,17 +21,20 @@ from types import FrameType
 
 from pydantic import ValidationError
 
-from agente import __version__
+from agente import __version__, diagnostico
+from agente.bucle import Bucle, latir
+from agente.cliente import Cliente
 from agente.config import CARPETA_AGENTE, Configuracion, Modo, obtener_configuracion
 from agente.logging import configurar_logs, obtener_logger
 
 log = obtener_logger(__name__)
 
-# T0.5: "modo --simulado que loguea cada 10 segundos".
+# Mismo intervalo con el que el agente va a consultar al backend en la fase 1.
 INTERVALO_SIMULADO_SEGUNDOS = 10.0
 
 SALIDA_OK = 0
 SALIDA_CONFIGURACION = 2
+SALIDA_DIAGNOSTICO = 3
 
 
 def construir_parser() -> argparse.ArgumentParser:
@@ -45,6 +49,11 @@ def construir_parser() -> argparse.ArgumentParser:
         "--simulado",
         action="store_true",
         help="Fuerza el modo simulado, sin tocar el navegador. Gana sobre AGENTE_MODO.",
+    )
+    parser.add_argument(
+        "--diagnostico",
+        action="store_true",
+        help="Corre los nueve chequeos, los imprime y sale. No consulta al backend.",
     )
     parser.add_argument("--version", action="version", version=f"agente {__version__}")
     return parser
@@ -138,30 +147,97 @@ def main(argv: Sequence[str] | None = None) -> int:
         return SALIDA_CONFIGURACION
 
     configurar_logs(config)
+
+    if args.diagnostico:
+        return correr_diagnostico(config)
+
     modo = resolver_modo(config, args.simulado)
 
-    # ---- R7 -----------------------------------------------------------------
-    # `prueba` y `real` necesitan el motor de Playwright, que no existe en el
-    # repositorio hasta el Sprint 4. El agente no arranca a medias ni "hace lo
-    # que puede": corta acá (R3).
-    # BORRAR ESTE BLOQUE EN EL SPRINT 4, junto con el job `sin-envio` del CI.
+    # `prueba` y `real` necesitan el motor de Playwright, que llega en la fase 3.
+    # El agente no arranca a medias ni "hace lo que puede": corta acá (regla R2,
+    # falla cerrado).
+    #
+    # Esto NO es lo que impide que un mensaje llegue a un cliente real: eso lo
+    # hace `configuracion.destinos_permitidos` (R4), que sigue vigente cuando
+    # este bloque desaparezca. Borrar en la fase 3, junto con el motor de envío.
     if modo != "simulado":
         log.error(
             "modo_no_disponible",
             modo=modo,
-            regla="R7",
             detalle=(
-                "El código de envío no existe hasta el Sprint 4. "
+                "El motor de envío llega en la fase 3. "
                 "Corré con --simulado o poné AGENTE_MODO=simulado."
             ),
         )
         return SALIDA_CONFIGURACION
-    # -------------------------------------------------------------------------
 
     parar = threading.Event()
     atender_apagado(parar)
-    ejecutar_simulado(config, parar=parar)
+
+    # Sin backend configurado no hay a quién preguntarle: se queda latiendo en
+    # seco, que es como trabaja el equipo mientras se desarrollan las otras
+    # partes. Con backend, arranca el bucle de verdad.
+    if not config.token:
+        log.info("sin_token", detalle="sin AGENTE_TOKEN no hay a quién consultar: modo latido")
+        ejecutar_simulado(config, parar=parar)
+        return SALIDA_OK
+
+    asyncio.run(_trabajar(config, parar))
     return SALIDA_OK
+
+
+def correr_diagnostico(config: Configuracion) -> int:
+    """`--diagnostico`: corre los chequeos, los imprime y sale.
+
+    Es lo primero que se corre en una máquina nueva, y lo primero que se pide
+    cuando alguien dice "no anda". Imprime a stdout y no sólo al log para que
+    se pueda pegar en un mensaje.
+    """
+    resultado = diagnostico.ejecutar(
+        claude_bin=config.claude_bin,
+        device_id=config.device_id,
+        carpeta_agente=CARPETA_AGENTE,
+    )
+    for chequeo in resultado.chequeos:
+        marca = {"ok": "OK ", "falla": "MAL", "n/a": " - "}[str(chequeo.estado)]
+        print(f"[{marca}] {chequeo.nombre:16} {chequeo.detalle}")
+
+    if resultado.puede_enviar:
+        print()
+        print("Todo en orden.")
+        return SALIDA_OK
+    print()
+    print(f"Degradado: {resultado.resumen()}")
+    return SALIDA_DIAGNOSTICO
+
+
+async def _trabajar(config: Configuracion, parar: threading.Event) -> None:
+    """El bucle y el latido, en paralelo, hasta que alguien pida parar."""
+    cliente = Cliente(config.backend_url, config.token)
+
+    def diagnosticar():
+        return diagnostico.ejecutar(
+            claude_bin=config.claude_bin,
+            device_id=config.device_id,
+            carpeta_agente=CARPETA_AGENTE,
+        )
+
+    trabajo = Bucle(cliente, version=__version__, diagnosticar=diagnosticar)
+    fin = asyncio.Event()
+
+    def vigilar_apagado() -> None:
+        """Puente entre la señal (que llega a un hilo) y el bucle (que es async)."""
+        parar.wait()
+        trabajo.detener()
+        fin.set()
+
+    threading.Thread(target=vigilar_apagado, daemon=True).start()
+
+    try:
+        await asyncio.gather(trabajo.arrancar(), latir(cliente, trabajo.estado, parar=fin))
+    finally:
+        await cliente.cerrar()
+        log.info("agente_detenido", jobs=trabajo.estado.jobs_hechos)
 
 
 if __name__ == "__main__":

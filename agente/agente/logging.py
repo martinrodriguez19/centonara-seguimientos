@@ -2,7 +2,7 @@
 
 Mismo criterio que en el backend, y por el mismo motivo: cuando alguien pida
 soporte va a mandar este log. Que las líneas propias y las de las librerías
-(httpx en el Sprint 1, Playwright en el 4) salgan con el mismo formato es la
+(httpx en la fase 1, Playwright en la 3) salgan con el mismo formato es la
 diferencia entre leerlo y adivinarlo.
 
 Este archivo no está en la estructura de 06 §2 — la doc no le asigna un lugar a

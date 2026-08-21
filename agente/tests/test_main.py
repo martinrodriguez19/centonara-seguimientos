@@ -30,10 +30,10 @@ def test_la_opcion_simulado_gana_sobre_el_entorno() -> None:
 
 @pytest.mark.parametrize("modo", ["prueba", "real"])
 def test_sin_simulado_el_agente_no_arranca(modo: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """R7: el código de envío no existe hasta el Sprint 4, así que no hay nada
-    que ejecutar en esos modos. Falla cerrado (R3) en vez de arrancar a medias.
+    """El motor de envío llega en la fase 3, así que no hay nada que ejecutar en
+    esos modos. Falla cerrado (R2) en vez de arrancar a medias.
 
-    Este test se borra en el Sprint 4, junto con el bloque que lo hace pasar."""
+    Este test se borra en la fase 3, junto con el bloque que lo hace pasar."""
     monkeypatch.setenv("AGENTE_MODO", modo)
     assert main([]) == SALIDA_CONFIGURACION
 
@@ -72,7 +72,7 @@ def test_parar_corta_el_bucle() -> None:
 
 
 def test_el_bucle_no_toca_la_red_ni_lanza_procesos(monkeypatch: pytest.MonkeyPatch) -> None:
-    """El esqueleto simula: no hay long-poll (Sprint 1) ni Chrome (Sprint 4)."""
+    """El esqueleto simula: no hay bucle de consulta (fase 1) ni Chrome (fase 3)."""
     import socket
     import subprocess
 

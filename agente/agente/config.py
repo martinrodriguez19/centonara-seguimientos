@@ -4,10 +4,10 @@ Nada de `os.environ` suelto por el código: si una variable hace falta, se
 declara acá y se valida al arrancar. Un valor mal escrito tiene que romper el
 arranque, no aparecer a las tres semanas como un comportamiento raro.
 
-En la máquina del vendedor la configuración va a venir de
-`%PROGRAMDATA%\\SeguimientoAgente\\config.json` (07 §3), que lo escribe el
-instalador. Eso llega con el registro, en el Sprint 1. El esqueleto lee del
-entorno y nada más, que es lo que pide T0.5.
+En la Mac del vendedor la configuración va a venir de
+`/opt/centonara/config.json` (04-AGENTE.md §2), que lo escribe el instalador.
+Eso llega con el registro, en la fase 1. El esqueleto lee del entorno y nada
+más.
 """
 
 import sys
@@ -18,7 +18,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-Entorno = Literal["local", "staging", "produccion"]
+# Ya no hay staging: un solo entorno desplegado, que es producción (D17).
+Entorno = Literal["local", "produccion"]
 Modo = Literal["simulado", "prueba", "real"]
 
 
@@ -29,10 +30,10 @@ def _carpeta_agente() -> Path:
 
     - el `.env` del repo no está donde se corre el comando;
     - `LISTAR_CHATS` va a necesitar pasarla como `cwd=` para que Claude Code
-      encuentre su contexto (07 §5).
+      encuentre su contexto (04-AGENTE.md §5).
 
-    Empaquetado con PyInstaller, `__file__` apunta a un temporal que se borra al
-    salir: ahí manda la carpeta del ejecutable.
+    Si algún día se empaqueta con PyInstaller, `__file__` apunta a un temporal que
+    se borra al salir: ahí manda la carpeta del ejecutable.
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -43,16 +44,16 @@ CARPETA_AGENTE = _carpeta_agente()
 
 
 class Configuracion(BaseSettings):
-    """Variables de entorno del agente (06 §4).
+    """Variables de entorno del agente.
 
     Los valores por defecto son los de `.env.example` y sirven para local. En la
-    PC del vendedor los escribe el instalador.
+    Mac del vendedor los escribe el instalador.
     """
 
     model_config = SettingsConfigDict(
         # Rutas absolutas y no relativas al directorio actual: el agente se
-        # arranca desde la terminal en desarrollo y desde el Task Scheduler en
-        # Windows, y ahí el directorio actual no es el nuestro.
+        # arranca desde la terminal en desarrollo y desde launchd en la Mac del
+        # vendedor, y ahí el directorio actual no es el nuestro.
         # El de más a la derecha pisa al anterior.
         env_file=(CARPETA_AGENTE.parent / ".env", CARPETA_AGENTE / ".env"),
         env_file_encoding="utf-8",
@@ -70,23 +71,24 @@ class Configuracion(BaseSettings):
     # el nombre del entorno se declara campo por campo en vez de con env_prefix.
     # Es más verboso y a cambio no hay que adivinar cómo se llama ninguna.
 
-    # ENTORNO=produccion es la única variable que habilita el envío real
-    # (05 §6). El agente la lee por su cuenta porque no confía en el backend
-    # (05 §2): cuando exista el envío, revalida acá lo que el backend ya validó.
+    # A quién puede escribirle el sistema lo gobierna
+    # `configuracion.destinos_permitidos` (regla R4), no una variable de entorno.
+    # El agente revalida esa lista antes de escribir, porque un job pudo quedar
+    # encolado y la lista pudo cambiar en el medio.
     entorno: Entorno = "local"
 
     modo: Modo = Field("simulado", validation_alias="AGENTE_MODO")
 
     backend_url: str = Field("http://localhost:8000", validation_alias="AGENTE_BACKEND_URL")
     token: str = Field("", validation_alias="AGENTE_TOKEN")
-    machine_id: str = Field("PC-1", validation_alias="AGENTE_MACHINE_ID")
+    machine_id: str = Field("mac-1", validation_alias="AGENTE_MACHINE_ID")
 
     # Fijo por máquina. Sin esto, con más de un Chrome abierto headless no sabe
-    # a cuál conectarse (problema #5 del MVP). Lo verifica `device_id_ok`.
+    # a cuál conectarse (problema #5 del MVP). Lo verifica el chequeo `device_id`.
     device_id: str = Field("", validation_alias="AGENTE_DEVICE_ID")
 
     # Ruta COMPLETA al ejecutable: `shutil.which("claude")` devolvía None
-    # (problema #2 del MVP). Lo verifica `claude_bin_ok`.
+    # (problema #2 del MVP). Lo verifica el chequeo `claude_bin`.
     claude_bin: str = Field("", validation_alias="CLAUDE_BIN")
 
     # Logs en JSON: cómodo para archivo y para soporte, ilegible en una
@@ -103,7 +105,7 @@ class Configuracion(BaseSettings):
         """Lo que se puede escribir en un log, y sólo eso.
 
         `token` es una credencial: se reporta si está o no está, nunca su
-        valor. Los logs del agente terminan en la máquina del vendedor y en un
+        valor. Los logs del agente terminan en la Mac del vendedor y en un
         adjunto de soporte.
         """
         return {

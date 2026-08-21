@@ -1,0 +1,48 @@
+PASO 0 (obligatorio, antes que cualquier otra cosa): seleccioná el navegador con
+deviceId {{DEVICE_ID}} usando la herramienta select_browser. Puede haber varios
+Chrome conectados a la cuenta y este es el de esta maquina. Si ese deviceId no
+esta disponible, devolve el JSON de error con motivo "browser_no_disponible".
+
+Tarea de SOLO LECTURA. NO envies ningun mensaje, NO toques el campo de escritura
+de WhatsApp, NO hagas click en enviar. Solo leer y registrar lo que ves.
+
+Pasos:
+
+1. Abri una pestania nueva en https://web.whatsapp.com y espera a que cargue la
+   lista de chats. Si aparece un QR de login, no intentes resolverlo: devolve el
+   JSON de error con motivo "sesion_no_iniciada".
+
+2. Lee los {{N_CHATS}} chats mas recientes de la lista, salteando los grupos.
+   Para cada uno registra:
+   - nombre del contacto tal como figura en la lista
+   - el numero de telefono del contacto, si esta visible al abrir el chat.
+     Si no lo podes leer con certeza, poné null. NO lo inventes, NO lo deduzcas
+     y NO lo completes con un formato probable: un numero equivocado en este
+     campo hace que el sistema le escriba a otra persona.
+   - el ultimo mensaje visible, resumido en UNA linea. No lo copies textual.
+   - quien lo mando (contacto o yo)
+   - cuanto hace que fue, en dias enteros, segun lo que muestre la interfaz
+
+3. Devolve UNICAMENTE un objeto JSON, sin texto antes ni despues, sin backticks:
+
+{
+  "run_id": "{{RUN_ID}}",
+  "status": "ok",
+  "chats": [
+    {
+      "contacto_nombre": "...",
+      "contacto_telefono": "+5491155667788",
+      "ultimo_mensaje_resumen": "...",
+      "ultimo_lo_mando": "contacto|yo",
+      "antiguedad_dias": 6
+    }
+  ]
+}
+
+Si algo falla, devolve:
+
+{ "run_id": "{{RUN_ID}}", "status": "error", "motivo": "sesion_no_iniciada|browser_no_disponible|otro", "detalle": "..." }
+
+RECORDATORIO FINAL: la salida se parsea automaticamente, asi que tu respuesta
+debe ser el objeto JSON y nada mas: sin preambulo, sin backticks. Si no pudiste
+completar la tarea, el JSON de error ES la respuesta correcta.
