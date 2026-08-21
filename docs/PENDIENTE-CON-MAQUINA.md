@@ -240,6 +240,58 @@ final.
 
 ---
 
+## Producción nunca estuvo enchufada
+
+Se sondeó el 21 de agosto de 2026, yendo a buscar los deploy hooks. Lo que hay
+no es "la versión vieja andando": es un esqueleto sin conectar.
+
+**Lo que se comprobó desde afuera, sin entrar al dashboard:**
+
+- `frontend-produccion.onrender.com/healthz` responde `{"ok":true,"servicio":
+  "frontend"}`, que es exactamente lo que sirve este repositorio. Ese servicio
+  **es nuestro** y está vivo.
+- Pero `/api/estado` devuelve un 404 de Next: la ruta proxy del panel
+  (`app/api/[...ruta]`) no está desplegada. O sea que corre una versión
+  **anterior a `9ed1c3a`**, la del panel. Es el esqueleto del sprint 0.
+- Su propia sonda lo dice todo:
+
+  ```
+  GET /api/estado-backend
+  {"alcanzable":false,"url":"http://localhost:8000/health","motivo":"fetch failed: ECONNREFUSED"}
+  ```
+
+  **`BACKEND_URL` nunca se configuró** y quedó en el valor por defecto del
+  código. El panel de producción no le habla a ningún backend.
+
+- ⚠️ `backend-produccion.onrender.com` **no es nuestro**. Devuelve
+  `{"message":"Cannot GET /health","error":"Not Found","statusCode":404}`, que es
+  el formato de Express/NestJS; FastAPI devuelve `{"detail":"Not Found"}`. Los
+  subdominios de Render son globales: el nombre estaba tomado y a nuestro
+  servicio le tocó otro con sufijo. **La URL que parece la nuestra es la
+  aplicación de un tercero.**
+
+  Lo bueno de que `BACKEND_URL` estuviera sin configurar: el panel nunca le mandó
+  nada a ese servidor. Si alguien lo hubiera "arreglado" poniéndole esa URL a
+  ojo, la contraseña del panel habría viajado a una aplicación ajena.
+
+**Lo que hay que hacer en el dashboard, todo junto en una sola visita:**
+
+- [ ] Anotar la **URL real** de `backend-produccion` (la que tiene sufijo) y
+      verificar que `/health` devuelva `{"ok":...,"mongo":...}`. Si el servicio
+      no existe, hay que crearlo desde el blueprint.
+- [ ] Configurar `BACKEND_URL` en `frontend-produccion` con esa URL real.
+- [ ] Confirmar que el backend tenga `MONGO_URL`, `PANEL_PASSWORD` y
+      `SESION_SECRET`. Los tres son `sync: false`, así que no están en el
+      blueprint y nadie sabe desde acá si están puestos.
+- [ ] Copiar los deploy hooks de cada servicio, para el secreto de abajo.
+
+⚠️ **Y antes de disparar la primera corrida en producción**: `destinos_permitidos`
+tiene que estar en los números de prueba. En una base nueva arranca vacía —que
+significa a nadie— así que el riesgo real es al revés: nadie va a poder mandar
+nada hasta que alguien la abra a propósito. Eso está bien y es la regla R4.
+
+---
+
 ## El deploy no funciona todavía
 
 - [ ] **Cargar el secreto `RENDER_DEPLOY_HOOKS_PRODUCCION`.** Sin esto,
