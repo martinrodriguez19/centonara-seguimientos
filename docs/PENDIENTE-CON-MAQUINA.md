@@ -319,11 +319,38 @@ vacío que se sube sin chistar es peor que un backup que falla: te deja creyendo
 que estás cubierto."* En ese caso el backup empieza a andar solo cuando la base
 tenga datos.
 
-- [ ] Leer la primera línea del log del cron y actuar según la tabla.
-- [ ] De las siete variables que pide, **cinco son `sync: false`**:
-      `MONGO_URL`, `AGE_RECIPIENT`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID` y
-      `R2_SECRET_ACCESS_KEY`. Confirmar que estén, ya que se está en el
-      dashboard.
+### Resuelto: es la base vacía, y no hay nada que arreglar
+
+El log dice:
+
+```
+ABORTA: la base tiene 0 documentos, menos que el mínimo de 1.
+```
+
+Llegar hasta ahí descarta lo demás: **las siete variables están configuradas**
+—el chequeo es lo primero que corre— y **la conexión a Atlas funciona**, porque
+pasó el aborto anterior. Simplemente no hay nada que respaldar.
+
+⚠️ **Desplegar no lo arregla.** `ciclo_de_vida` llama a `inicializar()`, que crea
+colecciones e índices y **ningún documento**; la configuración por defecto se
+escribe con un `$setOnInsert` que sólo dispara cuando alguien la pide. La
+secuencia real es:
+
+1. Deploy → 6 colecciones vacías → `0 documentos`, el backup sigue fallando
+2. Alguien entra al panel → `configuracion.obtener()` escribe el documento
+3. 1 documento ≥ el mínimo → **el backup pasa solo**
+
+⚠️⚠️ **NO bajar `MINIMO_DOCS` a 0.** Cuando el cron falle unos días seguidos va a
+dar la tentación. Eso convierte el guard en un backup vacío que se sube todos los
+días y deja creyendo que hay cobertura — exactamente contra lo que el script fue
+escrito.
+
+- [ ] Cuando alguien entre al panel por primera vez, **verificar en Atlas que el
+      documento de `configuracion` haya aparecido en una base llamada
+      `seguimiento`**. Es lo único que cierra la duda que deja el propio mensaje
+      del script: *"Puede ser la base equivocada en MONGO_URL"*. Desde afuera no
+      se puede distinguir, porque Mongo crea la base en la primera escritura y un
+      nombre equivocado se ve igual que una base legítimamente vacía.
 
 ---
 
