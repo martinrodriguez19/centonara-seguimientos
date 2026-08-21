@@ -62,12 +62,38 @@ Panel en `http://localhost:3000`, API en `http://localhost:8000/docs`.
 ### Los tests, que es lo que más vas a correr
 
 ```bash
-uv run --directory backend pytest -q
-```
-
-```bash
 uv run --directory agente pytest -q
 ```
+
+El backend tiene 553 tests, y **242 de ellos se saltean en silencio** si no le
+decís dónde está el Mongo. `pytest -q` sin más devuelve `311 passed, 242
+skipped` y el resumen se lee como si estuviera todo verde. No lo está: los que
+faltan son los de la cola, la auditoría y los dos grupos de endpoints.
+
+La variable es `MONGO_URL_TESTS`, y va con el usuario **root** —no con `app`—
+porque cada test crea y borra su propia base `seguimiento_test_<uuid>`, y el rol
+de `app` sólo alcanza a `seguimiento`:
+
+```bash
+MONGO_URL_TESTS='mongodb://root:root-local@localhost:27017/?authSource=admin' uv run --directory backend pytest -q
+```
+
+Ahí sí: `553 passed`. Si ves `skipped`, la variable no llegó.
+
+### Si las descargas fallan con un error de certificado
+
+En una red que inspecciona TLS —un antivirus con escudo web, un proxy
+corporativo— `uv` no confía en el certificado que le llega y no puede bajar ni
+Python ni las dependencias. Se resuelve haciéndole usar el almacén de
+certificados de Windows, donde ese root ya está instalado:
+
+```bash
+UV_NATIVE_TLS=1 uv sync --directory backend
+```
+
+Para Node el equivalente es `NODE_EXTRA_CA_CERTS` apuntando al `.pem` del
+antivirus. Y si `pnpm` no está en el PATH, `corepack pnpm <comando>` funciona
+igual y además respeta la versión pineada en `package.json`.
 
 ### Qué le falta a esta máquina
 
