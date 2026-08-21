@@ -1,123 +1,65 @@
-# Documentación del proyecto — Sistema de seguimiento comercial v2
+# Documentación
 
-**Para quien llega nuevo: leé el `01` y el `02`. Con eso ya podés participar de una reunión.
-Antes de escribir código, leé también el `05` y el `08`.**
-
----
-
-## Mapa de la documentación
-
-### Para entender el proyecto
-
-| Documento | Qué contiene | Leer si… |
-|---|---|---|
-| `01-CONTEXTO.md` | Qué hace el sistema, para quién, por qué existe. Glosario. | siempre, primero |
-| `02-ARQUITECTURA.md` | Cómo está construido y por qué así | siempre, segundo |
-| `10-DECISIONES.md` | Las decisiones tomadas y las alternativas descartadas | cuando algo te parezca raro |
-
-### Para construir
-
-| Documento | Qué contiene | Leer si… |
-|---|---|---|
-| `03-MODELO-DE-DATOS.md` | Colecciones de MongoDB, estados, índices | tocás datos |
-| `04-CONTRATOS-API.md` | Endpoints, payloads, códigos de error | tocás backend, front o agente |
-| `05-REGLAS-INVIOLABLES.md` | Los límites que el sistema no puede cruzar | **antes de escribir la primera línea** |
-| `06-ENTORNO-LOCAL.md` | Cómo levantar todo en tu máquina | tu primer día |
-| `07-EL-AGENTE.md` | El componente que corre en la PC del vendedor | trabajás en el agente |
-| `08-CONVENCIONES.md` | Git, código, tests, definición de terminado | siempre, antes del primer PR |
-
-### Calendario
-
-| Sprint | Nombre | Semanas |
-|---|---|---|
-| 0 | Fundaciones | 1 |
-| 1 | Backend core y agente v2 | 2 |
-| 2 | Generación | 1 |
-| 3 | Panel y sala de salida | 2 |
-| 4 | Envío en modo prueba ⚠ punto de no retorno | 2 |
-| 5 | Envío real — piloto | 1 |
-| 6 | Guardrails y endurecimiento | 2 |
-| 7 | Rollout | 3 |
-| | **Total** | **14** |
-
-### Para planificar
-
-| Documento | Qué contiene |
-|---|---|
-| `09-ROADMAP.md` | Los 8 sprints, dependencias, criterios de salida |
-| `sprints/SPRINT-0..7.md` | Detalle de cada sprint con tickets y criterios de aceptación |
-| `11-RIESGOS.md` | Qué puede salir mal y qué hacemos al respecto |
-| `12-ORDEN-DE-EJECUCION.md` | **En qué orden hacer todo.** Qué bloquea a qué, y cuándo se tocan las máquinas de los vendedores |
-| `13-QUE-HACER-CON-EL-MVP.md` | Qué se migra del MVP, qué se lee como referencia y qué se descarta |
+> Ocho documentos. Antes eran veintitrés. Si algo no está acá es porque no hacía falta escribirlo
+> todavía.
 
 ---
 
-## Lo mínimo que hay que entender antes de tocar nada
+## Leelos en este orden
 
-Cuatro frases:
-
-1. El sistema lee conversaciones de WhatsApp de clientes, redacta mensajes de seguimiento con un
-   modelo de lenguaje, y los **envía automáticamente**.
-2. Los mensajes salen desde el WhatsApp personal de cada vendedor, en su nombre, desde su
-   computadora.
-3. Del otro lado hay **personas reales que son clientes reales** del negocio. Un error nuestro es
-   un mensaje inapropiado a un cliente que paga.
-4. Por eso hay un documento llamado `05-REGLAS-INVIOLABLES.md`. No es una formalidad.
-
----
-
-## Estado del proyecto
-
-**Existe un MVP funcionando** (Fase 1) que lee chats y redacta borradores, pero **no envía**.
-Corre en una sola máquina Windows, con scripts sueltos y disparo manual.
-
-**Vamos a construir la v2 desde cero**, reutilizando el conocimiento del MVP pero no su código
-—salvo el prompt de generación, que sí se migra tal cual porque está validado.
-
-El MVP se conserva en `referencia/mvp-fase1/`, **en cuarentena y fuera de la ruta de
-construcción**. Qué se copia, qué se lee y qué se descarta está detallado en
-`13-QUE-HACER-CON-EL-MVP.md`. Leelo antes de abrir esa carpeta.
-
----
-
-## Contactos
-
-| Rol | Quién | Para qué |
-|---|---|---|
-| Product owner / cliente | (completar) | decisiones de negocio, aprobación de fases |
-| Tech lead | (completar) | decisiones técnicas, revisión de PRs |
-| Backend | (completar) | FastAPI, Mongo, guardrails |
-| Frontend | (completar) | Next.js, panel |
-| Agente / Windows | (completar) | el ejecutable que corre en la PC del vendedor |
-
----
-
-## Runbooks operativos
-
-Procedimientos que se ejecutan, no que se leen una vez.
-
-| Documento | Cuándo se usa | Se prueba |
-|---|---|---|
-| [`RUNBOOK-backups.md`](RUNBOOK-backups.md) | Restaurar la base | primer lunes de cada mes |
-| [`RUNBOOK-rollback.md`](RUNBOOK-rollback.md) | Volver atrás un despliegue | simulacro en cada sprint |
-| [`RUNBOOK-n8n.md`](RUNBOOK-n8n.md) | Desplegar o recuperar n8n | al crear cada instancia |
-
----
-
-## Decisiones cerradas
-
-**No hay decisiones pendientes.** Las tres que quedaban abiertas se resolvieron y están
-documentadas. Si alguna se quiere cambiar, se cambia en `10-DECISIONES.md` primero y recién
-después en el código.
-
-| # | Decisión | Resolución | Dónde |
+| # | Documento | Para qué | Cuándo |
 |---|---|---|---|
-| D1 | Qué se guarda de las conversaciones | Sólo el resumen de una línea, TTL 90 días. El texto enviado se guarda indefinido | `03`, `05` |
-| D2 | Cuentas de Anthropic | 8 asientos individuales, uno por máquina | `07`, `11` |
-| D3 | PC apagada a la hora de envío | El mensaje vence y se descarta. Aparece al día siguiente en revisión posterior | `03`, `09` |
-| D4 | Modelo de control humano | Veto con ventana 08:00→13:00, no aprobación. La inacción envía | `01`, `05` |
-| D5 | Motor de envío | Determinístico (Playwright). El LLM sólo lee y redacta | `02`, `07` |
-| D6 | Dónde vive el backend | Render + MongoDB Atlas, agentes con polling saliente | `02`, `06` |
-| D13 | DNS y borde | Cloudflare delante de Render, plan Free. Corta a los 100 s | `02` |
-| D14 | Cómo se protege MongoDB | Aislamiento por credenciales, no por red | `05` |
-| D15 | Quién dispara el despliegue | GitHub Actions tras el CI, con guarda horaria | `08` |
+| 01 | [El proyecto](01-PROYECTO.md) | Qué construimos y por qué | Primero, siempre |
+| 02 | [Arquitectura, datos y contratos](02-ARQUITECTURA.md) | Cómo está armado | Antes de tocar backend o panel |
+| 03 | [Reglas, guardrails y riesgos](03-REGLAS.md) | Los límites que no se cruzan | **Todos, sin excepción** |
+| 04 | [El agente y el entorno](04-AGENTE.md) | Lo que corre en la Mac del vendedor | Antes de tocar `agente/` |
+| 05 | [Fases](05-FASES.md) | Qué se construye y en qué orden | Al empezar una fase |
+| 06 | [Decisiones](06-DECISIONES.md) | Por qué las cosas son como son | Cuando algo te parezca raro |
+| 07 | [Convenciones](07-CONVENCIONES.md) | Git, código, tests, despliegue | Antes del primer PR |
+
+Y dos que no se leen de corrido:
+
+| Documento | Qué es |
+|---|---|
+| [EQUIPO.md](EQUIPO.md) | Los seis agentes de desarrollo y su prompt base |
+| [PROMPTS.md](PROMPTS.md) | Los 42 prompts de ejecución, en orden |
+| [PENDIENTE-CON-MAQUINA.md](PENDIENTE-CON-MAQUINA.md) | **Lo que falta y necesita una máquina.** Empezá acá si volvés después de un tiempo |
+
+Y tres runbooks: [`RUNBOOK-auditoria.md`](RUNBOOK-auditoria.md) (el rol de MongoDB que hace
+inmutable el registro), [`RUNBOOK-backups.md`](RUNBOOK-backups.md) y
+[`RUNBOOK-rollback.md`](RUNBOOK-rollback.md).
+
+Más [`MVP-REFERENCIA.md`](MVP-REFERENCIA.md), que explica qué hacer con el MVP congelado en
+`referencia/mvp-fase1/` — sobre todo los siete problemas que ya costaron días de depuración.
+
+---
+
+## Si tenés quince minutos
+
+Leé [`03-REGLAS.md`](03-REGLAS.md) entero. Es corto y es el único que, si lo salteás, puede
+terminar en un mensaje comercial en el chat equivocado de un cliente real.
+
+---
+
+## Lo que cambió respecto de la versión anterior
+
+Si venías del plan viejo —14 documentos numerados, 8 sprints, 75 prompts— esto es lo que se movió:
+
+| Antes | Ahora | Por qué |
+|---|---|---|
+| Máquinas Windows 11 | **macOS** | El parque real es Mac (D16) |
+| Cantidad fija de máquinas | **Variable**, alta y baja desde el panel | Como el n8n del MVP |
+| Staging + producción, 8 servicios | **Sólo producción, 3 servicios** | No hay usuarios que proteger (D17) |
+| n8n para horarios y avisos | **APScheduler dentro de FastAPI** | Hacía tres crons y costaba dos servicios (D18) |
+| 14 semanas, 8 sprints con duración | **5 fases con criterio de salida** | Sin plazos (D19) |
+| Sprints ordenados por riesgo | **Fases ordenadas por hardware**: F1–F4 desde Windows, F5 las Macs | No frenarse esperando equipos |
+| 20 guardrails duplicados | **8** | Los que cubren un modo de falla caro (D20) |
+| 12 estados de mensaje | **6 + un campo `motivo`** | Lo demás eran matices |
+| "El código de envío no existe hasta el sprint 4" | **Lista de destinos permitidos** | Misma garantía, sin impedir explorar (D21) |
+| Ventana de veto: la inacción envía | **Enviar es un segundo botón** | La inacción no manda nada (D4) |
+| Auth.js con magic links | **Una contraseña** | Entran una o dos personas (D22) |
+| Cron 08:00 y envío 13:00 | **Cuando el dueño aprieta el botón** | Es como lo va a usar |
+| Retener chats de más de 60 días | Se sacó esa señal del triage | Contradecía el criterio validado del MVP |
+
+Lo viejo está en [`_historico/`](_historico/). No se borró: si alguna vez hay que entender por qué
+algo estaba escrito de otra forma, está ahí. **No se lee como documentación vigente.**

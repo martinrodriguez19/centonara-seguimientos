@@ -1,6 +1,6 @@
 # Runbook — Rollback (T0.8)
 
-> Probado en el Sprint 0, no la primera vez que haga falta.
+> Se prueba antes de necesitarlo, no la primera vez que haga falta.
 
 ---
 
@@ -64,7 +64,7 @@ Si el punto 2 falla, el problema no era el código: mirá Atlas.
 1. Avisá en el canal del equipo: qué se revirtió, a qué versión, y por qué.
 2. **No vuelvas a desplegar lo mismo "a ver si ahora anda".** Reproducí el problema en staging.
 3. Si el rollback fue fuera de la ventana horaria, revisá si la ventana está bien elegida (D15).
-4. Si tocaba el camino de envío, va a `11-RIESGOS.md` al cierre del sprint.
+4. Si tocaba el camino de envío, se anota en `06-DECISIONES.md`.
 
 ## 6. Registro de ejecuciones
 
@@ -72,7 +72,7 @@ Una fila por vez que se ejecute, sea simulacro o incidente real.
 
 | Fecha | Quién | Entorno | Motivo | ¿Siguió el documento sin preguntar? |
 |---|---|---|---|---|
-| _pendiente_ | Martín Rodríguez | staging | simulacro del Sprint 0 | |
+| _pendiente_ | Martín Rodríguez | produccion | primer simulacro | |
 
 > **El simulacro no se puede correr todavía:** hace falta que staging tenga dos versiones
 > desplegadas para tener de dónde volver, y eso depende de T0.7, que a su vez depende de T0.3 y

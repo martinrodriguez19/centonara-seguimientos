@@ -42,7 +42,7 @@ Dos copias, en lugares distintos:
 Con una sola copia, el día que se pierda los 30 días de backups son ruido cifrado. Con cero copias
 fuera del servidor, cifrar no protegía de nada.
 
-## 3. Prueba de restauración — mensual, y obligatoria antes de cerrar el Sprint 0
+## 3. Prueba de restauración — mensual, y obligatoria la primera vez
 
 Se corre **el primer lunes de cada mes**. Lleva unos 10 minutos.
 

@@ -44,9 +44,9 @@ martes a las 7 de la tarde. Es la ruta de menor esfuerzo y hay que cerrarla.
 |---|---|---|
 | `03-codigo/prompt.txt` | **MIGRAR LITERAL** | `agente/prompts/prompt-listar.txt` |
 | `03-codigo/agent.py` | **NO copiar.** Leer dos fragmentos (§3) | — |
-| `03-codigo/CLAUDE.md` | Leer como plantilla. **Reescribir** en el Sprint 4 | `agente/prompts/CLAUDE.md` |
+| `03-codigo/CLAUDE.md` | Leer como plantilla. **Reescrito** en `agente/prompts/CLAUDE.md` | ya migrado |
 | `03-codigo/n8n-workflow-mvp.json` | Leer para entender el flujo. Se rehace | — |
-| `03-codigo/iniciar-agente.bat` | **Descartar.** Lo reemplaza el Task Scheduler (D9) | — |
+| `03-codigo/iniciar-agente.bat` | **Descartar.** Lo reemplaza un LaunchAgent de macOS (D9) | — |
 | `01-documentacion/DOCUMENTACION-TECNICA.md` | **Leer completo.** Sobre todo el historial de problemas | — |
 | `01-documentacion/README.md` | Leer | — |
 | `02-instalacion/SOP-instalacion.md` | Leer. Los 12 pasos se reducen a 3 | base de `SOP-instalacion.md` nuevo |
@@ -90,13 +90,13 @@ Los dos comentarios son el problema #6 del historial: pasar el prompt como argum
 
 `ALLOWED_VARS` no se copia como código, pero **el principio sí se conserva**: por la red viajan
 variables validadas, nunca texto de prompt. En la v2 se implementa con esquemas Pydantic
-(`04-CONTRATOS-API` §2.2).
+(`02-ARQUITECTURA` §4.1).
 
 ### 3.3 El prompt
 
 `prompt.txt` se migra **sin cambios funcionales**. Está validado: leyó 5 chats y produjo 5
 borradores de calidad utilizable. Mejorarlo es otro ticket, después de verificar paridad
-(Sprint 2, T2.1).
+(fase 2).
 
 ---
 
@@ -119,7 +119,7 @@ QUÉ SIRVE DE ACÁ:
 
 QUÉ NO:
 - agent.py → arquitectura superada. Ver docs/02-ARQUITECTURA.md
-- iniciar-agente.bat → reemplazado por Task Scheduler
+- iniciar-agente.bat → reemplazado por un LaunchAgent de macOS
 - SOP-vendedor.md → DESACTUALIZADO Y PELIGROSO. Ver docs/13 §5
 
 Fecha de congelamiento: {fecha}
@@ -146,7 +146,7 @@ escribió.
 1. Marcarlo como obsoleto **en el archivo mismo**, con una banda arriba de todo:
    `⚠️ OBSOLETO — describe la Fase 1 (sólo lectura). El sistema actual ENVÍA. Ver SOP-vendedor.md
    en docs/`
-2. Reescribir el SOP nuevo en el Sprint 5 (T5.7)
+2. Reescribir el SOP nuevo en la fase 4
 3. **Retirar de circulación las copias del viejo**: Drive, mails, impresos
 4. Registrar el consentimiento individual de cada vendedor sobre el nuevo (R6, G15)
 
@@ -162,7 +162,7 @@ instalación nueva.**
 
 | # | Problema | Causa | Dónde está resuelto en la v2 |
 |---|---|---|---|
-| 1 | n8n no arranca | Node < 22.22 | `06-ENTORNO-LOCAL` §1 |
+| 1 | n8n no arranca | Node < 22.22 | ya no usamos n8n (D18); Node 22 sigue siendo el mínimo |
 | 2 | HTTP 500 | `shutil.which("claude")` → `None` | Autodiagnóstico `claude_bin_ok` |
 | 3 | HTTP 502, permisos denegados | headless auto-deniega | Autodiagnóstico `permiso_mcp_ok` |
 | 4 | "requires permission" | permiso de sitio de la extensión | Autodiagnóstico `permiso_sitio_ok` |
@@ -170,7 +170,7 @@ instalación nueva.**
 | 6 | "Tu mensaje se cortó" + acentos rotos | `cmd.exe` corta en el salto de línea | §3.1 de este documento |
 | 7 | El modelo se niega a ejecutar | falta de contexto verificable | `CLAUDE.md` (§7 abajo) |
 
-Cada uno se convirtió en un chequeo automático del agente (`07-EL-AGENTE` §4). Eso es reutilizar
+Cada uno se convirtió en un chequeo automático del agente (`04-AGENTE` §4). Eso es reutilizar
 el MVP bien: no copiando su código, sino convirtiendo lo que aprendió en algo que el sistema nuevo
 verifica solo.
 
@@ -190,7 +190,7 @@ Implicancia para la v2: el `CLAUDE.md` tiene que describir el sistema real, y ah
 contradicción es un problema técnico concreto —no un detalle de redacción— porque es exactamente
 lo que hacía que el modelo se negara.
 
-Se reescribe en el Sprint 4 (T4.9), junto con el motor de envío. Ni antes ni después.
+Se reescribe en la fase 3, junto con el motor de envío. Ni antes ni después.
 
 ---
 
