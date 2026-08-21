@@ -276,9 +276,14 @@ no es "la versión vieja andando": es un esqueleto sin conectar.
 
 **Lo que hay que hacer en el dashboard, todo junto en una sola visita:**
 
-- [ ] Anotar la **URL real** de `backend-produccion` (la que tiene sufijo) y
-      verificar que `/health` devuelva `{"ok":...,"mongo":...}`. Si el servicio
-      no existe, hay que crearlo desde el blueprint.
+- [x] ~~Anotar la **URL real** de `backend-produccion`~~ →
+      **`https://backend-produccion-7yqr.onrender.com`**. Existe, está vivo y
+      responde `{"ok":true,"mongo":true,"entorno":"produccion"}`: `MONGO_URL`
+      está configurado y Atlas contesta.
+
+      Pero corre **el esqueleto**: `/openapi.json` expone **una sola ruta**,
+      `/health`. No están ni la API del panel ni la del agente. Es la versión de
+      `38d27e1`, del sprint 0. Lo mismo que el frontend.
 - [ ] Configurar `BACKEND_URL` en `frontend-produccion` con esa URL real.
 - [ ] Confirmar que el backend tenga `MONGO_URL`, `PANEL_PASSWORD` y
       `SESION_SECRET`. Los tres son `sync: false`, así que no están en el
@@ -289,6 +294,36 @@ no es "la versión vieja andando": es un esqueleto sin conectar.
 tiene que estar en los números de prueba. En una base nueva arranca vacía —que
 significa a nadie— así que el riesgo real es al revés: nadie va a poder mandar
 nada hasta que alguien la abra a propósito. Eso está bien y es la regla R4.
+
+---
+
+## El backup nunca corrió bien
+
+`backup-produccion` dice *"No successful runs yet"* y sale con estado 1.
+
+`infra/scripts/backup.sh` tiene **cinco puntos de aborto, cada uno con su
+mensaje**, así que la primera línea del log lo identifica sin adivinar:
+
+| Mensaje | Causa |
+|---|---|
+| `FALTA la variable X` | Una `sync: false` sin configurar |
+| `ABORTA: no pude conectarme a la base` | `MONGO_URL` mal, o Atlas bloqueando la IP |
+| `ABORTA: la base tiene N documentos` | La base está vacía |
+| `ABORTA: el dump pesa N bytes` | Dump truncado |
+| `ABORTA: subió N y el local pesa M` | Subida a R2 incompleta |
+
+⚠️ **Si dice "0 documentos", no es un bug.** El backend de producción es el
+esqueleto y nadie escribió nunca nada en esa base. El script se niega a subir un
+backup vacío a propósito, y su propio comentario explica por qué: *"Un backup
+vacío que se sube sin chistar es peor que un backup que falla: te deja creyendo
+que estás cubierto."* En ese caso el backup empieza a andar solo cuando la base
+tenga datos.
+
+- [ ] Leer la primera línea del log del cron y actuar según la tabla.
+- [ ] De las siete variables que pide, **cinco son `sync: false`**:
+      `MONGO_URL`, `AGE_RECIPIENT`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID` y
+      `R2_SECRET_ACCESS_KEY`. Confirmar que estén, ya que se está en el
+      dashboard.
 
 ---
 
