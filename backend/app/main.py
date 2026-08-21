@@ -2,9 +2,8 @@
 
     uv run fastapi dev app/main.py     → http://localhost:8000/docs
 
-Esqueleto del Sprint 0 (T0.3): arranca, conecta y responde. No hay modelo de
-datos, no hay lógica de negocio y **no hay código de envío** (R7). Los routers
-de 04-CONTRATOS-API.md se montan a partir del Sprint 1.
+Esqueleto: arranca, conecta y responde. No hay modelo de datos ni lógica de
+negocio todavía. Los routers de 02-ARQUITECTURA.md §4 se montan en la fase 1.
 """
 
 from collections.abc import AsyncIterator
@@ -13,9 +12,12 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Response
 from pydantic import BaseModel
+from pymongo.errors import PyMongoError
 
 from app import db
+from app.api import agente, panel
 from app.config import Configuracion, Entorno, obtener_configuracion
+from app.core.esquema import inicializar
 from app.logging import configurar_logs, obtener_logger
 
 log = obtener_logger(__name__)
@@ -26,6 +28,21 @@ async def ciclo_de_vida(app: FastAPI) -> AsyncIterator[None]:
     config = obtener_configuracion()
     configurar_logs(config)
     db.conectar(config)
+
+    # Asegurar el esquema al arrancar evita el modo de falla más tonto:
+    # desplegar y que la primera consulta falle porque nadie corrió el script.
+    # Es idempotente, así que no cuesta nada.
+    #
+    # Pero NO puede impedir el arranque. Si Mongo no responde, el proceso tiene
+    # que levantar igual para que /health conteste 503 y Render saque la
+    # instancia de rotación. Reventar acá es peor: Render no distingue "Mongo
+    # tuvo un hipo" de "el despliegue está roto", y entra en bucle de reinicio
+    # justo cuando alguien necesita leer el chequeo de salud.
+    try:
+        await inicializar(db.obtener_base())
+    except PyMongoError as error:
+        log.error("esquema_no_asegurado", error=str(error), tipo=type(error).__name__)
+
     log.info("backend_arrancado", entorno=config.entorno)
     try:
         yield
@@ -39,6 +56,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=ciclo_de_vida,
 )
+
+app.include_router(agente.router)
+app.include_router(panel.router)
 
 
 # Dependencias, con nombre. `Annotated` en vez de `= Depends(...)`: es la forma

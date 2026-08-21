@@ -1,1 +1,1 @@
-# tests — `test_guardrails.py` exige 100% de cobertura y es bloqueante del Sprint 6.
+# tests — `test_guardrails.py` exige 100% de cobertura. Un test por guardrail, que intenta violarlo.

@@ -16,7 +16,7 @@ uv run pytest -q                    # tests
 uv run ruff check . && uv run ruff format --check .
 ```
 
-## Qué hay hoy (Sprint 0, T0.3)
+## Qué hay hoy
 
 Sólo el esqueleto: arranca, conecta y responde.
 
@@ -30,7 +30,9 @@ Sólo el esqueleto: arranca, conecta y responde.
 `GET /health` devuelve `{"ok": true, "mongo": true, "entorno": "local"}` con `200`, o `503` si
 Mongo no responde.
 
-El modelo de datos, los guardrails y los endpoints de `04-CONTRATOS-API.md` llegan en el Sprint 1.
+El modelo de datos, los guardrails y los endpoints de `02-ARQUITECTURA.md` §4 llegan en la fase 1.
 
-**No hay código de envío en este repositorio hasta el Sprint 4 (R7).** El job `sin-envio` de CI lo
-verifica en cada PR.
+**A quién puede escribirle el sistema lo gobierna `configuracion.destinos_permitidos`** (regla R4),
+no una variable de entorno. Mientras esa lista tenga sólo los números de prueba, ninguna corrida
+puede alcanzar a un cliente real. El job `destinos` del CI verifica que no quede versionada una
+lista abierta.

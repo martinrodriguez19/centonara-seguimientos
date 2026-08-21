@@ -4,7 +4,7 @@ El cliente es único para todo el proceso: lo abre el ciclo de vida de la
 aplicación y lo cierra al apagar. Motor maneja su propio pool, así que abrir uno
 por petición sería, además de lento, una forma de quedarse sin conexiones.
 
-Los índices y las colecciones llegan con el modelo de datos (Sprint 1). Acá sólo
+Los índices y las colecciones llegan con el modelo de datos (fase 1). Acá sólo
 hay conexión.
 """
 

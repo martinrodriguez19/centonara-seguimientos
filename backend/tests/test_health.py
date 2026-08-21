@@ -44,7 +44,7 @@ async def test_health_con_mongo_caido_no_dice_que_esta_bien(
     assert r.json() == {"ok": False, "mongo": False, "entorno": "local"}
 
 
-@pytest.mark.parametrize("entorno", ["local", "staging", "produccion"])
+@pytest.mark.parametrize("entorno", ["local", "produccion"])
 async def test_health_reporta_el_entorno_real(
     entorno: str,
     cliente: AsyncClient,
@@ -52,7 +52,7 @@ async def test_health_reporta_el_entorno_real(
     mongo_responde: Callable[[bool], None],
 ) -> None:
     """Sirve para saber contra qué se está hablando. En el MVP más de una vez se
-    creyó estar en staging estando en producción."""
+    creyó estar en local estando en producción."""
     configurar(entorno=entorno)
     mongo_responde(True)
 
@@ -87,3 +87,24 @@ async def test_obtener_base_sin_conectar_es_un_error() -> None:
 
     with pytest.raises(RuntimeError):
         db.obtener_base()
+
+
+async def test_el_backend_arranca_aunque_mongo_este_caido(monkeypatch) -> None:
+    """Regresión: asegurar el esquema al arrancar no puede impedir el arranque.
+
+    Si el ciclo de vida revienta con Mongo caído, /health nunca llega a contestar
+    503 y Render no distingue "Mongo tuvo un hipo" de "el despliegue está roto":
+    entra en bucle de reinicio justo cuando alguien necesita leer el chequeo.
+    """
+    from app.config import obtener_configuracion
+    from app.main import app, ciclo_de_vida
+
+    monkeypatch.setenv("MONGO_URL", "mongodb://localhost:59999")
+    monkeypatch.setenv("MONGO_TIMEOUT_MS", "300")
+    obtener_configuracion.cache_clear()
+
+    try:
+        async with ciclo_de_vida(app):
+            pass  # llegar acá ES el test
+    finally:
+        obtener_configuracion.cache_clear()

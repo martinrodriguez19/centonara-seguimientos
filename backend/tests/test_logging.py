@@ -22,7 +22,7 @@ def test_configurar_dos_veces_no_duplica_handlers() -> None:
 
 
 def test_los_eventos_salen_con_sus_campos(capsys: pytest.CaptureFixture[str]) -> None:
-    configurar_logs(Configuracion(_env_file=None, entorno="staging", log_json=True))
+    configurar_logs(Configuracion(_env_file=None, entorno="produccion", log_json=True))
 
     obtener_logger("prueba").info("corrida_creada", corrida_id="c-1")
 
