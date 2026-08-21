@@ -144,6 +144,9 @@ export const textos = {
     crear: "Dar de alta",
     creando: "Creando…",
     duplicada: "Ya existe una máquina con ese identificador.",
+    identificadorInvalido:
+      "El identificador sólo admite minúsculas, números y guiones. «PC Principal» no sirve; «pc-principal» sí. El nombre con mayúsculas va en el campo de abajo.",
+    errorDesconocido: "No se pudo dar de alta la máquina. Revisá la conexión y probá de nuevo.",
     tokenTitulo: "Token de la máquina",
     tokenAviso: "Copialo ahora: no se va a volver a mostrar.",
     tokenListo: "Ya lo copié",

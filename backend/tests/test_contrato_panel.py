@@ -126,3 +126,68 @@ async def test_corrida_y_revision_coinciden(base) -> None:
     disparo = await panel.disparar_corrida(NuevaCorrida(tipo="diagnostico"), None)
     comparar("Corrida", await panel.ver_corrida(disparo["id"], None))
     comparar("Revision", await panel.mensajes_de_la_corrida(disparo["id"], None))
+
+
+# ---------------------------------------------------------------------------
+# El camino de error, que es por donde se coló el primero
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_un_error_de_validacion_trae_detail_como_lista(base) -> None:
+    """⚠️ `detail` tiene DOS formas, y el panel recibe las dos.
+
+    En un error nuestro es una cadena —`"no hay nada que cambiar"`—, pero en un
+    error de validación FastAPI manda una **lista de objetos**, uno por campo:
+
+        {"detail": [{"loc": ["body", "maquina"], "msg": "String should ..."}]}
+
+    El cliente del panel lo tenía tipado como `string` a secas, así que esa
+    lista terminaba en `ErrorDeApi.message` y la pantalla mostraba
+    `[object Object]`. Lo encontró alguien dando de alta una máquina llamada
+    "PC Principal".
+
+    Este test fija la forma: si FastAPI la cambia, o si alguien saca la
+    restricción del identificador, `leerDetalle()` en `frontend/lib/panel.ts`
+    deja de servir y hay que enterarse acá.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import obtener_configuracion
+    from app.core import sesion
+    from app.main import app
+
+    obtener_configuracion.cache_clear()
+    config = obtener_configuracion()
+    cookie = sesion.emitir(config.sesion_secret or "x" * 40)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://prueba",
+        cookies={sesion.NOMBRE_COOKIE: cookie},
+    ) as http:
+        respuesta = await http.post(
+            "/api/vendedores", json={"maquina": "PC Principal", "nombre": "Prueba"}
+        )
+
+    assert respuesta.status_code == 422
+    detail = respuesta.json()["detail"]
+    assert isinstance(detail, list), "el panel espera una lista acá"
+
+    problema = detail[0]
+    assert set(problema) >= {"loc", "msg"}, "leerDetalle() usa `loc` y `msg`"
+    assert problema["loc"][-1] == "maquina"
+    assert isinstance(problema["msg"], str)
+
+
+@sin_mongo
+async def test_el_identificador_de_maquina_sigue_siendo_un_slug(base) -> None:
+    """El texto de ayuda del panel promete esto, palabra por palabra."""
+    from app.api.panel import AltaMaquina
+
+    for bueno in ("mac-rocio", "pc-1", "pc-principal"):
+        AltaMaquina(maquina=bueno, nombre="x")
+
+    for malo in ("PC Principal", "pc principal", "-pc", "PC", "pc_principal"):
+        with pytest.raises(ValueError):
+            AltaMaquina(maquina=malo, nombre="x")

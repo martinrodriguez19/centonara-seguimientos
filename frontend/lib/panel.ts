@@ -162,6 +162,39 @@ export class ErrorDeApi extends Error {
   }
 }
 
+/**
+ * El `detail` de un error, en texto legible.
+ *
+ * FastAPI usa el mismo campo para dos formas distintas, y el panel las recibe
+ * las dos. En un error nuestro es una cadena —`"no hay nada que cambiar"`—
+ * pero en un **error de validación (422) es un array de objetos**, uno por
+ * campo que no pasó:
+ *
+ *     { "detail": [ { "loc": ["body", "maquina"], "msg": "String should ..." } ] }
+ *
+ * Estaba tipado como `string` a secas, así que ese array terminaba en
+ * `ErrorDeApi.message` y cualquier pantalla que lo mostrara renderizaba
+ * `[object Object]`. Es el mismo problema que los tipos escritos contra el
+ * contrato en vez de contra la respuesta, pero en el camino de error.
+ */
+function leerDetalle(detail: unknown): string | null {
+  if (typeof detail === "string") return detail;
+  if (!Array.isArray(detail)) return null;
+
+  const partes = detail
+    .map((item) => {
+      if (typeof item !== "object" || item === null) return null;
+      const { loc, msg } = item as { loc?: unknown[]; msg?: string };
+      if (!msg) return null;
+      // `loc` es ["body", "campo"]; lo útil es el último tramo.
+      const campo = Array.isArray(loc) ? loc[loc.length - 1] : undefined;
+      return campo ? `${String(campo)}: ${msg}` : msg;
+    })
+    .filter((parte): parte is string => parte !== null);
+
+  return partes.length ? partes.join(" · ") : null;
+}
+
 async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   const respuesta = await fetch(`/api${ruta}`, {
     ...opciones,
@@ -174,11 +207,13 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   const cuerpo: unknown = await respuesta.json().catch(() => null);
 
   if (!respuesta.ok) {
-    const detalle = cuerpo as { detail?: string; error?: string } | null;
+    const detalle = cuerpo as { detail?: unknown; error?: string } | null;
     throw new ErrorDeApi(
       respuesta.status,
       detalle?.error ?? String(respuesta.status),
-      detalle?.detail ?? detalle?.error ?? `El servidor contestó ${respuesta.status}`,
+      leerDetalle(detalle?.detail) ??
+        detalle?.error ??
+        `El servidor contest\u00f3 ${respuesta.status}`,
     );
   }
   return cuerpo as T;

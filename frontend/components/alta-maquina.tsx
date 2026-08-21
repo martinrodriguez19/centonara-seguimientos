@@ -45,7 +45,11 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
     );
   }
 
-  const duplicada = crear.error instanceof ErrorDeApi && crear.error.status === 409;
+  // Cualquier fallo tiene que verse. Antes sólo se mostraba el 409, así que un
+  // 422 o un 500 dejaban el formulario sin decir nada: el botón se
+  // des-deshabilitaba y no pasaba nada, que para quien usa esto es peor que un
+  // mensaje feo.
+  const problema = mensajeDeError(crear.error);
 
   return (
     <Card>
@@ -85,7 +89,7 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
             placeholder="+54 11 4440-5036"
           />
 
-          {duplicada && <p className="text-sm text-destructive">{textos.alta.duplicada}</p>}
+          {problema && <p className="text-sm text-destructive">{problema}</p>}
 
           <p className="text-xs text-muted-foreground">{textos.alta.naceInactiva}</p>
 
@@ -101,6 +105,21 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * El error, dicho para quien usa el panel y no para quien lo programó.
+ *
+ * Los dos casos que una persona se encuentra de verdad tienen su texto; el
+ * resto cae en el mensaje del servidor, que es feo pero es información. Lo que
+ * no puede pasar es que no aparezca nada.
+ */
+function mensajeDeError(error: unknown): string | null {
+  if (!error) return null;
+  if (!(error instanceof ErrorDeApi)) return textos.alta.errorDesconocido;
+  if (error.status === 409) return textos.alta.duplicada;
+  if (error.status === 422) return textos.alta.identificadorInvalido;
+  return error.message;
 }
 
 function Campo({
