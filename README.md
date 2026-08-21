@@ -7,14 +7,75 @@ Monorepo. Un solo `git clone` y tenés todo.
 
 ## Arrancar
 
+Cuatro cosas instaladas: **Docker**, **Python 3.12**, [**uv**](https://docs.astral.sh/uv/)
+y **Node 22 con pnpm**.
+
+> **Node 22 o superior, no negociable.** Es el problema #1 del historial del MVP.
+
+Primero la configuración:
+
 ```bash
 cp .env.example .env
+```
+
+Abrilo y completá dos valores. `SESION_SECRET` viene vacío y `PANEL_PASSWORD`
+dice `cambiar`. Los dos **fallan cerrados** —sin secreto, firmar una cookie
+lanza un error explícito; una contraseña vacía nunca valida— así que no hay
+forma de arrancar abierto por olvido, pero tampoco vas a entrar al panel hasta
+completarlos. Para el secreto:
+
+```bash
+openssl rand -hex 32
+```
+
+Después, la base:
+
+```bash
 docker compose -f infra/docker-compose.dev.yml up -d
 ```
 
-Paso a paso completo en [`docs/04-AGENTE.md`](docs/04-AGENTE.md) §11.
+La primera vez, el contenedor corre solo el script que crea el rol y el usuario
+`app`. Sólo pasa con el volumen vacío: si alguna vez cambiás los privilegios del
+rol, hay que borrar el volumen para que se vuelva a aplicar.
 
-> **Node 22 o superior, no negociable.** Es el problema #1 del historial del MVP.
+El backend, desde la raíz del repo:
+
+```bash
+uv run --directory backend fastapi dev app/main.py
+```
+
+Y el panel, **desde `frontend/`**:
+
+```bash
+pnpm install
+```
+
+```bash
+pnpm dev
+```
+
+Panel en `http://localhost:3000`, API en `http://localhost:8000/docs`.
+
+### Los tests, que es lo que más vas a correr
+
+```bash
+uv run --directory backend pytest -q
+```
+
+```bash
+uv run --directory agente pytest -q
+```
+
+### Qué le falta a esta máquina
+
+El agente sabe responderlo solo. Marca en rojo lo que hay que resolver y `n/a`
+lo que no aplica acá:
+
+```bash
+uv run --directory agente python -m agente.main --diagnostico
+```
+
+Paso a paso completo en [`docs/04-AGENTE.md`](docs/04-AGENTE.md) §11.
 
 ## Qué hay acá
 

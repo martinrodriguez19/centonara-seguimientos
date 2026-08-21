@@ -26,31 +26,27 @@ Conviene pedirlas ya, aunque el resto no arranque hoy.
 
 ---
 
-## A — Se destraba con el acceso a npm
+## A — ~~Se destraba con el acceso a npm~~ · **resuelto por el CI**
 
-*Bloqueado por: la red a `registry.npmjs.org` está cortada desde esta máquina
-(falla el TLS, probablemente inspección corporativa).*
+*Estaba bloqueado por: la red a `registry.npmjs.org` cortada desde la máquina
+donde se escribió (falla el TLS, probablemente inspección corporativa).*
 
-- [ ] **Correr `pnpm install` y `pnpm typecheck` sobre el frontend.**
+**Ya no hay nada que hacer acá.** En el primer push a `main`, el job `frontend`
+corrió `pnpm install --frozen-lockfile`, `pnpm lint` y `pnpm typecheck` sobre
+los 27 archivos, y pasó en verde.
 
-      Hay **27 archivos TypeScript sin compilar nunca**: el panel entero, el
-      login, la revisión de borradores, la configuración, el historial, las
-      alertas y las métricas.
+Es decir: el panel entero —login, el botón, la revisión de borradores, la
+configuración, el historial, las alertas y las métricas— **compila**. Era el
+riesgo abierto más grande que quedaba: casi tres mil líneas de TypeScript
+escritas sin que ningún compilador las mirara nunca. Ya no lo es.
 
-      Lo que sí se verificó a mano: ningún import local roto, llaves
-      balanceadas, y las 79 claves de `textos.ts` que usan los componentes
-      existen todas. **Eso no es un typecheck.** Puede haber errores de tipos que
-      sólo aparezcan al compilar.
+De paso quedaron confirmados los íconos de `lucide-react`. Un import que no
+existe es un error de tipos, así que si `typecheck` pasó, los catorce están.
 
-      El CI los va a agarrar en el primer push — el job de frontend corre `lint`
-      y `typecheck` — así que esto se resuelve solo cuando empujes. Conviene
-      saberlo antes de mirar el resultado.
+Lo único que sigue sin verificarse es cómo se **ve** y cómo se **comporta** en
+un navegador de verdad. Que tipe no quiere decir que funcione: eso se prueba en
+la fase 2, con el backend levantado al lado.
 
-- [ ] Verificar que `lucide-react` tenga los íconos que se usan. Ya cambié
-      `OctagonX` por `Ban` porque ese se renombró entre versiones; los demás
-      (`AlertTriangle`, `ShieldCheck`, `Play`, `Loader2`, `KeyRound`, `Trash2`,
-      `Copy`, `Plus`, `Send`, `Pencil`, `Check`, `ClipboardList`, `Info`) son
-      estables, pero no los pude confirmar.
 
 ---
 
@@ -243,7 +239,7 @@ Para que nadie lo busque:
   críticos.
 - El panel completo **está escrito**: login, estado, alta y baja de máquinas, el
   botón, el kill switch, revisión de borradores, configuración, historial,
-  alertas y métricas. Falta compilarlo.
+  alertas y métricas, y **compila** — el CI lo verificó. Falta verlo andar.
 - Los escenarios de caos **están probados**: apagar una Mac a mitad de corrida,
   ocho agentes sobre la misma cola, apretar enviar dos veces, reiniciar el
   backend con trabajo pendiente.
