@@ -7,13 +7,34 @@ no existe.
 """
 
 from collections.abc import AsyncIterator, Callable, Iterator
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app import db
 from app.config import Configuracion, obtener_configuracion
+from app.core.guardrails import HUSO_COMERCIAL
 from app.main import app
+
+
+def ar(dia: int, hora: int, minuto: int = 0, *, mes: int = 8, anio: int = 2026) -> datetime:
+    """Una hora de Argentina, entregada en UTC como la recibe el código.
+
+    Todo el sistema trabaja en UTC, menos la ventana horaria (G6), que describe
+    la jornada de una persona y por eso se evalúa en hora local.
+
+    Los tiempos fijos de los tests estaban escritos directamente en UTC con
+    nombres que hablaban de la jornada —`MIERCOLES = 11:00 UTC`, leído como
+    media mañana— y eso era justo lo que ocultaba que G6 comparaba contra el
+    reloj equivocado: los mismos números pasaban el test, y en Argentina
+    significaban las ocho de la mañana, fuera de la ventana.
+
+    Escribir la hora que ve la persona y convertir acá hace que un test que
+    dice "media mañana" siga queriendo decir eso el día que algo cambie.
+    """
+    return datetime(anio, mes, dia, hora, minuto, tzinfo=HUSO_COMERCIAL).astimezone(UTC)
+
 
 _VARIABLES = (
     "ENTORNO",

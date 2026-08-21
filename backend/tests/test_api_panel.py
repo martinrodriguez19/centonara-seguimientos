@@ -591,8 +591,27 @@ async def test_vetar_es_terminal(adentro, base, maquina_lista) -> None:
     assert (await adentro.post(f"/api/mensajes/{mensaje_id}/liberar")).status_code == 409
 
 
+@pytest.fixture
+async def sin_ventana(base):
+    """Abre la ventana horaria de par en par, para que el reloj no decida el test.
+
+    ⚠️ Sin esto el test depende de la hora a la que se corra: G6 sólo deja
+    encolar envíos entre las 09:00 y las 19:00 de Argentina, de lunes a viernes.
+    Pasaba de día y se ponía rojo a la tarde y todo el fin de semana, sin que
+    nada hubiera cambiado en el código.
+
+    Lo que este test prueba es que el segundo botón encole lo que quedó listo.
+    La ventana tiene sus propios tests, con la hora fija, en `test_guardrails`.
+    """
+    await configuracion.actualizar(
+        base, {"ventana": {"inicio": "00:00", "fin": "23:59", "dias": [1, 2, 3, 4, 5, 6, 7]}}
+    )
+
+
 @sin_mongo
-async def test_el_segundo_boton_encola_lo_que_quedo_listo(adentro, base, maquina_lista) -> None:
+async def test_el_segundo_boton_encola_lo_que_quedo_listo(
+    adentro, base, maquina_lista, sin_ventana
+) -> None:
     corrida_id = await _con_borradores(base, adentro, cuantos=3)
 
     respuesta = await adentro.post(f"/api/corridas/{corrida_id}/enviar", json={})

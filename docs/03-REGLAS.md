@@ -82,7 +82,7 @@ aparezca el caso, no antes.
 | G3 | Texto válido: no vacío, sin placeholders, ≤ largo máximo | 600 car. | ✅ | ✅ | `DESCARTADO` / `rechazado` |
 | G4 | Topes: por máquina por día, y por corrida | 20 / 25 | ✅ | ✅ | no encola |
 | G5 | Anti-duplicado por contacto | 7 días | ✅ | — | `DESCARTADO` / `rechazado` |
-| G6 | Ventana horaria y días hábiles | 09–19, L–V | ✅ | ✅ | no envía |
+| G6 | Ventana horaria y días hábiles | 09–19, L–V, **hora de Argentina** | ✅ | ✅ | no envía |
 | G7 | Pausa global o vendedor pausado (kill switch) | — | ✅ | ✅ | `423` |
 | G8 | Campo de escritura vacío antes de escribir | — | — | ✅ | `CAMPO_NO_VACIO` |
 

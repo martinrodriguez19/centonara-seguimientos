@@ -14,13 +14,14 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from conftest import ar
 
 from app.core import configuracion, guardrails, mensajes, vendedores
 from app.core.esquema import inicializar
 from app.core.guardrails import Guardrail, revisar_texto, revisar_ventana
 
 # Un miércoles a las 11:00. Día hábil, dentro de la ventana.
-MIERCOLES = datetime(2026, 8, 19, 11, 0, tzinfo=UTC)
+MIERCOLES = ar(19, 11, 0)
 
 sin_mongo = pytest.mark.skipif(
     not os.environ.get("MONGO_URL_TESTS"), reason="necesita un Mongo real"
@@ -305,14 +306,14 @@ VENTANA = {"inicio": "09:00", "fin": "19:00", "dias": [1, 2, 3, 4, 5]}
 @pytest.mark.parametrize(
     ("cuando", "pasa"),
     [
-        (datetime(2026, 8, 19, 9, 0, tzinfo=UTC), True),  # justo al abrir
-        (datetime(2026, 8, 19, 13, 0, tzinfo=UTC), True),  # mediodía
-        (datetime(2026, 8, 19, 18, 59, tzinfo=UTC), True),  # justo antes de cerrar
-        (datetime(2026, 8, 19, 8, 59, tzinfo=UTC), False),  # un minuto temprano
-        (datetime(2026, 8, 19, 19, 0, tzinfo=UTC), False),  # justo al cerrar
-        (datetime(2026, 8, 19, 3, 0, tzinfo=UTC), False),  # de madrugada
-        (datetime(2026, 8, 22, 13, 0, tzinfo=UTC), False),  # sábado
-        (datetime(2026, 8, 23, 13, 0, tzinfo=UTC), False),  # domingo
+        (ar(19, 9, 0), True),  # justo al abrir
+        (ar(19, 13, 0), True),  # mediodía
+        (ar(19, 18, 59), True),  # justo antes de cerrar
+        (ar(19, 8, 59), False),  # un minuto temprano
+        (ar(19, 19, 0), False),  # justo al cerrar
+        (ar(19, 3, 0), False),  # de madrugada
+        (ar(22, 13, 0), False),  # sábado
+        (ar(23, 13, 0), False),  # domingo
     ],
 )
 def test_g6_la_ventana_horaria(cuando: datetime, pasa: bool) -> None:
@@ -322,13 +323,13 @@ def test_g6_la_ventana_horaria(cuando: datetime, pasa: bool) -> None:
 
 
 def test_g6_una_ventana_sin_configurar_usa_lo_razonable() -> None:
-    assert revisar_ventana({}, ahora=datetime(2026, 8, 19, 13, 0, tzinfo=UTC)) is None
-    assert revisar_ventana({}, ahora=datetime(2026, 8, 19, 3, 0, tzinfo=UTC)) is not None
+    assert revisar_ventana({}, ahora=ar(19, 13, 0)) is None
+    assert revisar_ventana({}, ahora=ar(19, 3, 0)) is not None
 
 
 @sin_mongo
 async def test_g6_llega_hasta_la_revision_completa(base) -> None:
-    madrugada = datetime(2026, 8, 19, 3, 0, tzinfo=UTC)
+    madrugada = ar(19, 3, 0)
     assert Guardrail.VENTANA in codigos(await revisar(base, ahora=madrugada))
 
 
@@ -447,3 +448,49 @@ def test_dos_guardrails_solo_existen_en_el_agente() -> None:
     """G1 y G8 se verifican mirando la pantalla real: el backend no puede."""
     assert Guardrail.IDENTIDAD in Guardrail
     assert Guardrail.CAMPO_NO_VACIO in Guardrail
+
+
+# ---------------------------------------------------------------------------
+# G6 — la ventana es hora local, no UTC
+# ---------------------------------------------------------------------------
+
+
+def _utc(dia: int, hora: int, minuto: int = 0) -> datetime:
+    return datetime(2026, 8, dia, hora, minuto, tzinfo=UTC)
+
+
+def test_la_ventana_es_hora_argentina_y_no_utc() -> None:
+    """⚠️ Se evaluaba en UTC, y el sistema corre en Render, que es UTC.
+
+    La ventana `09:00-19:00` terminaba siendo `06:00-16:00` en Argentina. Los
+    dos extremos estaban mal, y el de la mañana era el peligroso: mandaba a las
+    seis, que es justo el patrón que este guardrail existe para evitar.
+
+    Las 21:00 UTC del viernes 21 de agosto de 2026 son las 18:00 en Argentina:
+    horario comercial, y antes se rechazaba.
+    """
+    ventana = {"inicio": "09:00", "fin": "19:00", "dias": [1, 2, 3, 4, 5]}
+
+    #  18:00 en Argentina — adentro. En UTC son las 21:00, que quedaba afuera.
+    assert revisar_ventana(ventana, ahora=_utc(21, 21)) is None
+
+    #  06:00 en Argentina — afuera. En UTC son las 09:00, que entraba.
+    fuera = revisar_ventana(ventana, ahora=_utc(21, 9))
+    assert fuera is not None
+    assert "06:00" in fuera.detalle, "el mensaje tiene que decir la hora local"
+
+
+def test_el_dia_habil_tambien_se_mira_en_hora_local() -> None:
+    """Un envío de las 21:00 del viernes es del viernes para quien lo recibe.
+
+    En UTC ya es sábado, y la lista de días hábiles lo habría rechazado.
+    """
+    ventana = {"inicio": "09:00", "fin": "23:00", "dias": [1, 2, 3, 4, 5]}
+
+    #  Sábado 22 a las 01:00 UTC = viernes 21 a las 22:00 en Argentina.
+    assert revisar_ventana(ventana, ahora=_utc(22, 1)) is None
+
+    #  Sábado 22 a las 15:00 UTC = sábado 22 a las 12:00 en Argentina.
+    fuera = revisar_ventana(ventana, ahora=_utc(22, 15))
+    assert fuera is not None
+    assert "Saturday" in fuera.detalle

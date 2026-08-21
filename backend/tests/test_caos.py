@@ -15,17 +15,18 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
 from bson import ObjectId
+from conftest import ar
 
 from app.core import auditoria, cola, configuracion, mensajes, validacion, vendedores
 from app.core.esquema import inicializar
 from app.core.estados import Estado, Motivo, TransicionInvalida
 
-AHORA = datetime(2026, 8, 19, 11, 0, tzinfo=UTC)
+AHORA = ar(19, 11, 0)  # miércoles, media mañana en Argentina
 
 sin_mongo = pytest.mark.skipif(
     not os.environ.get("MONGO_URL_TESTS"), reason="necesita un Mongo real"

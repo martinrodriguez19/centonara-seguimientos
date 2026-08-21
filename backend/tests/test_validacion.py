@@ -8,17 +8,18 @@ el circuito completo —generar, validar, revisar, enviar— cierre.
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
 from bson import ObjectId
+from conftest import ar
 
 from app.core import configuracion, mensajes, validacion, vendedores
 from app.core.esquema import inicializar
 from app.core.estados import Estado, Motivo
 
-MIERCOLES = datetime(2026, 8, 19, 11, 0, tzinfo=UTC)
+MIERCOLES = ar(19, 11, 0)  # media mañana en Argentina
 
 sin_mongo = pytest.mark.skipif(
     not os.environ.get("MONGO_URL_TESTS"), reason="necesita un Mongo real"
@@ -230,7 +231,7 @@ async def test_no_se_valida_fuera_de_la_ventana_horaria(base) -> None:
     """
     corrida = ObjectId()
     mensaje_id = await borrador(base, corrida, 1)
-    de_noche = datetime(2026, 8, 19, 22, 0, tzinfo=UTC)
+    de_noche = ar(19, 22, 0)  # las diez de la noche, para quien lo recibiría
 
     resultado = await validacion.validar_corrida(base, corrida, ahora=de_noche)
 

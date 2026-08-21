@@ -22,9 +22,22 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.core import configuracion, mensajes, vendedores
 from app.logging import obtener_logger
+
+# ⚠️ La ventana horaria está escrita en HORA LOCAL, no en UTC.
+#
+# `09:00-19:00` significa el horario comercial de una empresa argentina, que es
+# lo que dice `docs/03-REGLAS.md` y lo que entiende quien lo configura desde el
+# panel. Todo lo demás del sistema trabaja en UTC —las marcas de tiempo, la
+# cola, los vencimientos— y está bien que así sea; esto es la excepción, porque
+# es lo único que describe la vida de una persona y no un instante.
+#
+# Sólo Argentina, igual que `contactos.py`: el día que haga falta otro país,
+# esto pasa a ser un campo de la configuración y no una constante.
+HUSO_COMERCIAL = ZoneInfo("America/Argentina/Buenos_Aires")
 
 log = obtener_logger(__name__)
 
@@ -129,18 +142,29 @@ def revisar_ventana(ventana: dict[str, Any], *, ahora: datetime) -> Violacion | 
 
     `isoweekday()`: lunes es 1, domingo es 7. Igual que la lista de la
     configuración.
-    """
-    if ahora.isoweekday() not in ventana.get("dias", [1, 2, 3, 4, 5]):
-        return Violacion(Guardrail.VENTANA, f"hoy no es día hábil ({ahora:%A})")
 
-    minuto = ahora.hour * 60 + ahora.minute
+    **La hora se pasa a `HUSO_COMERCIAL` antes de comparar.** Se evaluaba en UTC,
+    y como el sistema corre en Render —que es UTC— la ventana `09:00-19:00`
+    terminaba siendo `06:00-16:00` en Argentina: mandaba a las seis de la mañana,
+    que es exactamente el patrón que este guardrail existe para evitar, y se
+    negaba a las cuatro de la tarde, que es horario comercial pleno.
+
+    El día también se mira en hora local: un envío de las 21:00 del viernes es
+    del viernes para quien lo recibe, aunque en UTC ya sea sábado.
+    """
+    local = ahora.astimezone(HUSO_COMERCIAL)
+
+    if local.isoweekday() not in ventana.get("dias", [1, 2, 3, 4, 5]):
+        return Violacion(Guardrail.VENTANA, f"hoy no es día hábil ({local:%A})")
+
+    minuto = local.hour * 60 + local.minute
     inicio = _minutos(ventana.get("inicio", "09:00"))
     fin = _minutos(ventana.get("fin", "19:00"))
 
     if not (inicio <= minuto < fin):
         return Violacion(
             Guardrail.VENTANA,
-            f"son las {ahora:%H:%M} y la ventana es {ventana.get('inicio')} a {ventana.get('fin')}",
+            f"son las {local:%H:%M} y la ventana es {ventana.get('inicio')} a {ventana.get('fin')}",
         )
     return None
 
