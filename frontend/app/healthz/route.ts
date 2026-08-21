@@ -10,11 +10,11 @@ import { NextResponse } from "next/server";
  *
  * Por qué no alcanza ninguna de las otras dos rutas:
  *
- * - `/` consulta al backend para pintar el diagnóstico. Si el backend se cae,
- *   `/` sigue estando bien pero Render vería un frontend enfermo y lo sacaría de
- *   rotación sin motivo — dos servicios cayendo por el precio de uno.
- * - `/api/estado-backend` contesta 200 siempre, a propósito, porque es un dato
- *   que una pantalla muestra. Como sonda diría "sano" pase lo que pase.
+ * - `/panel` consulta al backend. Si el backend se cae, el panel sigue estando
+ *   bien pero Render vería un frontend enfermo y lo sacaría de rotación sin
+ *   motivo — dos servicios cayendo por el precio de uno.
+ * - Todo lo demás bajo `/api` se reenvía al backend, así que lo que conteste
+ *   habla del backend y no de este proceso.
  *
  * Fuera de `/api` y sin autenticación, igual que el `/health` del backend: no es
  * del producto, es del proceso. No lleva textos porque no la lee una persona,

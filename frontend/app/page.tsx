@@ -1,34 +1,12 @@
-import { EstadoDelBackend } from "@/components/estado-backend";
-import { consultarSalud } from "@/lib/api";
-import { textos } from "@/lib/textos";
-
-const t = textos.diagnostico;
-
-// Sin esto Next renderiza la página en el build y quedaría congelada con el
-// estado que había en ese momento.
-export const dynamic = "force-dynamic";
+import { redirect } from "next/navigation";
 
 /**
- * Página de diagnóstico del Sprint 0 (T0.4).
+ * La raíz manda al panel.
  *
- * Componente de servidor (08 §3): la consulta al backend la hace el servidor y
- * la primera pintura ya trae el estado real. Lo que sigue —el refresco cada
- * cinco segundos— es del cliente, en `EstadoDelBackend`.
- *
- * Las pantallas del producto son del Sprint 3. Acá no hay nada del producto a
- * propósito.
+ * Quien entra al dominio quiere el panel; el middleware lo manda al login si no
+ * tiene sesión. Una página de bienvenida entre el dominio y lo único que la
+ * aplicación hace sería un click de más, todos los días.
  */
-export default async function Diagnostico() {
-  const estado = await consultarSalud();
-
-  return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-16">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t.titulo}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t.subtitulo}</p>
-      </header>
-
-      <EstadoDelBackend inicial={estado} />
-    </main>
-  );
+export default function Inicio() {
+  redirect("/panel");
 }

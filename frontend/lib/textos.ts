@@ -11,64 +11,143 @@
 export const textos = {
   app: {
     titulo: "Seguimiento Comercial",
-    descripcion: "Panel de seguimiento comercial. Sprint 0: sólo diagnóstico.",
+    descripcion: "Panel de seguimiento comercial.",
   },
 
-  diagnostico: {
-    titulo: "Diagnóstico del sistema",
-    subtitulo:
-      "Esqueleto del Sprint 0. Todavía no hay pantallas del producto: esta página sólo verifica que el frontend hable con el backend.",
-
-    backend: {
-      titulo: "Backend",
-      descripcion: "Respuesta de GET /health",
-    },
-
-    // Los tres estados posibles. Son distintos a propósito: "no contesta" y
-    // "contesta pero está degradado" se arreglan de formas distintas, y quien
-    // mira la pantalla tiene que poder distinguirlos sin abrir los logs.
-    estado: {
-      operativo: "Operativo",
-      degradado: "Degradado",
-      inalcanzable: "Sin respuesta",
-      consultando: "Consultando…",
-    },
-
-    detalle: {
-      operativo: "El backend responde y Mongo está conectado.",
-      degradado:
-        "El backend responde pero Mongo no. El backend devuelve 503 a propósito, para que el balanceador lo saque de rotación.",
-      inalcanzable:
-        "No se pudo llegar al backend. Revisá que esté levantado en la URL configurada.",
-    },
-
-    campos: {
-      ok: "ok",
-      mongo: "Mongo",
-      entorno: "Entorno",
-      url: "URL consultada",
-      httpStatus: "HTTP",
-      actualizado: "Última consulta",
-    },
-
-    valores: {
-      si: "sí",
-      no: "no",
-    },
-
-    acciones: {
-      reconsultar: "Volver a consultar",
-      consultando: "Consultando…",
-    },
-
-    // Se refresca solo, pero eso no se ve. Decirlo evita que alguien mire una
-    // pantalla vieja creyendo que está mirando el estado de ahora.
-    autorefresco: "Se actualiza solo cada 5 segundos.",
+  login: {
+    titulo: "Seguimiento Comercial",
+    subtitulo: "Ingresá la contraseña del panel.",
+    clave: "Contraseña",
+    entrar: "Entrar",
+    entrando: "Entrando…",
+    incorrecta: "Contraseña incorrecta.",
+    sinBackend: "No se pudo hablar con el servidor. Probá de nuevo en un momento.",
   },
 
-  entornos: {
-    local: "local",
-    staging: "staging",
-    produccion: "producción",
+  panel: {
+    titulo: "Panel",
+    salir: "Salir",
+    maquinas: "Máquinas",
+    sinMaquinas: "Todavía no hay ninguna máquina dada de alta.",
+    enviadosHoy: "Mensajes enviados hoy",
+    configuracion: "Configuración",
+    historial: "Historial",
   },
+
+  // La banda de modo. Es lo primero que se lee y tiene que dejar claro en dos
+  // segundos si el sistema puede alcanzar a un cliente real.
+  modo: {
+    prueba: "MODO PRUEBA",
+    pruebaDetalle:
+      "El sistema no le puede escribir a nadie fuera de la lista de destinos permitidos.",
+    real: "ENVÍO REAL HABILITADO",
+    realDetalle: "El sistema puede escribirle a cualquier contacto de los chats leídos.",
+  },
+
+  killSwitch: {
+    frenar: "Frenar todo",
+    reanudar: "Reanudar",
+    frenado: "Sistema frenado",
+    frenadoDetalle: "Ninguna máquina está recibiendo trabajo.",
+    confirmar:
+      "Las máquinas van a dejar de recibir trabajo en menos de 10 segundos. ¿Frenamos?",
+  },
+
+  boton: {
+    disparar: "Generar seguimientos",
+    disparando: "Arrancando…",
+    diagnostico: "Correr diagnóstico",
+    sinMaquinas: "No hay ninguna máquina activa y sin pausar.",
+    enCurso: "Corrida en curso",
+    progreso: (hechos: number, total: number) => `${hechos} de ${total} listos`,
+  },
+
+  maquina: {
+    online: "Conectada",
+    offline: "Sin conexión",
+    pausada: "Pausada",
+    degradada: "Degradada",
+    inactiva: "Inactiva",
+    sinConsentimiento: "Sin consentimiento registrado",
+    sinConsentimientoDetalle:
+      "No se le van a encolar envíos hasta que conste que sabe que el sistema escribe en su nombre.",
+    activar: "Activar",
+    desactivar: "Desactivar",
+    rotarToken: "Rotar token",
+    darDeBaja: "Dar de baja",
+    ultimoLatido: "Último latido",
+    nunca: "nunca",
+    version: "Versión",
+    fallando: "Chequeos que fallan",
+  },
+
+  revision: {
+    titulo: "Revisar borradores",
+    volver: "Volver al panel",
+    cargando: "Cargando…",
+    validando: "Pasando por las reglas…",
+    sinMensajes: "Esta corrida todavía no generó borradores.",
+
+    retenidos: "Necesitan tu decisión",
+    retenidosAyuda:
+      "Algo llamó la atención en estos chats. Miralos antes de que salgan.",
+    listos: "Listos para salir",
+    descartados: "No van a salir",
+    descartadosAyuda: "El sistema los frenó. No hay nada que decidir.",
+
+    editar: "Editar",
+    guardar: "Guardar",
+    cancelar: "Cancelar",
+    vetar: "Frenar",
+    liberar: "Liberar",
+    vetado: "Frenado",
+
+    // El botón dice el número: "enviar" a secas no deja claro cuántos salen.
+    enviar: (cuantos: number) =>
+      cuantos === 1 ? "Enviar 1 mensaje" : `Enviar ${cuantos} mensajes`,
+    enviando: "Encolando…",
+    nadaQueEnviar: "No hay ningún mensaje listo para salir.",
+    enviarAyuda:
+      "Salen espaciados, en orden aleatorio. Los primeros tres salen y el sistema espera diez minutos antes de soltar el resto.",
+
+    // Liberar de a muchos pide escribir el número. Vetar de a uno, no: frenar
+    // de más no le hace daño a nadie.
+    liberarTodos: (cuantos: number) => `Liberar los ${cuantos}`,
+    liberarTodosConfirmar: (cuantos: number) =>
+      `Van a salir ${cuantos} mensajes que el sistema apartó. Escribí ${cuantos} para confirmar.`,
+  },
+
+  // Los nombres técnicos no se le muestran a nadie.
+  senales: {
+    PALABRA_CONFLICTO: "El chat tiene un reclamo abierto",
+    SIN_RESPUESTA_PREVIA: "Ya le escribimos y no contestó",
+    IDENTIDAD_AMBIGUA: "No está claro a quién se le escribiría",
+    COMPROMISO_CONCRETO: "El mensaje promete un precio, una fecha o una cantidad",
+    CHAT_NO_COMERCIAL: "No parece una conversación de trabajo",
+    G1_IDENTIDAD: "El contacto del chat no coincide",
+    G2_DESTINO_NO_PERMITIDO: "El número no está en los destinos permitidos",
+    G3_TEXTO_INVALIDO: "El texto quedó mal armado",
+    G4_TOPE: "Se llegó al tope de mensajes",
+    G5_DUPLICADO: "Ya le escribimos hace poco",
+    G6_FUERA_DE_VENTANA: "Fuera del horario",
+    G7_PAUSA: "La máquina está pausada o sin consentimiento",
+    G8_CAMPO_NO_VACIO: "Había algo escrito en el chat",
+  } as Record<string, string>,
+
+  alta: {
+    titulo: "Dar de alta una máquina",
+    identificador: "Identificador",
+    identificadorAyuda: "Minúsculas, números y guiones. Ej.: mac-rocio",
+    nombre: "Nombre del vendedor",
+    linea: "Línea de WhatsApp (opcional)",
+    crear: "Dar de alta",
+    creando: "Creando…",
+    duplicada: "Ya existe una máquina con ese identificador.",
+    tokenTitulo: "Token de la máquina",
+    tokenAviso: "Copialo ahora: no se va a volver a mostrar.",
+    tokenListo: "Ya lo copié",
+    naceInactiva: "La máquina nace inactiva. Instalar no es activar.",
+  },
+
+
 } as const;

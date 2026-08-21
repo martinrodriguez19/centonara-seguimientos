@@ -1,0 +1,147 @@
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Ban, Check, Pencil } from "lucide-react";
+import { useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  editarMensaje,
+  ErrorDeApi,
+  liberarMensaje,
+  vetarMensaje,
+  type Mensaje,
+} from "@/lib/panel";
+import { textos } from "@/lib/textos";
+
+/**
+ * Un borrador en la pantalla de revisión.
+ *
+ * Lo que decide cómo se ve: **por qué se apartó**. Un retenido sin motivo
+ * obliga a releer el chat entero para adivinar qué le llamó la atención al
+ * sistema, y nadie hace eso veinte veces — termina liberando todo sin mirar,
+ * que es peor que no tener triage.
+ */
+export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: string }) {
+  const clienteQuery = useQueryClient();
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(mensaje.texto);
+
+  const refrescar = () =>
+    clienteQuery.invalidateQueries({ queryKey: ["mensajes", corridaId] });
+
+  const guardar = useMutation({
+    mutationFn: () => editarMensaje(mensaje.id, texto),
+    onSuccess: () => {
+      setEditando(false);
+      void refrescar();
+    },
+  });
+
+  const vetar = useMutation({ mutationFn: () => vetarMensaje(mensaje.id), onSettled: refrescar });
+  const liberar = useMutation({
+    mutationFn: () => liberarMensaje(mensaje.id),
+    onSettled: refrescar,
+  });
+
+  const descartado = mensaje.estado === "DESCARTADO";
+  // El backend devuelve 422 con los problemas si el texto editado viola algo.
+  // Un humano también puede empeorar un mensaje.
+  const problema = guardar.error instanceof ErrorDeApi ? guardar.error.message : null;
+
+  return (
+    <Card className={descartado ? "opacity-60" : undefined}>
+      <CardContent className="space-y-3 pt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{mensaje.contacto_nombre || "Sin nombre"}</p>
+            <p className="truncate font-mono text-xs text-muted-foreground">
+              {mensaje.contacto_id} · {mensaje.maquina}
+            </p>
+          </div>
+          {mensaje.editado_por && <Badge variant="outline">Editado</Badge>}
+          {descartado && <Badge variant="secondary">{textos.revision.vetado}</Badge>}
+        </div>
+
+        {/* ⚠️ Por qué se apartó. Es lo único que convierte "revisá esto" en una
+            decisión que alguien puede tomar en cinco segundos. */}
+        {mensaje.senales.length > 0 && (
+          <ul className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-2">
+            {mensaje.senales.map((senal) => (
+              <li key={senal} className="text-sm text-amber-800 dark:text-amber-300">
+                {textos.senales[senal] ?? senal}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {mensaje.resumen && (
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium">Último mensaje del chat:</span> {mensaje.resumen}
+          </p>
+        )}
+
+        {editando ? (
+          <div className="space-y-2">
+            <textarea
+              rows={4}
+              autoFocus
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={texto}
+              onChange={(evento) => setTexto(evento.target.value)}
+            />
+            {problema && <p className="text-sm text-destructive">{problema}</p>}
+            <div className="flex gap-2">
+              <Button size="sm" disabled={guardar.isPending} onClick={() => guardar.mutate()}>
+                {textos.revision.guardar}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setTexto(mensaje.texto);
+                  setEditando(false);
+                  guardar.reset();
+                }}
+              >
+                {textos.revision.cancelar}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">{mensaje.texto}</p>
+        )}
+
+        {!descartado && !editando && (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
+              <Pencil className="size-4" aria-hidden />
+              {textos.revision.editar}
+            </Button>
+
+            {mensaje.estado === "RETENIDO" && (
+              <Button size="sm" disabled={liberar.isPending} onClick={() => liberar.mutate()}>
+                <Check className="size-4" aria-hidden />
+                {textos.revision.liberar}
+              </Button>
+            )}
+
+            {/* Vetar de a uno es un click: frenar de más no le hace daño a
+                nadie, y ponerle fricción sólo lograría que alguien no lo use. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={vetar.isPending}
+              onClick={() => vetar.mutate()}
+            >
+              <Ban className="size-4" aria-hidden />
+              {textos.revision.vetar}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
