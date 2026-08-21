@@ -240,6 +240,33 @@ final.
 
 ---
 
+## El deploy no funciona todavía
+
+- [ ] **Cargar el secreto `RENDER_DEPLOY_HOOKS_PRODUCCION`.** Sin esto,
+      `Deploy a produccion` falla en el primer paso y **producción se queda con
+      la versión vieja para siempre**, aunque `main` esté verde. Se descubrió al
+      intentar el primer despliegue: el environment `produccion` existe en GitHub
+      pero está vacío, y no hay ningún secreto a nivel repositorio.
+
+      Es un **array JSON** con los deploy hooks de Render, uno por servicio del
+      blueprint — `backend-produccion`, `frontend-produccion` y
+      `backup-produccion`. Cada hook se copia del dashboard de Render, en
+      Settings → Deploy Hook del servicio.
+
+      ```bash
+      gh secret set RENDER_DEPLOY_HOOKS_PRODUCCION --env produccion --body '["https://api.render.com/deploy/srv-...?key=...","https://api.render.com/deploy/srv-...?key=..."]'
+      ```
+
+      ⚠️ Cada hook es una credencial: quien lo tenga puede disparar un despliegue.
+      No van al repositorio ni a un chat.
+
+- [ ] **Borrar los environments viejos de GitHub.** Quedaron cuatro de la época
+      de staging: `develop - backend-produccion`, `develop - backend-staging`,
+      `develop - frontend-produccion`, `develop - frontend-staging`. Son de la
+      misma limpieza que los servicios de Render de acá abajo.
+
+---
+
 ## Dos cosas de infraestructura, de cinco minutos
 
 - [ ] **Borrar los servicios viejos de Render.** Quedaron cinco de más:
