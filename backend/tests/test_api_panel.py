@@ -424,6 +424,59 @@ async def test_un_cambio_comun_no_se_audita_como_cambio_de_destinos(adentro, bas
     assert await auditoria.recientes(base, que=auditoria.Que.DESTINOS_CAMBIADOS) == []
 
 
+@sin_mongo
+async def test_los_destinos_se_guardan_en_e164(adentro, base) -> None:
+    """⚠️ R4: lo que se guarda tiene que ser lo que el guardrail compara.
+
+    `destino_permitido()` hace `contacto_id in permitidos`, una comparación de
+    cadenas exacta, y el agente trae el número ya normalizado. Un número
+    guardado como lo escribe una persona —con espacios y guiones, que es como
+    los manda un cliente por WhatsApp— no coincide con nada.
+
+    Falla cerrado, que es la dirección segura, pero en silencio: la pantalla
+    muestra tres destinos habilitados y el sistema entiende uno.
+    """
+    respuesta = await adentro.patch(
+        "/api/configuracion",
+        json={"destinos_permitidos": ["+54 9 11 2323-1151", "+5491136007586"]},
+    )
+    assert respuesta.status_code == 200
+    assert respuesta.json()["destinos_permitidos"] == ["+5491123231151", "+5491136007586"]
+
+    guardada = await configuracion.obtener(base)
+    for numero in ("+5491123231151", "+5491136007586"):
+        assert configuracion.destino_permitido(guardada, numero)
+
+
+@sin_mongo
+async def test_dos_formas_del_mismo_numero_no_cuentan_como_dos_destinos(adentro) -> None:
+    """El tope de la prueba real es "exactamente estos tres y ninguno más"."""
+    respuesta = await adentro.patch(
+        "/api/configuracion",
+        json={"destinos_permitidos": ["+54 9 11 2323-1151", "+5491123231151"]},
+    )
+    assert respuesta.json()["destinos_permitidos"] == ["+5491123231151"]
+
+
+@sin_mongo
+async def test_un_numero_ilegible_no_entra_a_la_lista(adentro, base) -> None:
+    """Antes de esto se guardaba igual, y no coincidía con nada nunca."""
+    respuesta = await adentro.patch(
+        "/api/configuracion", json={"destinos_permitidos": ["no soy un numero"]}
+    )
+    assert respuesta.status_code == 422
+    assert await configuracion.obtener(base) is not None
+    assert (await configuracion.obtener(base))["destinos_permitidos"] == []
+
+
+@sin_mongo
+async def test_el_asterisco_sobrevive_a_la_normalizacion(adentro, base) -> None:
+    """`*` no es un número: es la marca de lista abierta, y no se puede romper."""
+    respuesta = await adentro.patch("/api/configuracion", json={"destinos_permitidos": ["*"]})
+    assert respuesta.json()["destinos_permitidos"] == ["*"]
+    assert configuracion.destino_permitido(await configuracion.obtener(base), "+5491100000000")
+
+
 # ---------------------------------------------------------------------------
 # Historial
 # ---------------------------------------------------------------------------

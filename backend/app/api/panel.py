@@ -17,7 +17,7 @@ from typing import Annotated, Any, Literal
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app import db
 from app.config import Configuracion, obtener_configuracion
@@ -25,6 +25,7 @@ from app.core import (
     alertas,
     auditoria,
     configuracion,
+    contactos,
     corridas,
     mensajes,
     metricas,
@@ -516,6 +517,39 @@ class CambioConfiguracion(Estricto):
     palabras_conflicto: list[Annotated[str, Field(max_length=60)]] | None = None
     palabras_comerciales: list[Annotated[str, Field(max_length=60)]] | None = None
     destinos_permitidos: list[Annotated[str, Field(max_length=25)]] | None = None
+
+    @field_validator("destinos_permitidos")
+    @classmethod
+    def _a_e164(cls, numeros: list[str] | None) -> list[str] | None:
+        """Guarda los destinos en E.164, que es como los compara R4.
+
+        `destino_permitido()` hace `contacto_id in permitidos`: una comparacion
+        de cadenas, exacta. El agente trae el numero ya normalizado, asi que un
+        `+54 9 11 2323-1151` guardado tal como lo escribio una persona **no
+        coincide con nada**, y ese contacto no recibe nunca un mensaje.
+
+        Falla del lado seguro, pero calladita: la pantalla muestra tres numeros
+        habilitados y el sistema entiende uno. Normalizar al guardar hace que lo
+        que se ve sea lo que se compara.
+
+        `*` pasa derecho: no es un numero, es la marca de lista abierta (R4).
+        """
+        if numeros is None:
+            return None
+
+        limpios: list[str] = []
+        for crudo in numeros:
+            if crudo.strip() == configuracion.TODOS:
+                limpios.append(configuracion.TODOS)
+                continue
+            try:
+                limpios.append(contactos.normalizar(crudo))
+            except contactos.NumeroInvalido as error:
+                raise ValueError(f"{crudo!r}: {error}") from error
+
+        # Sin repetidos: dos formas del mismo numero colapsan al normalizar, y
+        # una lista con duplicados hace dudar de cuantos destinos hay de verdad.
+        return list(dict.fromkeys(limpios))
 
 
 @router.patch("/configuracion")
