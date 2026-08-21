@@ -1,5 +1,6 @@
 """Configuración: lo que se lee del entorno y lo que se rechaza."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -75,3 +76,25 @@ def test_la_carpeta_del_agente_no_depende_del_directorio_actual(
 
     monkeypatch.chdir(tmp_path)
     assert (CARPETA_AGENTE / "agente" / "main.py").is_file()
+
+
+def test_env_example_no_comenta_al_lado_de_un_valor_vacio() -> None:
+    """Un comentario al lado de un valor VACÍO se convierte en el valor.
+
+    `python-dotenv` recorta el `# ...` sólo cuando hay algo antes. Con la línea
+    `AGENTE_DEVICE_ID=              # fijo por máquina`, el valor pasa a ser
+    literalmente `# fijo por máquina` —una cadena no vacía— y el chequeo de
+    diagnóstico, que sólo mira que no esté vacío, devolvía **OK en verde con el
+    deviceId sin configurar**. Es el problema #5 del MVP pasando desapercibido.
+
+    Los comentarios de las variables vacías van en la línea de ARRIBA.
+    """
+    ejemplo = Path(__file__).resolve().parents[2] / ".env.example"
+    culpables = [
+        linea
+        for linea in ejemplo.read_text(encoding="utf-8").splitlines()
+        if re.fullmatch(r"[A-Z_][A-Z0-9_]*=\s*#.*", linea)
+    ]
+    assert not culpables, "estas variables quedan con el comentario como valor: " + "; ".join(
+        culpables
+    )
