@@ -1,7 +1,19 @@
-# Entorno LOCAL únicamente. Producción y staging corren en Render (D6).
+# Entorno LOCAL únicamente. Producción corre en Render.
 #
-# Los tres servicios publican puerto sólo en 127.0.0.1: no quedan accesibles
-# desde la red. MongoDB en particular nunca se expone (05 §5).
+# Un solo servicio: MongoDB. Antes eran tres.
+#   - n8n: se eliminó del proyecto (D18). Los horarios los maneja APScheduler dentro de FastAPI.
+#   - Mailpit: servía para leer los magic links del login. Ya no hay correo saliente (D22).
+#
+# El puerto se publica sólo en 127.0.0.1: no queda accesible desde la red.
+#
+# CON AUTENTICACIÓN, aunque sea local. No es por miedo a que alguien entre: es
+# porque el registro de auditoría es inmutable gracias a un ROL de MongoDB que
+# no otorga `update` sobre esa colección, y un Mongo sin autenticación no aplica
+# roles. Sin esto, la inmutabilidad sería una promesa que nadie puede probar
+# hasta producción.
+#
+# Las credenciales de acá son de juguete y están versionadas a propósito: son de
+# un contenedor que escucha en localhost. Las de Atlas van en MONGO_URL.
 #
 #   docker compose -f infra/docker-compose.dev.yml up -d
 #   docker compose -f infra/docker-compose.dev.yml ps
@@ -10,71 +22,43 @@ name: seguimiento
 
 services:
   mongo:
-    image: mongo:7.0            # 7.0.37 al fijarla
+    image: mongo:7.0
     container_name: seguimiento-mongo
     restart: unless-stopped
-    command: ["--bind_ip_all"]
+    command: ["--bind_ip_all", "--auth"]
     ports:
       - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
+      # Se corre una sola vez, cuando el volumen está vacío. Crea el rol y el
+      # usuario con el que se conecta el backend.
+      - ./mongo:/docker-entrypoint-initdb.d:ro
     environment:
       TZ: America/Argentina/Buenos_Aires
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root-local
+      MONGO_INITDB_DATABASE: seguimiento
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - -u
+        - root
+        - -p
+        - root-local
+        - --authenticationDatabase
+        - admin
+        - --eval
+        - db.adminCommand('ping').ok
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 20s
     networks: [seguimiento]
 
-  n8n:
-    image: n8nio/n8n:2.35.3
-    container_name: seguimiento-n8n
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:5678:5678"
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ../n8n/workflows:/workflows:ro
-    environment:
-      TZ: America/Argentina/Buenos_Aires
-      GENERIC_TIMEZONE: America/Argentina/Buenos_Aires
-      N8N_SECURE_COOKIE: "false"           # local va por http, no https
-      N8N_DIAGNOSTICS_ENABLED: "false"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks: [seguimiento]
-
-  mailpit:
-    image: axllent/mailpit:v1.30.7
-    container_name: seguimiento-mailpit
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:1025:1025"              # SMTP, al que apunta el backend
-      - "127.0.0.1:8025:8025"              # interfaz web: acá se leen los magic links
-    volumes:
-      - mailpit_data:/data
-    environment:
-      TZ: America/Argentina/Buenos_Aires
-      MP_DATABASE: /data/mailpit.db
-      MP_MAX_MESSAGES: "500"
-    healthcheck:
-      test: ["CMD", "/mailpit", "readyz"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    networks: [seguimiento]
-
 volumes:
   mongo_data:
-  n8n_data:
-  mailpit_data:
 
 networks:
   seguimiento:

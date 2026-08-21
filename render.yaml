@@ -1,32 +1,36 @@
-# Blueprint de Render: define staging y producción como código (D6).
+# Blueprint de Render.
 #
-# La configuración vive acá y no en el panel. Es lo único que hace que los dos
-# entornos sean de verdad iguales, que era el motivo de levantar producción
-# desde el Sprint 0.
+# TRES servicios: backend, panel y el backup diario. Antes eran ocho.
 #
-# ⚠️ Falta el worker de APScheduler, que aparece en el diagrama de 02 §1 y no
-# tiene ticket asignado en el Sprint 0. Backend y frontend ya están.
+# Qué se sacó y por qué (D17, D18):
 #
-# autoDeploy: false en todos: el despliegue lo dispara GitHub Actions después
-# del CI, nunca Render por su cuenta (D15).
+#   staging (backend, frontend, n8n, backup)
+#       Existía para probar sin romper producción. No hay usuarios del panel ni mensajes reales
+#       saliendo, así que se prueba en producción. Lo que impide que una corrida alcance a un
+#       cliente real no es el entorno: es `configuracion.destinos_permitidos` (regla R4).
 #
-# branch: es OBLIGATORIO en cada servicio que se construye del repositorio. Sin
-# esa clave, TODOS toman la rama desde la que se creó la instancia del Blueprint
-# — y con eso producción terminaría corriendo código de develop, que es lo
-# contrario de 08 §7. Producción va de main, staging de develop, y eso queda
-# escrito en el archivo y no en la memoria de quien creó el Blueprint.
-# Los servicios de n8n no la llevan: corren de una imagen publicada, sin build.
+#   n8n (producción y staging)
+#       Hacía tres crons. Ahora los hace APScheduler dentro del proceso de FastAPI. A cambio
+#       costaba dos servicios, dos discos, dos claves de cifrado, un runbook, tres commits de
+#       depuración y un problema real: desde la versión 1.0 no tiene autenticación básica, y la
+#       cuenta de dueño se la queda quien llegue primero a la URL.
+#
+# Todo eso está en docs/_historico/ si alguna vez hay que reconstruirlo.
+#
+# branch: main en todos. Es la única rama que se despliega: no hay develop porque no hay staging.
+#
+# autoDeploy: false: el despliegue lo dispara GitHub Actions después del CI, nunca Render por su
+# cuenta. Sin esto, un push con los tests rotos llega igual a producción y el CI queda decorativo.
 
 services:
-  # ---------------- backend (T0.3) ----------------
-  # Chequeo de salud por CÓDIGO DE ESTADO: /health devuelve 503 si Mongo no
-  # responde. Un chequeo que contesta 200 con "ok: false" no lo lee nadie.
+  # ---------------- backend ----------------
+  # Chequeo de salud por CÓDIGO DE ESTADO: /health devuelve 503 si Mongo no responde. Un chequeo
+  # que contesta 200 con "ok: false" no lo lee nadie.
   #
-  # MONGO_TIMEOUT_MS en 1500 y no en 2000: medido contra el backend levantado,
-  # con 2000 la peor respuesta con Mongo caído fue de 2,503 s. El tiempo de
-  # espera del chequeo de Render no se configura desde acá, así que el margen se
-  # gana bajando el timeout. Un chequeo que expira al borde saca instancias
-  # sanas de rotación, y el síntoma es un servicio que "se reinicia solo".
+  # MONGO_TIMEOUT_MS en 1500 y no en 2000: medido contra el backend levantado, con 2000 la peor
+  # respuesta con Mongo caído fue de 2,503 s. El tiempo de espera del chequeo de Render no se
+  # configura desde acá, así que el margen se gana bajando el timeout. Un chequeo que expira al
+  # borde saca instancias sanas de rotación, y el síntoma es un servicio que "se reinicia solo".
   - type: web
     name: backend-produccion
     branch: main
@@ -42,49 +46,26 @@ services:
       - { key: ENTORNO,          value: produccion }
       - { key: MONGO_DB,         value: seguimiento }
       - { key: MONGO_TIMEOUT_MS, value: "1500" }
-      - { key: MONGO_URL,        sync: false }   # usuario acotado a la base (D14)
-      - { key: JWT_SECRET,       generateValue: true }
-      - { key: AUTH_EMAIL_FROM,  sync: false }
-      - { key: SMTP_URL,         sync: false }
+      - { key: MONGO_URL,        sync: false }   # usuario acotado a la base
+      # Contraseña única del panel (D22). Sin Auth.js, sin magic links, sin correo saliente.
+      - { key: PANEL_PASSWORD,   sync: false }
+      # Firma la cookie de sesión del panel. La genera Render y nadie la ve.
+      - { key: SESION_SECRET,    generateValue: true }
       - { key: SENTRY_DSN,       sync: false }
 
-  - type: web
-    name: backend-staging
-    branch: develop
-    runtime: python
-    rootDir: backend
-    plan: starter
-    region: oregon
-    autoDeploy: false
-    healthCheckPath: /health
-    buildCommand: pip install uv && uv sync --frozen --no-dev
-    startCommand: uv run fastapi run app/main.py --port $PORT
-    envVars:
-      - { key: ENTORNO,          value: staging }
-      - { key: MONGO_DB,         value: seguimiento }
-      - { key: MONGO_TIMEOUT_MS, value: "1500" }
-      - { key: MONGO_URL,        sync: false }
-      - { key: JWT_SECRET,       generateValue: true }
-      - { key: AUTH_EMAIL_FROM,  sync: false }
-      - { key: SMTP_URL,         sync: false }
-      - { key: SENTRY_DSN,       sync: false }
-
-  # ---------------- frontend (T0.4) ----------------
+  # ---------------- panel ----------------
   # healthCheckPath apunta a /healthz y NO a "/" ni a /api/estado-backend:
   #
-  #   "/"                    consulta al backend para pintar el diagnóstico. Con
-  #                          el backend caído, Render vería un frontend enfermo
-  #                          estando sano y lo sacaría de rotación: dos servicios
-  #                          cayéndose por el precio de uno.
-  #   /api/estado-backend    contesta 200 siempre, a propósito, porque es un dato
-  #                          para la pantalla. Como sonda diría "sano" pase lo que
-  #                          pase.
-  #   /healthz               200 sin tocar nada externo. Es la única de las tres
-  #                          que responde la pregunta que hace un balanceador.
+  #   "/"                  consulta al backend para pintar el diagnóstico. Con el backend caído,
+  #                        Render vería un panel enfermo estando sano y lo sacaría de rotación:
+  #                        dos servicios cayéndose por el precio de uno.
+  #   /api/estado-backend  contesta 200 siempre, a propósito, porque es un dato para la pantalla.
+  #                        Como sonda diría "sano" pase lo que pase.
+  #   /healthz             200 sin tocar nada externo. Es la única de las tres que responde la
+  #                        pregunta que hace un balanceador.
   #
-  # BACKEND_URL va sin prefijo NEXT_PUBLIC_ a propósito: la lee sólo el servidor
-  # de Next. El navegador nunca habla con el backend directo, así que el backend
-  # no necesita CORS.
+  # BACKEND_URL va sin prefijo NEXT_PUBLIC_ a propósito: la lee sólo el servidor de Next. El
+  # navegador nunca habla con el backend directo, así que el backend no necesita CORS.
   - type: web
     name: frontend-produccion
     branch: main
@@ -101,120 +82,12 @@ services:
       - { key: BACKEND_URL,  sync: false }   # URL pública de backend-produccion
       - { key: SENTRY_DSN,   sync: false }
 
-  - type: web
-    name: frontend-staging
-    branch: develop
-    runtime: node
-    rootDir: frontend
-    plan: starter
-    region: oregon
-    autoDeploy: false
-    healthCheckPath: /healthz
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start
-    envVars:
-      - { key: NODE_VERSION, value: "22" }
-      - { key: BACKEND_URL,  sync: false }   # URL pública de backend-staging
-      - { key: SENTRY_DSN,   sync: false }
-
-  # ---------------- n8n ----------------
-  # Horarios, avisos e integraciones. Cero lógica de negocio (D8).
-  # No se le pone dominio propio: se entra por la URL que asigna Render.
+  # ---------------- backup ----------------
+  # 08:00 UTC = 05:00 en Argentina. Se conserva del plan anterior porque ya está hecho, probado y
+  # pago: bajarlo no ahorra nada y sí perdería la restauración verificada.
   #
-  # ⚠️ CÓMO SE PROTEGE, Y POR QUÉ NO CON VARIABLES.
-  # n8n eliminó N8N_BASIC_AUTH_* en la versión 1.0 y no avisa: si las cargás,
-  # las ignora en silencio y te quedás creyendo que el editor está protegido.
-  # Desde entonces usa gestión de usuarios: en el PRIMER acceso, quien entre
-  # crea la cuenta de dueño.
-  #
-  # Consecuencia operativa, y hay que tratarla como un paso del despliegue:
-  # entre que el servicio queda Live y que alguien reclama la cuenta, CUALQUIERA
-  # que llegue a la URL puede quedarse con ella. Y n8n dispara la corrida de las
-  # 08:00. Reclamar la cuenta es lo primero que se hace al desplegarlo, no algo
-  # para después. Ver docs/RUNBOOK-n8n.md.
-  - type: web
-    name: n8n-produccion
-    runtime: image
-    image: { url: docker.io/n8nio/n8n:2.35.3 }
-    plan: starter
-    region: oregon
-    autoDeploy: false
-    disk:
-      name: n8n-produccion-data
-      mountPath: /home/node/.n8n
-      sizeGB: 1
-    envVars:
-      - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
-      - { key: TZ,               value: America/Argentina/Buenos_Aires }
-      - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
-      # n8n NO lee la variable PORT: escucha en N8N_PORT, y por defecto en 5678.
-      # Render publica el servicio en el puerto que indica PORT, que por defecto
-      # es 10000, y si no detecta nada escuchando ahí da el despliegue por
-      # fallido. Verificado corriendo la imagen con PORT=10000: seguía en 5678.
-      - { key: N8N_PORT, value: "10000" }
-      # Cifra las credenciales que n8n guarda. La genera Render y nadie la ve.
-      # Si se pierde, las credenciales guardadas quedan ilegibles.
-      - { key: N8N_ENCRYPTION_KEY, generateValue: true }
-      # La API pública es una vía de autenticación aparte, con sus propias
-      # claves. No la usamos: menos superficie.
-      - { key: N8N_PUBLIC_API_DISABLED, value: "true" }
-      # Sin esto el servicio se aborta al arrancar con "Ineffective mark-compacts
-      # near heap limit" y sale con estado 134 — que es V8 abortándose por su
-      # propio límite de heap, no el kernel matando el contenedor (eso sería 137).
-      # En el plan starter (512 MB) Node lee el límite del cgroup y fija el heap
-      # viejo en la mitad, ~256 MB, y n8n no arranca ahí. 400 deja margen para el
-      # resto del proceso dentro de los mismos 512 MB.
-      #
-      # Es el techo de lo que se puede exprimir de starter. Si vuelve a morir y
-      # ahora sale con 137, ya no es el heap: es el contenedor, y la única salida
-      # es plan: standard (2 GB).
-      - { key: NODE_OPTIONS, value: "--max-old-space-size=400" }
-
-  - type: web
-    name: n8n-staging
-    runtime: image
-    image: { url: docker.io/n8nio/n8n:2.35.3 }
-    plan: starter
-    region: oregon
-    autoDeploy: false
-    disk:
-      name: n8n-staging-data
-      mountPath: /home/node/.n8n
-      sizeGB: 1
-    envVars:
-      - { key: GENERIC_TIMEZONE, value: America/Argentina/Buenos_Aires }
-      - { key: TZ,               value: America/Argentina/Buenos_Aires }
-      - { key: N8N_DIAGNOSTICS_ENABLED, value: "false" }
-      # n8n NO lee la variable PORT: escucha en N8N_PORT, y por defecto en 5678.
-      # Render publica el servicio en el puerto que indica PORT, que por defecto
-      # es 10000, y si no detecta nada escuchando ahí da el despliegue por
-      # fallido. Verificado corriendo la imagen con PORT=10000: seguía en 5678.
-      - { key: N8N_PORT, value: "10000" }
-      # Cifra las credenciales que n8n guarda. La genera Render y nadie la ve.
-      # Si se pierde, las credenciales guardadas quedan ilegibles.
-      - { key: N8N_ENCRYPTION_KEY, generateValue: true }
-      # La API pública es una vía de autenticación aparte, con sus propias
-      # claves. No la usamos: menos superficie.
-      - { key: N8N_PUBLIC_API_DISABLED, value: "true" }
-      # Sin esto el servicio se aborta al arrancar con "Ineffective mark-compacts
-      # near heap limit" y sale con estado 134 — que es V8 abortándose por su
-      # propio límite de heap, no el kernel matando el contenedor (eso sería 137).
-      # En el plan starter (512 MB) Node lee el límite del cgroup y fija el heap
-      # viejo en la mitad, ~256 MB, y n8n no arranca ahí. 400 deja margen para el
-      # resto del proceso dentro de los mismos 512 MB.
-      #
-      # Es el techo de lo que se puede exprimir de starter. Si vuelve a morir y
-      # ahora sale con 137, ya no es el heap: es el contenedor, y la única salida
-      # es plan: standard (2 GB).
-      - { key: NODE_OPTIONS, value: "--max-old-space-size=400" }
-
-  # ---------------- backups (T0.9) ----------------
-  # 08:00 UTC = 05:00 en Argentina. Lejos de la corrida de las 13:00: si el
-  # backup pisara la ventana de envío competiría por la base justo cuando peor
-  # viene.
-  #
-  # AGE_RECIPIENT es la clave PÚBLICA: el servicio puede cifrar y no descifrar.
-  # La privada no está acá ni en ningún servidor.
+  # AGE_RECIPIENT es la clave PÚBLICA: el servicio puede cifrar y no descifrar. La privada no está
+  # acá ni en ningún servidor.
   - type: cron
     name: backup-produccion
     branch: main
@@ -228,26 +101,6 @@ services:
     dockerCommand: /app/backup.sh
     envVars:
       - { key: ENTORNO, value: produccion }
-      - { key: MONGO_URL,     sync: false }   # usuario acotado a la base (D14)
-      - { key: AGE_RECIPIENT, sync: false }
-      - { key: R2_ENDPOINT,   sync: false }
-      - { key: R2_BUCKET,     value: centonara-backups }
-      - { key: R2_ACCESS_KEY_ID,     sync: false }
-      - { key: R2_SECRET_ACCESS_KEY, sync: false }
-
-  - type: cron
-    name: backup-staging
-    branch: develop
-    runtime: docker
-    dockerfilePath: ./infra/Dockerfile.backup
-    dockerContext: ./infra
-    plan: starter
-    region: oregon
-    schedule: "0 8 * * *"
-    autoDeploy: false
-    dockerCommand: /app/backup.sh
-    envVars:
-      - { key: ENTORNO, value: staging }
       - { key: MONGO_URL,     sync: false }
       - { key: AGE_RECIPIENT, sync: false }
       - { key: R2_ENDPOINT,   sync: false }

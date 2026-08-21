@@ -28,3 +28,7 @@ next-env.d.ts        # lo regenera `next typegen` en cada build
 
 # --- sistema ---
 .DS_Store
+
+# --- IDE: configuracion local, no del proyecto ---
+.idea/
+.vscode/

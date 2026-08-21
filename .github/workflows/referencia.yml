@@ -1,6 +1,6 @@
 name: Referencia
 
-# Hace cumplir la regla 1 de docs/13-QUE-HACER-CON-EL-MVP.md §1:
+# Hace cumplir la regla 1 de docs/MVP-REFERENCIA.md §1:
 # no se importa nada desde referencia/.
 #
 # El documento explica el porqué mejor que cualquier comentario: "si agent.py

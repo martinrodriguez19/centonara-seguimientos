@@ -1,13 +1,15 @@
 name: CI
 
-# Bloqueante para el merge (T0.6). El despliegue NO se dispara acá: lo hace un
-# workflow aparte, y sólo después de que esto pase en verde (D15).
+# Bloqueante para el merge. El despliegue NO se dispara acá: lo hace un workflow
+# aparte, a mano, y sólo después de que esto pase en verde.
+#
+# Sólo `main`: no hay develop porque no hay staging (D17).
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
   push:
-    branches: [develop, main]
+    branches: [main]
 
 permissions:
   contents: read
@@ -17,9 +19,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Los esqueletos de backend y frontend llegan en T0.3 y T0.4. Hasta entonces
-  # sus jobs quedan en salteado en vez de en rojo: un CI que siempre falla se
-  # aprende a ignorar, y para cuando importa ya nadie lo mira.
+  # Si una parte del monorepo todavía no existe, su job queda en salteado en vez
+  # de en rojo: un CI que siempre falla se aprende a ignorar, y para cuando
+  # importa ya nadie lo mira.
   detectar:
     runs-on: ubuntu-latest
     outputs:
@@ -39,6 +41,31 @@ jobs:
     if: needs.detectar.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: backend } }
+    # Un Mongo de verdad. Los tests del esquema verifican que un índice único
+    # RECHAZA el duplicado, y eso no se puede simular: o hay una base, o el test
+    # se saltea y no prueba nada. Es lo que impide que un reintento mande el
+    # mismo mensaje dos veces.
+    #
+    # CON AUTENTICACIÓN, igual que el compose local y que Atlas. No es opcional:
+    # el test que verifica que un `update` sobre `auditoria` falla necesita que
+    # MongoDB aplique roles, y un servidor sin `--auth` no los aplica. Sin esto
+    # ese test pasaría en verde sin probar nada.
+    services:
+      mongo:
+        image: mongo:7.0
+        ports: ["27017:27017"]
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: root-ci
+        options: >-
+          --health-cmd "mongosh --quiet -u root -p root-ci --authenticationDatabase admin --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Root: los tests crean y borran bases sueltas, y el de inmutabilidad crea
+      # un rol restringido sobre la marcha para conectarse con él.
+      MONGO_URL_TESTS: mongodb://root:root-ci@localhost:27017/?authSource=admin
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -52,6 +79,18 @@ jobs:
         run: uv run ruff format --check .
       - name: Tests
         run: uv run pytest -q
+      # La exigencia de 100% vive acá y no en un documento. Un umbral que sólo
+      # está escrito lo baja cualquiera sin que nadie se entere; uno que rompe
+      # el CI hay que discutirlo.
+      #
+      # Son los cinco archivos que, si fallan, mandan un mensaje que no debía
+      # salir: la normalización de números, la máquina de estados, la cola, los
+      # guardrails y el triage.
+      # El resto del proyecto no tiene umbral a propósito: la cobertura por la
+      # cobertura no sirve.
+      - name: Cobertura de lo que no puede fallar
+        run: |
+          uv run pytest -q --cov-report=term             --cov=app.core.contactos             --cov=app.core.estados             --cov=app.core.cola             --cov=app.core.guardrails             --cov=app.core.triage             --cov-fail-under=100
 
   frontend:
     needs: detectar
@@ -71,7 +110,7 @@ jobs:
           package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 22          # el mínimo documentado en 06 §1, no el más nuevo
+          node-version: 22          # el mínimo documentado, no el más nuevo
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -80,10 +119,9 @@ jobs:
       - name: Tipos
         run: pnpm typecheck
 
-  # El agente corre en la PC del vendedor (Windows) pero se desarrolla en modo
-  # simulado desde Linux y macOS hasta el Sprint 4 (06 §5). El criterio de
-  # salida de T0.5 es literalmente "corre en los tres sin cambios de código":
-  # se verifica acá, no a mano.
+  # El agente corre en la Mac del vendedor, pero se desarrolla en modo simulado
+  # desde cualquier sistema (04-AGENTE §11). macOS es el que importa; los otros
+  # dos están para que nadie del equipo quede bloqueado por su computadora.
   agente:
     needs: detectar
     if: needs.detectar.outputs.agente == 'true'
@@ -126,7 +164,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Ningún secreto versionado (05 §5)
+      - name: Ningún secreto versionado
         run: |
           set -e
           malos=$(git ls-files | grep -E '(^|/)\.env($|\.)|\.(pem|p12|pfx)$|(^|/)id_(rsa|ed25519)$' \
@@ -136,21 +174,23 @@ jobs:
           fi
           echo "Sin secretos versionados."
 
-  sin-envio:
+  destinos:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # R7 / D11: del Sprint 0 al 3 el código de envío no existe en el repo.
-      # Un tope configurado se desconfigura; un archivo que no existe, no.
-      # BORRAR ESTE JOB EN EL SPRINT 4, junto con el motor de envío.
-      - name: El código de envío no existe todavía (R7)
+      # R4 / D21: el sistema sólo escribe a numeros de configuracion.destinos_permitidos.
+      # Esto reemplaza al job que verificaba que el codigo de envio no existiera: aquella regla
+      # dejaba de aplicar el dia que el codigo se escribia, y a partir de ahi no quedaba ninguna
+      # garantia estructural. Esta sigue sirviendo despues.
+      - name: La lista de destinos no quedo abierta en el repositorio
         run: |
           set -e
-          prohibidos=$(git ls-files | grep -E 'adaptadores/whatsapp_web\.py$|jobs/enviar\.py$' || true)
-          if [ -n "$prohibidos" ]; then
-            echo "::error::R7: el código de envío no existe hasta el Sprint 4. Encontrado:"
-            echo "$prohibidos"
-            echo "Si estás en el Sprint 4, borrá el job 'sin-envio' de .github/workflows/ci.yml"
+          abiertos=$(grep -rn 'destinos_permitidos' --include='*.py' --include='*.json' . || true)
+          abiertos=$(echo "$abiertos" | grep -v '_historico' | grep '"[*]"' || true)
+          if [ -n "$abiertos" ]; then
+            echo "::error::Hay un destinos_permitidos abierto a todos, versionado:"
+            echo "$abiertos"
+            echo "Esa lista se cambia desde el panel, no desde el codigo."
             exit 1
           fi
-          echo "Sin código de envío. Es técnicamente imposible que salga un mensaje."
+          echo "Sin listas de destinos abiertas en el repositorio."
