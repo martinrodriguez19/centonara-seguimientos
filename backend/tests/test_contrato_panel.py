@@ -41,6 +41,8 @@ PANEL_TS = Path(__file__).resolve().parents[2] / "frontend" / "lib" / "panel.ts"
 # aparece recién con el primer cambio guardado.
 OPCIONALES = {"Configuracion": {"actualizado_en"}}
 
+SECRETO = "secreto-de-prueba-largo"
+
 
 def campos_declarados() -> dict[str, set[str]]:
     """Los campos de cada `export type X = { ... }` de `panel.ts`.
@@ -68,6 +70,20 @@ def comparar(tipo: str, respuesta: dict) -> None:
     sobran = devueltos - declarados
     assert not faltan, f"{tipo}: el panel espera y el backend no devuelve {sorted(faltan)}"
     assert not sobran, f"{tipo}: el backend devuelve y el panel ignora {sorted(sobran)}"
+
+
+@pytest.fixture(autouse=True)
+def configurar(monkeypatch):
+    """El mismo secreto para la cookie y para quien la verifica.
+
+    Sin esto el resultado depende de si quien corre los tests tiene un `.env`.
+    """
+    from app.config import obtener_configuracion
+
+    monkeypatch.setenv("SESION_SECRET", SECRETO)
+    obtener_configuracion.cache_clear()
+    yield
+    obtener_configuracion.cache_clear()
 
 
 @pytest.fixture
@@ -153,13 +169,14 @@ async def test_un_error_de_validacion_trae_detail_como_lista(base) -> None:
     """
     from httpx import ASGITransport, AsyncClient
 
-    from app.config import obtener_configuracion
     from app.core import sesion
     from app.main import app
 
-    obtener_configuracion.cache_clear()
-    config = obtener_configuracion()
-    cookie = sesion.emitir(config.sesion_secret or "x" * 40)
+    # El secreto se fija acá y no se lee del entorno. Con `config.sesion_secret`
+    # el test pasaba en una máquina con `.env` —la cookie y el endpoint usaban
+    # el mismo valor— y en CI, donde no hay `.env`, el secreto era vacío, la
+    # cookie no validaba y llegaba un 401 antes de mirar el cuerpo.
+    cookie = sesion.emitir(SECRETO)
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
