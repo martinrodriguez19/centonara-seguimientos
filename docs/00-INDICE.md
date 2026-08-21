@@ -5,6 +5,13 @@
 
 ---
 
+## Si estás retomando
+
+**[`RETOMAR.md`](RETOMAR.md)** — en qué estado está todo, qué sigue, y qué decisiones ya se
+tomaron. Es el único documento que hace falta leer para no arrancar de cero.
+
+---
+
 ## Leelos en este orden
 
 | # | Documento | Para qué | Cuándo |

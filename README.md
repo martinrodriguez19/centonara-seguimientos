@@ -5,6 +5,9 @@ vendedores, redacte un seguimiento para cada uno, y los envíe desde la línea d
 
 Monorepo. Un solo `git clone` y tenés todo.
 
+> **¿Retomando el proyecto, o llegando por primera vez?**
+> [`docs/RETOMAR.md`](docs/RETOMAR.md) dice en qué estado está todo y qué sigue.
+
 ## Arrancar
 
 Cuatro cosas instaladas: **Docker**, **Python 3.12**, [**uv**](https://docs.astral.sh/uv/)
