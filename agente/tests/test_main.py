@@ -4,11 +4,13 @@ Estos tests son la verificación de T0.5 —"corre en Linux, macOS y Windows sin
 cambios de código"— y por eso el CI los corre en los tres.
 """
 
+import os
 import signal
 import threading
 
 import pytest
 
+from agente import main as main_mod
 from agente.config import Configuracion
 from agente.main import (
     SALIDA_CONFIGURACION,
@@ -101,3 +103,28 @@ def test_el_apagado_se_registra_en_este_sistema_operativo() -> None:
     finally:
         for nombre, manejador in anteriores.items():
             signal.signal(getattr(signal, nombre), manejador)
+
+
+def test_sslkeylogfile_se_descarta_al_arrancar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un antivirus con escudo web mata el proceso si esa variable queda puesta.
+
+    Avast la deja apuntando a su driver de filtrado. OpenSSL abre ese archivo
+    con `fopen` al crear cualquier contexto TLS, eso cruza la frontera entre
+    runtimes de C, y en Windows termina en
+
+        OPENSSL_Uplink(...,08): no OPENSSL_Applink
+
+    que mata el proceso antes de que el agente llegue a presentarse. El mensaje
+    no menciona ni al antivirus ni al TLS, así que sin este test nadie lo ata.
+    """
+    monkeypatch.setenv("SSLKEYLOGFILE", r"\.\aswMonFltProxy\427a3e2b6ab3ddc2")
+
+    sacado = main_mod.soltar_sslkeylogfile()
+
+    assert sacado == r"\.\aswMonFltProxy\427a3e2b6ab3ddc2"
+    assert "SSLKEYLOGFILE" not in os.environ
+
+
+def test_sin_sslkeylogfile_no_pasa_nada(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SSLKEYLOGFILE", raising=False)
+    assert main_mod.soltar_sslkeylogfile() is None

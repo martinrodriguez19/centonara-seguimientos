@@ -139,7 +139,7 @@ def _permiso_sitio() -> Chequeo:
     return Chequeo(
         "permiso_sitio",
         Estado.NO_APLICA,
-        "se concede a mano en la extensión, para web.whatsapp.com. No se puede verificar desde acá",
+        "se concede a mano en la extensión, para web.whatsapp.com. Lo verifica `--sonda`",
         "MVP #4",
     )
 
@@ -212,7 +212,9 @@ def _whatsapp_sesion() -> Chequeo:
     del vendedor, y él no la ve en ningún lado. Si se cae, nadie se entera salvo
     por este chequeo.
     """
-    return Chequeo("whatsapp_sesion", Estado.NO_APLICA, "necesita el navegador: llega en la fase 3")
+    return Chequeo(
+        "whatsapp_sesion", Estado.NO_APLICA, "necesita abrir la página: lo verifica `--sonda`"
+    )
 
 
 def _selectores() -> Chequeo:

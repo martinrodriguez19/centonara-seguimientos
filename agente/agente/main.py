@@ -13,6 +13,7 @@ un sistema en particular, sin `os.system`, sin nada que dependa del SO.
 
 import argparse
 import asyncio
+import os
 import signal
 import sys
 import threading
@@ -21,10 +22,11 @@ from types import FrameType
 
 from pydantic import ValidationError
 
-from agente import __version__, diagnostico
+from agente import __version__, diagnostico, sonda
 from agente.bucle import Bucle, latir
 from agente.cliente import Cliente
 from agente.config import CARPETA_AGENTE, Configuracion, Modo, obtener_configuracion
+from agente.jobs import ejecutor
 from agente.logging import configurar_logs, obtener_logger
 
 log = obtener_logger(__name__)
@@ -54,6 +56,15 @@ def construir_parser() -> argparse.ArgumentParser:
         "--diagnostico",
         action="store_true",
         help="Corre los nueve chequeos, los imprime y sale. No consulta al backend.",
+    )
+    parser.add_argument(
+        "--sonda",
+        action="store_true",
+        help=(
+            "Abre WhatsApp Web una vez para contestar los dos chequeos que el "
+            "diagnóstico no puede: el permiso de sitio y la sesión. Cuesta dinero "
+            "y tarda minutos, por eso no va en --diagnostico. No lee ningún chat."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"agente {__version__}")
     return parser
@@ -136,8 +147,40 @@ def atender_apagado(parar: threading.Event) -> None:
             log.warning("senal_no_registrada", senal=nombre, motivo=str(error))
 
 
+def soltar_sslkeylogfile() -> str | None:
+    """Saca `SSLKEYLOGFILE` del entorno del proceso, y devuelve lo que sacó.
+
+    Un antivirus con escudo web —Avast, y los que hacen lo mismo— deja esa
+    variable apuntando a su driver de filtrado, para quedarse con las claves de
+    sesión de todo el TLS de la máquina. Cuando OpenSSL crea un contexto abre
+    ese archivo con `fopen`, y eso cruza la frontera entre el runtime de C de
+    OpenSSL y el del módulo que lo llama. En Windows eso necesita `applink`, que
+    el `_ssl.pyd` de esta distribución de Python no trae, y el proceso **se
+    muere** con un mensaje que no menciona ni al antivirus ni al TLS:
+
+        OPENSSL_Uplink(...,08): no OPENSSL_Applink
+
+    Sin eso el agente no llega ni a presentarse al backend, y el vendedor ve una
+    máquina que no arranca sin ninguna pista de por qué.
+
+    Se saca sólo del entorno de este proceso: no se toca la configuración del
+    antivirus ni la de la máquina. Y de paso es lo correcto por otro motivo —
+    las claves de sesión del agente no tienen por qué quedar registradas en
+    ningún lado.
+    """
+    valor = os.environ.pop("SSLKEYLOGFILE", None)
+    if valor:
+        log.warning(
+            "sslkeylogfile_descartado",
+            detalle="lo dejó un antivirus con escudo web; con eso puesto, OpenSSL mata el proceso",
+            valor=valor,
+        )
+    return valor
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = construir_parser().parse_args(argv)
+    soltar_sslkeylogfile()
 
     try:
         config = obtener_configuracion()
@@ -150,6 +193,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.diagnostico:
         return correr_diagnostico(config)
+
+    if args.sonda:
+        return correr_sonda(config)
 
     modo = resolver_modo(config, args.simulado)
 
@@ -184,6 +230,26 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     asyncio.run(_trabajar(config, parar))
     return SALIDA_OK
+
+
+def correr_sonda(config: Configuracion) -> int:
+    """`--sonda`: lo que el diagnóstico no puede contestar sin abrir el navegador.
+
+    Se corre a mano, una vez por máquina, cuando se la instala. Es lo que cierra
+    `permiso_sitio` y `whatsapp_sesion`, que en el diagnóstico salen siempre
+    `n/a` porque no se pueden verificar leyendo archivos.
+    """
+    print("Abriendo WhatsApp Web una vez. Tarda unos minutos y no lee ningún chat.\n")
+    resultado = asyncio.run(
+        sonda.probar(
+            device_id=config.device_id,
+            claude_bin=config.claude_bin,
+            carpeta=CARPETA_AGENTE,
+        )
+    )
+    print(resultado.como_texto())
+    print(f"\nCostó USD {resultado.costo_usd:.4f}.")
+    return SALIDA_OK if resultado.ok else SALIDA_DIAGNOSTICO
 
 
 def correr_diagnostico(config: Configuracion) -> int:
@@ -222,7 +288,18 @@ async def _trabajar(config: Configuracion, parar: threading.Event) -> None:
             carpeta_agente=CARPETA_AGENTE,
         )
 
-    trabajo = Bucle(cliente, version=__version__, diagnosticar=diagnosticar)
+    trabajo = Bucle(
+        cliente,
+        version=__version__,
+        diagnosticar=diagnosticar,
+        ejecutor=ejecutor.construir(
+            claude_bin=config.claude_bin,
+            device_id=config.device_id,
+            carpeta=CARPETA_AGENTE,
+            modo=config.modo,
+            diagnosticar=diagnosticar,
+        ),
+    )
     fin = asyncio.Event()
 
     def vigilar_apagado() -> None:
