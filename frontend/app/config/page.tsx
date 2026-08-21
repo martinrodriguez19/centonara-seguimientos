@@ -87,8 +87,17 @@ export default function Config() {
       </Card>
 
       <Palabras
+        titulo="Palabras que apartan un mensaje"
+        ayuda="Si el resumen del chat contiene alguna, el borrador se aparta para que lo mires antes de enviarlo. Agregá los términos de tu rubro."
         palabras={datos.palabras_conflicto}
         onGuardar={(palabras_conflicto) => guardar.mutate({ palabras_conflicto })}
+      />
+
+      <Palabras
+        titulo="Palabras que hacen que un chat parezca de trabajo"
+        ayuda="Si el resumen no contiene ninguna, el chat se considera no comercial y el borrador se retiene. Es la perilla que mueve la tasa de retención: si en métricas se te va del 10 al 20%, se calibra acá."
+        palabras={datos.palabras_comerciales}
+        onGuardar={(palabras_comerciales) => guardar.mutate({ palabras_comerciales })}
       />
     </main>
   );
@@ -232,11 +241,21 @@ function Numero({
   );
 }
 
-/** Las palabras que hacen que un borrador se aparte para revisión. */
+/**
+ * Una lista de palabras, editable como texto.
+ *
+ * Sirve a las dos del triage, que son la misma perilla por los dos lados:
+ * `palabras_conflicto` aparta un borrador, y `palabras_comerciales` decide si
+ * el chat parece de trabajo. Por eso el título y la ayuda vienen de afuera.
+ */
 function Palabras({
+  titulo,
+  ayuda,
   palabras,
   onGuardar,
 }: {
+  titulo: string;
+  ayuda: string;
   palabras: string[];
   onGuardar: (palabras: string[]) => void;
 }) {
@@ -245,11 +264,8 @@ function Palabras({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Palabras que apartan un mensaje</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Si el resumen del chat contiene alguna, el borrador se aparta para que lo mires antes de
-          enviarlo. Agregá los términos de tu rubro.
-        </p>
+        <CardTitle className="text-base">{titulo}</CardTitle>
+        <p className="text-sm text-muted-foreground">{ayuda}</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <textarea

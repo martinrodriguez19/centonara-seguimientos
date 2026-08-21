@@ -62,6 +62,19 @@ export type Configuracion = {
   largo_maximo: number;
   dias_anti_duplicado: number;
   palabras_conflicto: string[];
+  /**
+   * Lo que hace que un chat parezca de trabajo. Si el resumen no contiene
+   * ninguna, el triage marca `CHAT_NO_COMERCIAL` y el borrador se retiene.
+   *
+   * Es el otro extremo de la misma perilla que `palabras_conflicto`, y el que
+   * mueve `tasa_retencion` —el número que la pantalla de métricas dice calibrar
+   * cuando se va del 10 al 20%—.
+   */
+  palabras_comerciales: string[];
+  /** Sólo lectura: no está en `CambioConfiguracion`, no se edita desde acá. */
+  ventana: { inicio: string; fin: string; dias: number[] };
+  /** Sólo lectura, en segundos: [mínimo, máximo] entre dos envíos. */
+  pausa_entre_envios_s: [number, number];
   actualizado_en?: string;
 };
 
