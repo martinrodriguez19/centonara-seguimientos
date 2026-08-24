@@ -32,3 +32,8 @@ next-env.d.ts        # lo regenera `next typegen` en cada build
 # --- IDE: configuracion local, no del proyecto ---
 .idea/
 .vscode/
+
+# El SOP en PDF se genera, no se versiona: un PDF viejo en el repositorio es
+# exactamente el problema que este proyecto ya tiene con el SOP anterior.
+# Se regenera con docs/generar-pdf.py
+docs/*.pdf
