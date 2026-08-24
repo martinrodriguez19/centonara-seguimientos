@@ -168,7 +168,7 @@ Tarda un minuto la primera vez.
 Este comando mira la Mac y te dice todo lo que necesita saber el agente:
 
 ```bash
-./agente/.venv/bin/python -m agente.main --datos
+uv run --directory agente python -m agente.main --datos
 ```
 
 **Lo que vas a ver:**
@@ -289,13 +289,13 @@ En Chrome: **ícono de Claude → configuración → permisos de sitios → habi
 Primero lo que se lee de archivos:
 
 ```bash
-./agente/.venv/bin/python -m agente.main --diagnostico
+uv run --directory agente python -m agente.main --diagnostico
 ```
 
 Después lo que sólo se sabe abriendo la página:
 
 ```bash
-./agente/.venv/bin/python -m agente.main --sonda
+uv run --directory agente python -m agente.main --sonda
 ```
 
 Tiene que decir:

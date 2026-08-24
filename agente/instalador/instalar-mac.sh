@@ -275,7 +275,7 @@ Instalado. Lo que sigue NO lo puede hacer este script:
 
   4. Comprobar 2 y 3, que es lo unico que los verifica:
 
-       ${PYTHON} -m agente.main --sonda
+       uv run --directory agente python -m agente.main --sonda
 
   5. Arrancar las dos cosas, Chrome primero:
 

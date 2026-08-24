@@ -229,7 +229,7 @@ varios, el paso 9 te va a decir cuál quedó bien.</p>
 <hr />
 <h2>Paso 9 — Averiguar los datos de esta máquina</h2>
 <p>Este comando mira la Mac y te dice todo lo que necesita saber el agente:</p>
-<pre><code class="language-bash">./agente/.venv/bin/python -m agente.main --datos
+<pre><code class="language-bash">uv run --directory agente python -m agente.main --datos
 </code></pre>
 <p><strong>Lo que vas a ver:</strong></p>
 <pre><code>PERFILES DE CHROME EN ESTA MÁQUINA
@@ -337,10 +337,10 @@ navegador, y <strong>no aparece en ningún log del agente</strong>.</p>
 <hr />
 <h2>Paso 13 — Comprobar que todo quedó bien</h2>
 <p>Primero lo que se lee de archivos:</p>
-<pre><code class="language-bash">./agente/.venv/bin/python -m agente.main --diagnostico
+<pre><code class="language-bash">uv run --directory agente python -m agente.main --diagnostico
 </code></pre>
 <p>Después lo que sólo se sabe abriendo la página:</p>
-<pre><code class="language-bash">./agente/.venv/bin/python -m agente.main --sonda
+<pre><code class="language-bash">uv run --directory agente python -m agente.main --sonda
 </code></pre>
 <p>Tiene que decir:</p>
 <pre><code>[OK ] permiso_sitio    la extensión puede entrar a web.whatsapp.com
@@ -477,7 +477,7 @@ retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.</p>
 </table>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit 0914d45 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit 688e578 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>
