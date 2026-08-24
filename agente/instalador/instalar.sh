@@ -159,8 +159,13 @@ titulo "[5/7] Los datos de esta máquina"
 # Lo que la máquina puede saber sola, se averigua solo: qué perfil de Chrome
 # tiene la extensión Y la sesión de WhatsApp, y el deviceId de la extensión.
 # Es la misma lógica de `--datos`, sin pedirle a nadie que copie nada.
+#
+# El `cd` no es decorativo: el paquete `agente` no se instala en el venv (el
+# pyproject no tiene build-system, a propósito), así que sólo se puede importar
+# parado en esa carpeta — igual que hace `uv run --directory agente` en todos
+# los comandos del proyecto, y el launchd con su WorkingDirectory.
 
-datos=$("$PYTHON" - <<'PY'
+datos=$(cd "$REPO/agente" && "$PYTHON" - <<'PY'
 from agente.perfiles import listar, recomendar
 r = recomendar(listar())
 if r.listo:

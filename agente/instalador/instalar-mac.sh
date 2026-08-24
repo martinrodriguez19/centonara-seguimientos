@@ -163,8 +163,10 @@ echo "      $PLIST"
 # Lo escribe el agente y no un `echo` con redirección, porque ese archivo suele
 # tener otras cosas: un `echo >` lo sobrescribe entero y le borra la
 # configuración a alguien que ya usaba Claude Code.
+# El `cd` es necesario: el paquete `agente` no se instala en el venv (no hay
+# build-system en el pyproject), así que sólo se importa parado en esa carpeta.
 echo "      permiso del modo headless:"
-"$PYTHON" -c "from agente.permiso_mcp import asegurar; r = asegurar(); print('        ' + r.detalle)"
+(cd "$AGENTE" && "$PYTHON" -c "from agente.permiso_mcp import asegurar; r = asegurar(); print('        ' + r.detalle)")
 
 echo "[4/5] Chrome al iniciar sesión"
 
@@ -211,7 +213,7 @@ echo "      perfil: ${CHROME_PERFIL_DIR}  ·  puerto: ${CHROME_PUERTO}"
 
 echo "[5/5] diagnóstico"
 echo
-"$PYTHON" -m agente.main --diagnostico || true
+(cd "$AGENTE" && "$PYTHON" -m agente.main --diagnostico) || true
 
 # ---------------------------------------------------------------------------
 # Las líneas del .env, ya resueltas
