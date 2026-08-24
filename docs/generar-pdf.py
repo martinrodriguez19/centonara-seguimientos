@@ -61,13 +61,17 @@ h3 { font-size: 11pt; margin: 1.2em 0 .4em; page-break-after: avoid; }
 p, ul, ol, table { margin: .55em 0; }
 li { margin: .25em 0; }
 
-/* Un bloque de comandos no se parte a la mitad de la página. */
+/* Un bloque de comandos no se parte a la mitad de la página. Y una línea más
+   ancha que la hoja SE AJUSTA, nunca se recorta: `overflow-x` en papel es
+   tijera, y ya costó un 404 — el comando con la URL larga salía incompleto y
+   la gente tipeaba lo que veía. */
 pre {
   background: var(--fondo-codigo);
   border: 1px solid var(--linea);
   border-radius: 5px;
   padding: .7em .9em;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   page-break-inside: avoid;
   font-size: 9pt;
   line-height: 1.45;

@@ -39,13 +39,17 @@ h3 { font-size: 11pt; margin: 1.2em 0 .4em; page-break-after: avoid; }
 p, ul, ol, table { margin: .55em 0; }
 li { margin: .25em 0; }
 
-/* Un bloque de comandos no se parte a la mitad de la página. */
+/* Un bloque de comandos no se parte a la mitad de la página. Y una línea más
+   ancha que la hoja SE AJUSTA, nunca se recorta: `overflow-x` en papel es
+   tijera, y ya costó un 404 — el comando con la URL larga salía incompleto y
+   la gente tipeaba lo que veía. */
 pre {
   background: var(--fondo-codigo);
   border: 1px solid var(--linea);
   border-radius: 5px;
   padding: .7em .9em;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   page-break-inside: avoid;
   font-size: 9pt;
   line-height: 1.45;
@@ -201,8 +205,11 @@ panel se rota y sale uno nuevo.</p>
 <h2>2.2 — Un solo comando en la Terminal</h2>
 <p>Abrir la <strong>Terminal</strong> (Cmd + barra espaciadora, escribir <code>Terminal</code>, Enter) y
 pegar esto:</p>
-<pre><code class="language-bash">curl -fsSL https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.sh | bash
+<pre><code class="language-bash">curl -fsSL https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash
 </code></pre>
+<p>Es <strong>una sola línea</strong>, tal cual, de <code>curl</code> a <code>bash</code>. Si se está tipeando desde
+el papel y se ve partida, va todo seguido y sin espacios agregados. Un error de
+tipeo se delata rápido: <code>curl</code> contesta <code>404</code> y no instala nada.</p>
 <p>Ese comando hace <strong>todo lo demás</strong>: instala las herramientas, baja el
 programa, averigua solo los datos de la máquina, deja configurado el arranque
 automático y arranca todo. En el camino:</p>
@@ -368,7 +375,7 @@ launchctl bootout gui/$(id -u)/com.centonara.chrome
 </ul>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit 2e5f474 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit c379dbc 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

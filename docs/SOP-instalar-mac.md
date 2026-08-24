@@ -104,8 +104,12 @@ Abrir la **Terminal** (Cmd + barra espaciadora, escribir `Terminal`, Enter) y
 pegar esto:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.sh | bash
+curl -fsSL https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash
 ```
+
+Es **una sola línea**, tal cual, de `curl` a `bash`. Si se está tipeando desde
+el papel y se ve partida, va todo seguido y sin espacios agregados. Un error de
+tipeo se delata rápido: `curl` contesta `404` y no instala nada.
 
 Ese comando hace **todo lo demás**: instala las herramientas, baja el
 programa, averigua solo los datos de la máquina, deja configurado el arranque
