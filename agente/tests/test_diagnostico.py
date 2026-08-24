@@ -156,9 +156,7 @@ def test_una_sola_falla_alcanza_para_no_tomar_envios() -> None:
     assert not diagnostico.puede_enviar
 
 
-def test_lo_que_solo_se_ve_abriendo_la_pagina_da_na(
-    hogar: Path, carpeta_agente: Path
-) -> None:
+def test_lo_que_solo_se_ve_abriendo_la_pagina_da_na(hogar: Path, carpeta_agente: Path) -> None:
     """`whatsapp_sesion` y `permiso_sitio` no se pueden verificar leyendo archivos.
 
     Los contesta `--sonda`, que abre la página una vez. Acá dan `n/a` y no
@@ -169,9 +167,7 @@ def test_lo_que_solo_se_ve_abriendo_la_pagina_da_na(
         assert chequeos[nombre].estado is Estado.NO_APLICA
 
 
-def test_el_puerto_de_chrome_cerrado_no_es_una_falla(
-    hogar: Path, carpeta_agente: Path
-) -> None:
+def test_el_puerto_de_chrome_cerrado_no_es_una_falla(hogar: Path, carpeta_agente: Path) -> None:
     """El agente lo abre solo cuando llega trabajo.
 
     Que ahora esté cerrado no dice nada. Lo que sí sería un problema —Chrome
