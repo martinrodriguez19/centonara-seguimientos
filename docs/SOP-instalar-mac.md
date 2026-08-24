@@ -169,7 +169,60 @@ Sale el UUID a continuación de la clave. Ese valor va en `AGENTE_DEVICE_ID`.
 **No sirve** listar los navegadores conectados a la cuenta: devuelve nombres
 genéricos que no dicen cuál es cuál.
 
-## 2.5 · Los permisos, que son dos capas ⚠️
+## 2.5 · ⚠️ Un solo perfil de Chrome, con las dos cosas
+
+Este paso no estaba en el plan original y es el que rompe todo si se saltea.
+
+**`LISTAR` usa la extensión. `ENVIAR` usa el navegador por CDP. Las dos van
+contra el mismo Chrome**, así que el perfil que use el vendedor tiene que tener:
+
+1. La extensión Claude in Chrome instalada
+2. La sesión de WhatsApp Business iniciada
+
+En la máquina donde se probó esto **estaban en perfiles distintos** —la extensión
+en uno, la sesión en otro— y ninguna de las dos partes habría funcionado. Se ve
+así:
+
+```bash
+# Perfiles con la extensión
+ls -d ~/Library/Application\ Support/Google/Chrome/*/Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn
+```
+
+```bash
+# Perfiles con datos de WhatsApp Web
+ls -d ~/Library/Application\ Support/Google/Chrome/*/IndexedDB/*whatsapp*
+```
+
+**Tiene que salir el mismo perfil en las dos.** Si no, instalá la extensión en el
+perfil donde está WhatsApp, o iniciá WhatsApp en el perfil donde está la
+extensión. Anotá cuál es: va en el arranque de Chrome, más abajo.
+
+## 2.6 · Cómo tiene que arrancar Chrome
+
+Para que Playwright pueda escribir el mensaje, Chrome necesita tres flags.
+Desde Chrome 136 el puerto de depuración **se ignora en silencio** si no se pasa
+`--user-data-dir` explícito: arranca, acepta el flag, y no abre el puerto.
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/Library/Application Support/Google/Chrome" \
+  --profile-directory="Default"
+```
+
+Reemplazá `Default` por el perfil de §2.5.
+
+Se comprueba así, y tiene que devolver un JSON:
+
+```bash
+curl http://localhost:9222/json/version
+```
+
+⚠️ **Chrome tiene que estar cerrado del todo antes.** Si ya hay una instancia
+corriendo, el comando le pide a esa que abra una ventana y el puerto no se
+habilita.
+
+## 2.7 · Los permisos, que son dos capas ⚠️
 
 Este es el paso que más se olvida, porque uno de los dos **ya viene dado** y
 parece que está todo.
@@ -191,7 +244,7 @@ Y el permiso MCP para headless, si el instalador lo marcó en rojo:
 mkdir -p ~/.claude && echo '{"permissions":{"allow":["mcp__claude-in-chrome"]}}' > ~/.claude/settings.json
 ```
 
-## 2.6 · Comprobar antes de arrancar
+## 2.8 · Comprobar antes de arrancar
 
 ```bash
 ./agente/.venv/bin/python -m agente.main --diagnostico
@@ -199,7 +252,7 @@ mkdir -p ~/.claude && echo '{"permissions":{"allow":["mcp__claude-in-chrome"]}}'
 
 Los cinco que se verifican leyendo archivos tienen que estar en verde.
 
-Y después el único que comprueba los dos de §2.5:
+Y después el único que comprueba los dos de §2.7:
 
 ```bash
 ./agente/.venv/bin/python -m agente.main --sonda
@@ -217,11 +270,11 @@ Si falla, distingue los tres casos, que se arreglan distinto:
 
 | Motivo | Qué hacer |
 |---|---|
-| `sin_permiso` | Falta §2.5 |
+| `sin_permiso` | Falta §2.7 |
 | `sesion_no_iniciada` | WhatsApp Web pide QR |
 | `browser_no_disponible` | El `deviceId` de §2.4 no es el de este Chrome |
 
-## 2.7 · Arrancar
+## 2.9 · Arrancar
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
@@ -286,9 +339,11 @@ Dos resultados que parecen fallas y no lo son:
 | Síntoma | Causa |
 |---|---|
 | `OPENSSL_Uplink(...): no OPENSSL_Applink` | Un antivirus dejó `SSLKEYLOGFILE` en el entorno. El agente ya la descarta al arrancar; si aparece igual, es otro proceso |
-| `Claude in Chrome requires permission` | §2.5, la capa de la extensión |
+| `Claude in Chrome requires permission` | §2.7, la capa de la extensión |
 | `token_rechazado` en el log | El token no es el de esta máquina, o se rotó |
 | El agente no toma trabajo | La máquina está inactiva o pausada (§3.1), o el kill switch está puesto |
 | `browser_no_disponible` | El `deviceId` es de otro Chrome |
 | Arranca a mano y falla con launchd | Una ruta relativa en algún lado. Todo absoluto |
+| WhatsApp Web pide QR de golpe, sin que nadie tocara nada | **La sesión expiró.** Pasa: dura días, no meses. Hay que volver a vincular |
+| `curl localhost:9222` no contesta | Chrome estaba abierto al lanzarlo, o falta `--user-data-dir` |
 | El panel muestra un error crudo | Reportarlo: los mensajes del panel se escriben para quien lo usa, no para quien lo programó |

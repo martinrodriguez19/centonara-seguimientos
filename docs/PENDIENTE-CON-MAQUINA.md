@@ -177,13 +177,15 @@ Lo que falta es enchufarle un navegador de verdad.
 
 ### F4.2 — Cómo se conecta al Chrome
 
-- [x] ~~Elegir entre CDP y perfil dedicado~~ · **decidido, y no por preferencia.**
-      Chrome 136+ ignora `--remote-debugging-port` con el perfil por defecto.
-      Medido en Chrome 151: con el perfil por defecto el puerto no escucha, con
-      `--user-data-dir` aparte sí. Así que **no se puede reusar la sesión de
-      WhatsApp del vendedor**, y queda el perfil dedicado — con el costo de un
-      segundo dispositivo vinculado. Es una decisión de Chrome, no del sistema
-      operativo: pasa igual en macOS. Detalle en `adaptadores/conexion.py`.
+- [x] ~~Elegir entre CDP y perfil dedicado~~ · **gana CDP sobre el Chrome del
+      vendedor**, con una sola sesión y un solo dispositivo vinculado.
+
+      Chrome 136+ ignora `--remote-debugging-port` sólo cuando el perfil es el
+      **por defecto implícito**. Pasando `--user-data-dir` con la ruta explícita
+      —aunque sea la del mismo perfil real— el puerto abre. Medido en Chrome 151.
+
+      Hay que arrancarlo con los tres flags: el puerto, `--user-data-dir` y
+      `--profile-directory`. Detalle en `adaptadores/conexion.py`.
       Original:
       **(A)** CDP sobre el Chrome del vendedor · **(B)** perfil dedicado de
       Playwright.
@@ -237,6 +239,26 @@ Antes de ejecutar, las cinco cosas:
 - [ ] Presentarle al cliente los tres mensajes tal como los recibió el
       destinatario, el costo medido por mensaje, y el riesgo de bloqueo de líneas
       sin suavizarlo. **La presentación tiene que permitirle decir que no.**
+
+---
+
+## Dos cosas que aparecieron probando la conexión
+
+- [ ] ⚠️ **Un solo perfil de Chrome tiene que tener la extensión Y la sesión de
+      WhatsApp.** `LISTAR` usa la extensión, `ENVIAR` usa CDP, y las dos van
+      contra el mismo navegador. En la máquina de desarrollo estaban en perfiles
+      distintos —la extensión en uno, la sesión en otro— y ninguna de las dos
+      partes habría funcionado. **Verificarlo al instalar cada Mac.**
+
+- [ ] ⚠️ **La sesión de WhatsApp Web expira.** No es una hipótesis: la que usó
+      `LISTAR` el 21 de agosto ya no existía el 24. La página de vinculación
+      tiene un `auto-logout` visible.
+
+      Cuando se cae, el sistema entero se detiene y **nadie se entera hasta que
+      una corrida falla**. Falla cerrado, que es lo correcto, pero el hueco es de
+      aviso, no de seguridad. Hay que medir en la Mac cuánto dura, y decidir cómo
+      se entera alguien — el chequeo `whatsapp_sesion` del diagnóstico ya existe
+      y lo reporta al panel; falta que eso dispare una alerta.
 
 ---
 

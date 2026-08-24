@@ -1,54 +1,65 @@
 """De dónde sale la página de Playwright. **F4.2 — decidida el 24/8/2026.**
 
 `whatsapp_web.py` recibe una `Page` y no le importa de dónde vino. La decisión de
-cómo conseguirla estaba abierta, y se resolvió sola: **una de las dos opciones no
-es posible.**
+cómo conseguirla era: CDP sobre el Chrome del vendedor, o un perfil dedicado.
+
+**Gana CDP sobre el Chrome del vendedor**, y con eso el sistema usa una sola
+sesión de WhatsApp y un solo dispositivo vinculado.
 
 ---
 
-## ⚠️ La opción A está descartada: Chrome no la permite
+## Lo que Chrome bloquea, y lo que no
 
-El plan era enganchar Playwright por CDP al Chrome que el vendedor ya tiene
-abierto, reusando su sesión de WhatsApp. Eso **no funciona desde Chrome 136**:
-Google ignora `--remote-debugging-port` cuando se usa el **perfil por defecto**,
-como medida de seguridad para que un malware no pueda leer cookies por CDP.
+Desde Chrome 136, `--remote-debugging-port` **se ignora cuando el perfil es el
+por defecto implícito** — o sea, cuando no se pasa `--user-data-dir`. Es una
+medida de seguridad para que un malware no lea cookies por CDP, y **falla en
+silencio**: Chrome arranca, acepta el flag, y no abre el puerto.
 
-Medido en Chrome 151, el 24 de agosto de 2026:
+Pero **basta con pasar la ruta explícita**, incluso la del mismo perfil real.
+Medido en Chrome 151 el 24 de agosto de 2026:
 
-    perfil por defecto     + --remote-debugging-port=9222  ->  el puerto NO escucha
-    --user-data-dir aparte + --remote-debugging-port=9223  ->  el puerto ESCUCHA
+    --remote-debugging-port                              ->  el puerto NO escucha
+    --remote-debugging-port --user-data-dir=<ruta real>  ->  el puerto ESCUCHA
 
-No es un problema de configuración ni de permisos: Chrome arranca, acepta el
-flag sin quejarse, y simplemente no abre el puerto. Que falle en silencio es lo
-que lo hace difícil de diagnosticar.
+Con eso Playwright se engancha al Chrome del vendedor, con su perfil, su sesión
+de WhatsApp y su extensión. No hace falta un segundo dispositivo vinculado.
 
-Y es una decisión de Chrome, no del sistema operativo: **pasa igual en macOS**.
-Este era el único punto de F4.2 que necesitaba una Mac para decidirse, y ya no.
+## Cómo hay que arrancar Chrome
 
-## Entonces queda la opción B — perfil dedicado
+Los tres flags, y ninguno es opcional:
 
-Un Chrome aparte, con su propio perfil, vinculado a WhatsApp una vez.
+    --remote-debugging-port=9222
+    --user-data-dir="<carpeta User Data del vendedor>"
+    --profile-directory="<el perfil que usa>"
 
-Cualquier camino con CDP necesita `--user-data-dir` distinto del por defecto, y
-un perfil distinto **no tiene la sesión de WhatsApp del vendedor**: hay que
-vincularlo. Así que "CDP con otro perfil" y "perfil dedicado de Playwright" son
-la misma cosa con distinto nombre. `conectar_cdp` se conserva porque sirve para
-engancharse a un Chrome ya vinculado, no para reusar el del vendedor.
+El tercero importa más de lo que parece: sin él Chrome abre el perfil `Default`,
+que en una máquina con varios perfiles **no es el que tiene nada**.
 
-⚠️ **Lo que eso cuesta, y hay que decirlo:** es un **segundo dispositivo
-vinculado** a la línea del vendedor. Ocupa uno de los cuatro que WhatsApp
-permite, y es una sesión más que se puede caer sin que nadie la vea hasta que
-una corrida falla. No hay forma de evitarlo: la alternativa la cerró Chrome.
+## ⚠️ Un solo perfil tiene que tener las dos cosas
 
-## Lo que sigue faltando medir, y sí necesita la Mac
+`LISTAR` usa la extensión Claude in Chrome. `ENVIAR` usa esta conexión. Las dos
+tienen que dar contra **el mismo perfil**, y ese perfil tiene que tener:
 
-Ya no *cuál* de las dos, sino cómo se comporta la que quedó:
+1. La extensión instalada
+2. La sesión de WhatsApp Web iniciada
 
-1. Si el vendedor **reinicia la máquina**, ¿sigue vinculada sin que nadie toque nada?
-2. ¿Sobrevive **media jornada** de uso normal?
-3. Si la sesión se cae, ¿cuánto tarda alguien en enterarse?
+En la máquina donde se probó esto **estaban en perfiles distintos** —la
+extensión en uno, la sesión en otro— y ninguna de las dos partes habría
+funcionado. Es lo primero que hay que verificar al instalar, y está en el SOP.
 
-La tercera es la que más importa, porque es la que no tiene dueño.
+## ⚠️ La sesión de WhatsApp Web expira
+
+No es una hipótesis: la sesión que usó `LISTAR` el 21 de agosto ya no existía el
+24. La página de vinculación tiene un `auto-logout` visible.
+
+Cuando se cae, **el sistema entero se detiene**: `LISTAR` no puede leer y
+`ENVIAR` no puede escribir. Falla cerrado, que es lo correcto, pero nadie se
+entera hasta que una corrida falla. Ese es el riesgo operativo que queda abierto,
+y es lo que hay que medir en la Mac: cuánto dura, y cómo se entera alguien.
+
+`conectar_perfil` se conserva para el caso en que haya que aislar el navegador
+del vendedor, pero **no es la opción elegida**: ese camino sí vincula un
+dispositivo más.
 """
 
 from __future__ import annotations
