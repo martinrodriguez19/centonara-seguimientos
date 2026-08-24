@@ -223,11 +223,13 @@ final.
       pide Windows: permisos de Automatización, acceso al disco, si Gatekeeper
       molesta. **Es la lista que nadie tiene**, porque el MVP nunca corrió en Mac.
       Después, agregar el chequeo `permisos_macos` al diagnóstico.
-- [ ] **F5.2** — El LaunchAgent en `~/Library/LaunchAgents/`. Tiene que ser un
+- [x] **F5.2** — El LaunchAgent en `~/Library/LaunchAgents/`. Lo escribe
+      `agente/instalador/instalar-mac.sh`. **Falta probarlo en una Mac.** Tiene que ser un
       LaunchAgent y **no** un LaunchDaemon: Chrome y la extensión viven en la
       sesión interactiva del usuario y un daemon no los ve.
-- [ ] **F5.3** — El instalador de tres pasos, probado en al menos dos Macs
-      distintas.
+- [ ] **F5.3** — ~~Escribir el instalador~~ hecho: `instalar-mac.sh`, con el
+      SOP en `docs/SOP-instalar-mac.md`. Falta **probarlo en al menos dos Macs
+      distintas**, que es lo que el criterio pedía.
 - [ ] **F5.4** — El ícono de la barra de menú con "pausar por hoy". Criterio: un
       vendedor pausa su máquina sin ayuda.
 - [ ] **F5.6** — Los tres SOPs, y ⚠️ **retirar de circulación el SOP viejo**, que
