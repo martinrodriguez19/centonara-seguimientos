@@ -124,7 +124,25 @@ else
   mkdir -p "$REPO"
   # El tarball trae el código y nada más: el .env y el entorno de esta máquina
   # no están adentro, así que sobreescribir actualiza sin borrarlos.
-  curl -fsSL "$TARBALL" | tar -xz --strip-components=1 -C "$REPO"
+  #
+  # Y si no se puede bajar —repositorio privado, o sin internet— pero la
+  # carpeta ya tiene el proyecto (llegó por AirDrop o USB), se sigue con esa:
+  # no poder actualizar no es no poder instalar.
+  if curl -fsSL "$TARBALL" | tar -xz --strip-components=1 -C "$REPO"; then
+    echo "  ok  proyecto en $REPO"
+  elif [ -f "$REPO/agente/pyproject.toml" ]; then
+    echo "  aviso: no se pudo bajar la última versión desde GitHub."
+    echo "  Se sigue con la copia que ya está en $REPO."
+  else
+    echo "  MAL: no se pudo bajar el proyecto desde GitHub, y en $REPO" >&2
+    echo "  no hay una copia." >&2
+    echo >&2
+    echo "  Si el repositorio es privado: copiá la carpeta del proyecto a" >&2
+    echo "  esta Mac (AirDrop o USB) como ~/centonara-seguimientos y corré:" >&2
+    echo >&2
+    echo "    bash ~/centonara-seguimientos/agente/instalador/instalar.sh" >&2
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------------------
