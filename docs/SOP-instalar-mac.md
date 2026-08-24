@@ -1,413 +1,141 @@
-# SOP — Instalar el agente en una Mac
+# Instalar el agente en la Mac de un vendedor
 
-> Se corre una vez por máquina. Media hora la primera vez, diez minutos después.
+> **Se hace una sola vez por Mac, en unos 20 minutos.** Después de esto, cada
+> vez que se prenda la computadora todo arranca solo: el vendedor no tiene que
+> abrir nada, correr nada ni acordarse de nada.
 >
-> **Antes de empezar, dos cosas que este sistema todavía no hace**, para que
-> nadie las espere:
+> La instalación tiene tres partes:
 >
-> - **No envía mensajes.** Falta el adaptador de Playwright (`whatsapp_web.py`,
->   fase 4). El agente lee los chats y redacta borradores; el envío se rechaza
->   con un motivo explícito. Lo que se puede probar de punta a punta es
->   **botón → leer WhatsApp → triage → borradores en el panel**.
-> - **El vendedor no tiene ícono en la barra de menú** para pausar su máquina
->   (fase 5). Se pausa desde el panel.
+> 1. **En el panel** — 5 minutos, desde cualquier computadora
+> 2. **En la Mac** — un rato con el mouse en Chrome, y **un solo comando** en la Terminal
+> 3. **Activar** — de vuelta en el panel, cuando se decida
+
+**Dos cosas que este sistema todavía no hace**, para que nadie las espere:
+
+- **No envía mensajes.** El agente lee los chats y redacta borradores; el envío
+  se rechaza con un motivo explícito hasta la fase 4. Lo que sí se prueba de
+  punta a punta es: botón → leer WhatsApp → borradores en el panel.
+- **No hay ícono en la barra de menú** para que el vendedor pause su máquina
+  (fase 5). Se pausa desde el panel.
 
 ---
 
-## Antes de empezar — lo que hay que tener a mano
+## Qué hay que tener a mano antes de empezar
 
 | | |
 |---|---|
-| Cuenta de Claude | **Una por máquina**, del Enterprise del cliente (D2). Una API key **no sirve**: desactiva la integración con Chrome |
-| Chrome | Con la extensión Claude in Chrome instalada |
-| WhatsApp Web | Con la sesión de **esa** línea iniciada, sin QR pendiente |
+| Una cuenta de Claude | **Una por máquina**, del Enterprise del cliente. Una API key **no sirve**: desactiva la integración con Chrome |
+| Chrome instalado | El que usa el vendedor todos los días |
+| El teléfono del vendedor | Para escanear el QR de WhatsApp |
 | La contraseña del panel | Para la parte 1 |
+| Internet | Para bajar el programa |
 
-Y confirmar con el administrador de la organización que la extensión esté
-**habilitada por política**. Si está restringida, no funciona en ninguna máquina
-y no se arregla desde el código.
+Y confirmar con el administrador de la organización que la extensión **Claude
+in Chrome** esté habilitada por política. Si está restringida, no funciona en
+ninguna máquina y no se arregla desde el código.
 
 ---
 
 # Parte 1 — En el panel
 
-Cuatro pasos. Se hacen desde cualquier navegador y **no necesitan la Mac
-delante**: conviene hacerlos enteros antes de sentarse a la máquina.
+Se hace desde cualquier navegador, sin la Mac delante. Conviene tenerla lista
+antes de sentarse a la máquina.
 
-## Paso 1 — Entrar al panel
+## 1.1 — Entrar
 
 **https://frontend-produccion.onrender.com**, con la contraseña del panel.
 
-Si no entra, lo único que puede faltar es `PANEL_PASSWORD` en el servicio
-`backend-produccion` de Render. Es la única variable que se carga a mano:
-`SESION_SECRET` lo genera Render solo (`generateValue: true` en el blueprint).
+## 1.2 — Decir a quién puede escribirle ⚠️
 
-## Paso 2 — ⚠️ Decir a quién puede escribirle
+**Configuración → destinos permitidos.** Cargar los números de prueba, **y sólo
+esos**. En la misma pantalla, **tope por corrida = 3** mientras se prueba.
 
-**Configuración → destinos permitidos.** Cargar los números de prueba, y sólo
-esos.
+En una base nueva esta lista arranca vacía, y vacía significa **a nadie**. No
+es un error: es lo que hace imposible que un cliente real reciba algo por
+accidente. Pero tiene una consecuencia que confunde la primera vez: si se
+saltea este paso, la corrida lee los chats y **no redacta ninguno**. Parece que
+no funcionó, y funcionó exactamente como debía.
 
-En una base nueva esta lista **arranca vacía**, y vacía significa **a nadie**
-(regla R4). No es un descuido del sistema: es su estado de fábrica, y es lo que
-hace imposible que un cliente real reciba algo por accidente.
-
-Pero tiene una consecuencia que confunde la primera vez: **si se saltea este
-paso, la corrida lee los chats y no redacta ninguno.** Se ve como si no hubiera
-funcionado, y en realidad funcionó exactamente como debía. El log lo cuenta:
-`no_permitidos`.
-
-Se guardan normalizados a E.164, así que se pueden escribir con espacios y
-guiones.
-
-En la misma pantalla, **tope por corrida = 3** mientras se esté probando.
-
-## Paso 3 — Dar de alta la máquina
+## 1.3 — Dar de alta la máquina
 
 Panel → **Dar de alta una máquina**:
 
-- **Identificador** — minúsculas, números y guiones. `mac-rocio`, no
-  `Mac de Rocío`. Es lo que se ve en logs y URLs, y el formulario lo rechaza si
-  no lo es.
+- **Identificador** — minúsculas, números y guiones: `mac-rocio`, no
+  `Mac de Rocío`.
 - **Nombre del vendedor** — acá sí, con mayúsculas y acentos.
 - **Línea de WhatsApp** — opcional.
 
-⚠️ **El token se muestra una sola vez.** Se guarda hasheado y no se puede
-recuperar; si se pierde hay que rotarlo y reconfigurar la máquina.
+⚠️ **El token se muestra una sola vez.** Anotá en una nota, juntos, el
+**identificador** y el **token** (empieza con `sgc_`): son las dos únicas cosas
+que el instalador va a preguntar en la parte 2. Si el token se pierde, en el
+panel se rota y sale uno nuevo.
 
 La máquina **nace inactiva**. Instalar no es activar.
-
-## Paso 4 — Anotar la URL del backend
-
-La que va a ir en el `.env` de la Mac:
-
-```
-https://backend-produccion-7yqr.onrender.com
-```
-
-⚠️ **Lleva sufijo.** `backend-produccion.onrender.com`, sin él, **es la
-aplicación de otra persona**: los subdominios de Render son globales, el nombre
-estaba tomado y Render asignó otro. Apuntar ahí mandaría credenciales a un
-servidor ajeno.
-
-Se comprueba en dos segundos:
-
-```bash
-curl https://backend-produccion-7yqr.onrender.com/health
-```
-
-Tiene que devolver `{"ok":true,"mongo":true,"entorno":"produccion"}`.
-
-> **Alternativa para desarrollo:** una máquina de la misma red, con el backend
-> escuchando en `0.0.0.0` y el puerto abierto en el firewall
-> (`http://192.168.x.x:8000`). Sirve para probar sin depender del despliegue.
 
 ---
 
 # Parte 2 — En la Mac
 
-Diez pasos, del 5 al 14. Cada uno dice qué correr y qué tenés que ver.
+## 2.1 — Preparar Chrome (con el mouse, 5 minutos)
 
----
+En el Chrome del vendedor —el de todos los días—, en orden:
 
-## Paso 5 — Instalar las herramientas
+1. **Instalar la extensión Claude in Chrome** e iniciar sesión con la cuenta
+   de Claude de **esta** máquina.
+2. **Usar la extensión una vez**: apretar el ícono de Claude y pedirle
+   cualquier cosa. Con eso la extensión queda registrada en esta máquina.
+3. **Abrir `web.whatsapp.com`** y escanear el QR con el teléfono del vendedor.
+4. **Dar el permiso de sitio**: ícono de Claude en la barra → **configuración →
+   permisos de sitios → habilitar `web.whatsapp.com`**.
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+Sobre el punto 4, dos aclaraciones que ahorran una hora:
 
-```bash
-npm install -g @anthropic-ai/claude-code
-```
+- **No es el menú de Chrome.** Si entrás por la configuración de Chrome vas a
+  ver "Acceso al sitio: todos los sitios", y eso ya está bien: **no es el que
+  falta**. El que hay que dar es el de adentro de la extensión.
+- Es el **único paso de toda la guía que no se puede automatizar**, a
+  propósito: es la extensión pidiendo que una persona autorice que un programa
+  opere sobre WhatsApp. Forzarlo por archivo sería saltear un control de
+  seguridad.
 
----
+## 2.2 — Un solo comando en la Terminal
 
-## Paso 6 — Traer el proyecto
-
-```bash
-git clone https://github.com/martinrodriguez19/centonara-seguimientos.git
-cd centonara-seguimientos
-```
-
-**Todo lo que sigue se corre desde esa carpeta.** Si en algún momento algo falla
-con "no such file", casi siempre es que saliste de ahí. Para volver:
-
-```bash
-cd ~/centonara-seguimientos
-```
-
----
-
-## Paso 7 — Preparar el Chrome del vendedor
-
-Abrí Chrome —el que usa el vendedor todos los días— y asegurate de que tenga
-estas dos cosas **en el mismo perfil**:
-
-1. La extensión **Claude in Chrome** instalada
-2. **WhatsApp Business** abierto en `web.whatsapp.com`, con la sesión iniciada
-
-Después, **usá la extensión una vez** (abrila y pedile cualquier cosa). Eso hace
-que se registre en esta máquina, y el paso 9 lo va a necesitar.
-
-> Si la Mac tiene un solo perfil de Chrome, no hay nada que elegir. Si tiene
-> varios, el paso 9 te va a decir cuál quedó bien.
-
----
-
-## Paso 8 — Preparar el entorno del agente
+Abrir la **Terminal** (Cmd + barra espaciadora, escribir `Terminal`, Enter) y
+pegar esto:
 
 ```bash
-uv sync --directory agente
+curl -fsSL https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.sh | bash
 ```
 
-Tarda un minuto la primera vez.
+Ese comando hace **todo lo demás**: instala las herramientas, baja el
+programa, averigua solo los datos de la máquina, deja configurado el arranque
+automático y arranca todo. En el camino:
 
----
+- **Pregunta dos cosas**: el identificador y el token — los de la nota de la
+  parte 1.
+- **Puede pedir, una única vez, iniciar sesión en Claude Code**: correr
+  `claude` en la Terminal, entrar con la cuenta de esta máquina, salir con
+  `/exit`, y volver a pegar el mismo comando de arriba.
+- **Puede cerrar Chrome un momento** para volver a abrirlo bien (la sesión no
+  se pierde). Si macOS pregunta si la Terminal puede controlar Chrome, es que
+  **sí**.
 
-## Paso 9 — Averiguar los datos de esta máquina
+Si algo falta, el instalador **lo dice en castellano y se corta**. La respuesta
+es siempre la misma: hacer lo que dijo y **volver a pegar el mismo comando**.
+Es seguro correrlo las veces que haga falta — lo que ya está hecho lo saltea, y
+correrlo de nuevo es además la forma de **actualizar** el programa más
+adelante.
 
-Este comando mira la Mac y te dice todo lo que necesita saber el agente:
+Cuando termina dice **INSTALACIÓN COMPLETA**.
+
+## 2.3 — La comprobación final (recomendada)
+
+Verifica lo único que el instalador no puede: que la extensión tenga el
+permiso y que la sesión de WhatsApp esté viva. Abre WhatsApp Web una vez,
+**no lee ningún chat**, tarda unos minutos y cuesta alrededor de USD 0,50:
 
 ```bash
-uv run --directory agente python -m agente.main --datos
-```
-
-**Lo que vas a ver:**
-
-```
-PERFILES DE CHROME EN ESTA MÁQUINA
-  /Users/vendedor/Library/Application Support/Google/Chrome
-
-  Default        extensión + WhatsApp  <-- este
-  Profile 1      nada
-
-PONÉ ESTO EN EL .env
-  /Users/vendedor/centonara-seguimientos/.env
-
-AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com
-AGENTE_MODO=simulado
-CLAUDE_BIN=/usr/local/bin/claude
-CHROME_PERFIL_DIR=Default
-CHROME_PUERTO=9222
-AGENTE_DEVICE_ID=f83d5f3e-3278-46c6-8ccc-148e58805116
-AGENTE_MACHINE_ID=
-   ^ el identificador que pusiste en el panel al dar de alta la máquina
-AGENTE_TOKEN=
-   ^ el que mostró el panel en ese momento. Se muestra UNA sola vez.
-```
-
-**Copiá ese bloque**, desde `AGENTE_BACKEND_URL` hasta el final. Lo vas a pegar
-en el paso 10.
-
-> **Si falta Claude Code** —que es lo más probable en una Mac recién entregada—
-> te lo va a decir arriba de todo, con el comando para instalarlo:
->
-> ```
-> FALTA CLAUDE CODE
->   No se encontró el ejecutable `claude` en esta máquina.
->
->   Qué hacer:
->     npm install -g @anthropic-ai/claude-code
-> ```
->
-> El resto de los datos se imprime igual, así que podés ir armando el `.env`
-> mientras se instala. Después volvés a correr el comando y completás la línea
-> de `CLAUDE_BIN`, que va a salir resuelta.
->
-> Ojo con una cosa: la línea va a decir `CLAUDE_BIN=` **vacía**, y abajo una
-> explicación que empieza con `^`. Esa explicación **no se pega**.
-
-**Si en vez de eso dice `NO SE PUEDE SEGUIR TODAVÍA`**, te va a explicar qué
-falta y qué hacer. Los tres casos posibles:
-
-| Lo que dice | Qué hacer |
-|---|---|
-| La extensión está en un perfil y WhatsApp en otro | Abrí el Chrome del perfil que tiene WhatsApp e instalá ahí la extensión |
-| Ningún perfil tiene WhatsApp | Abrí `web.whatsapp.com` en el perfil que tiene la extensión y escaneá el QR |
-| Ningún perfil tiene la extensión | Instalá Claude in Chrome |
-| `AGENTE_DEVICE_ID=` sale vacío | La extensión está pero no se usó nunca. Usala una vez y volvé a correr esto |
-| `FALTA CLAUDE CODE` arriba de todo | Corré `npm install -g @anthropic-ai/claude-code` y volvé a correr esto |
-
-Arreglás lo que diga y **volvés a correr el mismo comando**.
-
----
-
-## Paso 10 — Crear el archivo `.env`
-
-```bash
-cp .env.example .env
-```
-
-Abrilo:
-
-```bash
-open -e .env
-```
-
-Y pegá el bloque del paso 9, **reemplazando** las líneas que ya estén con esos
-mismos nombres.
-
-**Después completá las dos que quedaron vacías.** Las dos salen del panel, de
-cuando diste de alta esta máquina:
-
-- **`AGENTE_MACHINE_ID`** — el identificador que escribiste vos, tipo
-  `mac-rocio`. Tiene que ser **idéntico**, letra por letra.
-- **`AGENTE_TOKEN`** — el que el panel mostró una sola vez, empieza con `sgc_`.
-
-> Si perdiste el token: en el panel, en la máquina, hay un botón para **rotarlo**.
-> Genera uno nuevo y el anterior deja de servir.
-
-**Dos cosas que rompen el archivo sin avisar:**
-
-- Las líneas que empiezan con `^` en la salida del paso 9 **son explicaciones, no
-  se pegan.**
-- Un comentario **al lado** de un valor vacío se convierte en el valor. Si
-  querés anotar algo, ponelo en la línea de arriba.
-
----
-
-## Paso 11 — Correr el instalador
-
-Fijate qué decía `CHROME_PERFIL_DIR` en el paso 9 y usalo acá.
-
-Si decía `Default`:
-
-```bash
-bash agente/instalador/instalar-mac.sh
-```
-
-Si decía otra cosa, por ejemplo `Profile 3`:
-
-```bash
-CHROME_PERFIL_DIR="Profile 3" bash agente/instalador/instalar-mac.sh
-```
-
-Deja preparado el arranque automático del agente y de Chrome, y corre el
-diagnóstico. **No arranca nada todavía.**
-
----
-
-## Paso 12 — Dar el permiso de sitio ⚠️
-
-Son **dos permisos distintos** con nombres parecidos. Uno ya está resuelto; el
-otro es el único paso de toda la guía que no se puede hacer desde la terminal.
-
-| Permiso | Quién lo pone |
-|---|---|
-| `mcp__claude-in-chrome`, para el modo headless | **El instalador, en el paso 11.** No hay nada que hacer |
-| La lista de sitios **de la extensión** | A mano, acá |
-
-> Si en algún lado encontrás un `echo '{...}' > ~/.claude/settings.json`, **no lo
-> corras**. Sobrescribe el archivo entero, y a alguien que ya usaba Claude Code
-> le borra su configuración. El instalador lo escribe respetando lo que hubiera.
-
-### Lo que hay que hacer
-
-**a.** Arrancá el Chrome del sistema, que ya quedó configurado con el perfil
-correcto y el puerto:
-
-```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist
-```
-
-> Se hace acá y no más adelante a propósito. Abrir Chrome con `open --args` no
-> sirve: si ya hay una instancia corriendo, macOS **ignora los argumentos** y la
-> ventana sale con el perfil equivocado. El LaunchAgent lo abre bien, y es
-> además como va a arrancar todos los días.
-
-⚠️ **Antes de correrlo, Chrome tiene que estar cerrado del todo.** Con `Cmd+Q`,
-no cerrando las ventanas. Comprobalo:
-
-```bash
-pgrep -f "Google Chrome" | wc -l
-```
-
-Tiene que dar **0**. Si da otra cosa, Chrome sigue vivo y el `bootstrap` va a
-parecer que funcionó y no va a abrir el puerto.
-
-**b.** Comprobá que quedó bien:
-
-```bash
-curl http://localhost:9222/json/version
-```
-
-Tiene que devolver un JSON con `"Browser": "Chrome/..."`.
-
-**Si no contesta nada**, Chrome estaba abierto cuando corriste (a). Y acá viene
-lo que confunde: volver a correr el `bootstrap` **no alcanza**, porque el
-servicio ya quedó cargado y devuelve
-
-```
-Bootstrap failed: 5: Input/output error
-```
-
-Ese mensaje quiere decir **"ya está cargado"**, no que algo falló. El ciclo
-completo para reintentar es descargar, cerrar Chrome, y volver a cargar:
-
-```bash
-launchctl bootout gui/$(id -u)/com.centonara.chrome
-```
-
-```bash
-pgrep -f "Google Chrome" | wc -l
-```
-
-Con eso en **0**:
-
-```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist && sleep 5 && curl -s http://localhost:9222/json/version
-```
-
-Si sigue sin contestar, mirá qué dice el servicio y su log:
-
-```bash
-launchctl print gui/$(id -u)/com.centonara.chrome | head -30
-```
-
-```bash
-cat ~/Library/Logs/centonara/chrome.err
-```
-
-**c.** En esa ventana de Chrome, entrá a `web.whatsapp.com`. Si pide QR,
-escanealo con la línea del vendedor.
-
-**d.** Con esa pestaña adelante: **ícono de Claude en la barra → configuración →
-permisos de sitios → habilitar `web.whatsapp.com`.**
-
-### Dos cosas que confunden acá
-
-**El menú de Chrome no es este permiso.** Si entrás por ahí vas a ver "Acceso al
-sitio: todos los sitios". Eso ya está bien y **no es lo que falta**: el de Chrome
-viene dado, el de la extensión hay que darlo.
-
-**Sin este, el error es `Claude in Chrome requires permission`** — lo tira el
-navegador, no el CLI, así que **no aparece en ningún log del agente**. Si lo ves,
-es esto.
-
-### Por qué este no se automatiza
-
-Es una puerta de consentimiento: la extensión pide que una persona autorice, a
-propósito, que un programa opere sobre WhatsApp. Vive adentro del almacenamiento
-de la extensión, no en un archivo de configuración.
-
-Se podría forzar escribiendo ahí. **No se hace**: sería saltear un control de
-seguridad, y se rompería en la próxima versión de la extensión.
-
-Lo que sí se puede es **verificarlo sin adivinar**, y eso es el paso siguiente.
-
----
-
-## Paso 13 — Comprobar que todo quedó bien
-
-Primero lo que se lee de archivos:
-
-```bash
-uv run --directory agente python -m agente.main --diagnostico
-```
-
-Después lo que sólo se sabe abriendo la página:
-
-```bash
-uv run --directory agente python -m agente.main --sonda
+cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main --sonda
 ```
 
 Tiene que decir:
@@ -417,119 +145,105 @@ Tiene que decir:
 [OK ] whatsapp_sesion  sesión iniciada, N chats a la vista
 ```
 
-Abre WhatsApp Web una vez, cuenta los chats y **no lee ninguno**. Tarda un par de
-minutos y cuesta alrededor de USD 0,50.
+Si algo sale mal:
 
-Si falla:
-
-| Motivo | Qué hacer |
+| Dice | Qué hacer |
 |---|---|
-| `sin_permiso` | Falta el paso 12 |
-| `sesion_no_iniciada` | WhatsApp Web está pidiendo el QR. Escanealo |
-| `browser_no_disponible` | El `AGENTE_DEVICE_ID` del `.env` no es el de este Chrome. Volvé a correr `--datos` |
+| `sin_permiso` | Falta el punto 4 del paso 2.1: el permiso de la extensión |
+| `sesion_no_iniciada` | WhatsApp Web pide QR: escanearlo de nuevo |
+| `browser_no_disponible` | Volver a correr el instalador (paso 2.2) |
 
-> **`selectores` va a salir en rojo, y está bien.** Los selectores de WhatsApp
-> Web todavía no se verificaron contra una sesión real, así que el envío está
-> bloqueado a propósito. La lectura y la redacción funcionan igual.
+> **`selectores` va a salir en rojo, y está bien**: el envío está bloqueado a
+> propósito hasta la fase 4. La lectura y la redacción funcionan igual.
 
 ---
 
-## Paso 14 — Arrancar el agente
+# Parte 3 — Activar y probar
 
-Chrome ya está corriendo desde el paso 12. Falta el agente:
+## 3.1 — Activar la máquina, que es una decisión aparte
 
-```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
-```
+En el panel la máquina aparece **inactiva** y así se queda hasta que alguien
+la active. Antes de activarla: la conversación de consentimiento con el
+vendedor, registrada (F5.7). El sistema va a mandar mensajes **desde su línea,
+con su nombre** — eso tiene que estar dicho y aceptado, no supuesto.
 
-Ver que esté vivo:
+## 3.2 — La primera corrida
 
-```bash
-launchctl print gui/$(id -u)/com.centonara.agente | head -20
-```
+1. En el panel, apretar el botón.
+2. El agente lee los chats recientes. Tarda unos minutos.
+3. Los borradores aparecen en la pantalla de revisión — **sólo** de los chats
+   cuyo número esté en destinos permitidos.
 
-**Desde acá arranca solo cada vez que el vendedor inicia sesión.** Los logs
-quedan en `~/Library/Logs/centonara/`.
+Lo que **no** va a pasar todavía: que salga un mensaje (fase 4). Y dos
+resultados que parecen fallas y no lo son:
 
-Para parar las dos cosas:
+- **Ningún borrador** — ninguno de los chats recientes es de los números
+  autorizados. Es el sistema cuidando la lista, no una falla.
+- **Borradores retenidos y vacíos**, con la señal `SIN_CONTEXTO` — el modelo no
+  encontró con qué escribir y se negó a inventar. Se escriben a mano desde el
+  panel, o se descartan.
+
+---
+
+# Después de instalar
+
+- **Todo arranca solo.** Cada vez que el vendedor prende la Mac e inicia
+  sesión, Chrome y el agente se levantan sin que nadie toque nada. Si el
+  agente se cae, se vuelve a levantar solo.
+- **Lo único que puede volver a pedir atención**: la sesión de WhatsApp Web
+  expira cada tanto (dura días, no meses). Cuando pida QR, se escanea de nuevo
+  y listo.
+- **Actualizar el programa** = volver a pegar el comando del paso 2.2. No
+  vuelve a preguntar nada.
+- **Los logs** quedan en `~/Library/Logs/centonara/`.
+
+Para **frenar todo** en una máquina (para un técnico):
 
 ```bash
 launchctl bootout gui/$(id -u)/com.centonara.agente
 launchctl bootout gui/$(id -u)/com.centonara.chrome
 ```
 
-### Si un `bootstrap` devuelve `Input/output error`
-
-```
-Bootstrap failed: 5: Input/output error
-```
-
-Quiere decir **"ese servicio ya está cargado"**, no que algo salió mal. Pasa
-apenas corrés el mismo `bootstrap` dos veces. Para volver a arrancarlo de cero
-hay que descargarlo primero:
-
-```bash
-launchctl bootout gui/$(id -u)/com.centonara.agente
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
-```
-
-O, más corto, reiniciarlo sin descargarlo:
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.centonara.agente
-```
-
-Lo mismo vale para `com.centonara.chrome`, con una diferencia importante:
-**Chrome además tiene que estar cerrado** antes de volver a cargarlo, o vuelve a
-arrancar sin el puerto. Está explicado en el paso 12.
+Para volver a arrancar: correr el instalador de nuevo, o reiniciar la sesión.
 
 ---
 
-# Parte 3 — Activar y probar
+# Si algo no anda
 
-## Paso 15 — Activar la máquina, que es una decisión aparte
-
-En el panel, la máquina aparece **inactiva**. Recién cuando se la activa empieza
-a tomar trabajo.
-
-Antes de activarla, la conversación de consentimiento con el vendedor, registrada
-(F5.7). El sistema **envía mensajes desde su línea, con su nombre**: eso tiene
-que estar dicho y aceptado, no supuesto.
-
-⚠️ Y si todavía circula el SOP viejo que dice *"No envía ningún mensaje. Nunca"*,
-retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.
-
-## Paso 16 — La primera corrida
-
-1. En el panel, apretar el botón.
-2. El agente toma el `LISTAR` y lee los chats recientes. Tarda unos minutos.
-3. Se encola un `REDACTAR` **sólo** por los chats cuyo número esté en
-   `destinos_permitidos`. Los demás se cuentan y no se pagan.
-4. Los borradores aparecen en la pantalla de revisión.
-
-Lo que **no** va a pasar todavía: que salga un mensaje. `ENVIAR` se rechaza con
-`falta adaptadores/whatsapp_web.py`, que es lo correcto hasta la fase 4.
-
-Dos resultados que parecen fallas y no lo son:
-
-- **Ningún borrador**, porque ninguno de los chats recientes es de los números
-  autorizados. Es R4 haciendo su trabajo.
-- **Borradores retenidos y vacíos**, con la señal `SIN_CONTEXTO`. El modelo no
-  encontró con qué escribir y se negó a inventar, que es la respuesta que el
-  prompt le pide. Se escriben a mano desde el panel, o se descartan.
-
----
-
-## Si algo no anda
-
-| Síntoma | Causa |
+| Síntoma | Causa y qué hacer |
 |---|---|
-| `OPENSSL_Uplink(...): no OPENSSL_Applink` | Un antivirus dejó `SSLKEYLOGFILE` en el entorno. El agente ya la descarta al arrancar; si aparece igual, es otro proceso |
-| `Claude in Chrome requires permission` | Falta el paso 12: el permiso de sitio de la extensión |
-| `token_rechazado` en el log | El token no es el de esta máquina, o se rotó |
-| El agente no toma trabajo | La máquina está inactiva o pausada (paso 15), o el kill switch está puesto |
-| `browser_no_disponible` | El `deviceId` es de otro Chrome |
-| Arranca a mano y falla con launchd | Una ruta relativa en algún lado. Todo absoluto |
-| WhatsApp Web pide QR de golpe, sin que nadie tocara nada | **La sesión expiró.** Pasa: dura días, no meses. Hay que volver a vincular |
-| `curl localhost:9222` no contesta | Chrome estaba abierto al lanzarlo, o falta `--user-data-dir` |
-| El panel muestra un error crudo | Reportarlo: los mensajes del panel se escriben para quien lo usa, no para quien lo programó |
+| `Claude in Chrome requires permission` | Falta el permiso de la extensión (paso 2.1, punto 4). Lo emite el navegador, por eso no aparece en ningún log del agente |
+| WhatsApp pide QR de golpe | La sesión expiró; pasa cada tanto. Escanear de nuevo |
+| `token_rechazado` en el log | El token no es el de esta máquina, o se rotó. Rotar en el panel, borrar la línea `AGENTE_TOKEN` del `.env` y correr el instalador de nuevo |
+| El agente no toma trabajo | La máquina está inactiva o pausada en el panel, o el kill switch está puesto |
+| `browser_no_disponible` | El Chrome registrado no es este. Correr el instalador de nuevo |
+| El instalador dice que el servidor no contesta | Sin internet, o el servidor estaba dormido y tardó. Esperar un minuto y correrlo de nuevo |
+| El panel muestra un error crudo | Reportarlo: los mensajes del panel se escriben para quien lo usa |
+
+### Para técnicos
+
+- Lo instalado son **dos LaunchAgents** (`com.centonara.agente` y
+  `com.centonara.chrome`, en `~/Library/LaunchAgents/`), el proyecto en
+  `~/centonara-seguimientos` con su `.env`, y las herramientas `uv` y
+  `claude` en `~/.local/bin`. Son LaunchAgents y **no** LaunchDaemons a
+  propósito (D16): Chrome y la extensión viven en la sesión del usuario.
+- `Bootstrap failed: 5: Input/output error` al correr `launchctl bootstrap` a
+  mano quiere decir **"ya está cargado"**, no que algo falló.
+- El backend es `https://backend-produccion-7yqr.onrender.com` — **con
+  sufijo**. `backend-produccion.onrender.com` a secas es la aplicación de otra
+  persona: ese subdominio global ya estaba tomado. El instalador trae la URL
+  correcta; si se toca a mano, comprobarla:
+
+```bash
+curl https://backend-produccion-7yqr.onrender.com/health
+```
+
+  Tiene que devolver `{"ok":true,"mongo":true,"entorno":"produccion"}`.
+
+- `OPENSSL_Uplink(...): no OPENSSL_Applink` — un antivirus dejó
+  `SSLKEYLOGFILE` en el entorno. El agente ya la descarta al arrancar; si
+  aparece igual, es otro proceso.
+- Si Chrome quedó abierto sin el puerto (`curl localhost:9222` no contesta),
+  el ciclo es: `launchctl bootout`, cerrar Chrome del todo (Cmd+Q), y
+  `launchctl bootstrap` — o directamente correr el instalador, que hace ese
+  ciclo solo.

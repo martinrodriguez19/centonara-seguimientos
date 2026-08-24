@@ -145,7 +145,7 @@ def construir_html() -> str:
     )
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
-<title>SOP — Instalar el agente en una Mac</title>
+<title>Instalar el agente en la Mac de un vendedor</title>
 <style>{ESTILO}</style></head>
 <body>
 {cuerpo}
@@ -179,7 +179,7 @@ async def main() -> None:
             footer_template=(
                 '<div style="width:100%;font-size:8pt;color:#888;'
                 'padding:0 16mm;display:flex;justify-content:space-between">'
-                f"<span>SOP — Instalar el agente en una Mac · {sello()}</span>"
+                f"<span>Instalar el agente en la Mac de un vendedor · {sello()}</span>"
                 '<span class="pageNumber"></span></div>'
             ),
         )

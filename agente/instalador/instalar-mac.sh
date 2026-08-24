@@ -223,6 +223,12 @@ echo
 # `CHROME_PERFIL_DIR` se imprime a propósito aunque también quedó en el plist:
 # si los dos valores difieren, el día que el agente tenga que abrir Chrome él
 # va a abrir el perfil equivocado y no va a encontrar la sesión de WhatsApp.
+#
+# Con RESUMEN=no no se imprime nada de esto: es como llama instalar.sh, que ya
+# escribió el .env completo y arranca los servicios él mismo. Pegar acá lo que
+# ya está pegado sólo puede confundir.
+
+if [ "${RESUMEN:-si}" != "no" ]; then
 
 DEVICE_ID=$(grep -aoh 'bridgeDeviceId.\{0,60\}' \
   "$HOME/Library/Application Support/Google/Chrome/"*"/Local Extension Settings/fcoeoabgfenejglbffodgkkbkcdhcgfn/"*.log 2>/dev/null \
@@ -309,3 +315,5 @@ Instalado. Lo que sigue NO lo puede hacer este script:
   docs/SOP-instalar-mac.md
 ---------------------------------------------------------------------------
 FIN
+
+fi

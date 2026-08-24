@@ -34,6 +34,7 @@ SOP = RAIZ / "docs" / "SOP-instalar-mac.md"
 NO_CORRER = {
     "curl -LsSf": "instala uv",
     "npm install": "instala Claude Code",
+    "instalar.sh": "instala todo, y es solo para la Mac",
     "git clone": "clona el repositorio",
     "launchctl": "solo macOS",
     "pgrep": "solo macOS",
