@@ -177,8 +177,14 @@ Lo que falta es enchufarle un navegador de verdad.
 
 ### F4.2 — Cómo se conecta al Chrome
 
-- [ ] **Las dos están implementadas** en `adaptadores/conexion.py`, para poder
-      medirlas. Falta elegir **con evidencia**, en una Mac:
+- [x] ~~Elegir entre CDP y perfil dedicado~~ · **decidido, y no por preferencia.**
+      Chrome 136+ ignora `--remote-debugging-port` con el perfil por defecto.
+      Medido en Chrome 151: con el perfil por defecto el puerto no escucha, con
+      `--user-data-dir` aparte sí. Así que **no se puede reusar la sesión de
+      WhatsApp del vendedor**, y queda el perfil dedicado — con el costo de un
+      segundo dispositivo vinculado. Es una decisión de Chrome, no del sistema
+      operativo: pasa igual en macOS. Detalle en `adaptadores/conexion.py`.
+      Original:
       **(A)** CDP sobre el Chrome del vendedor · **(B)** perfil dedicado de
       Playwright.
 - [ ] Criterio: cuál sobrevive a que el vendedor cierre el navegador, reinicie
