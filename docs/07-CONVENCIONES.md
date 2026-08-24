@@ -18,6 +18,21 @@ spike/{descripcion}         spike/envio-macos      ← se borra, no se mergea
 **No hay `develop`.** No hay staging, así que no hay nada que integrar antes de producción. Se
 trabaja en una rama corta y se mergea a `main` cuando pasa el CI.
 
+> Esto decía la verdad desde el principio, pero **GitHub no lo sabía**: la rama por defecto del
+> repositorio siguió siendo `develop` hasta el 24 de agosto de 2026, mientras `develop` se quedaba
+> 37 commits atrás, congelada en el sprint 0.
+>
+> Consecuencia: `git clone` sin `-b` traía el esqueleto, y la página del repositorio en GitHub
+> mostraba una versión vieja. Costó un rato de confusión instalando la primera Mac —el instalador
+> "no existía"— hasta que se miró la rama.
+>
+> Corregido: la rama por defecto es `main`, y `develop` se renombró a **`sprint-0-congelado`**,
+> que dice lo que es. Tiene un commit propio (`d6cc0c8`, un arreglo de n8n) que no está en `main`;
+> se conserva por eso, aunque n8n ya no exista en el proyecto (D18).
+>
+> La lección, que vale más que el arreglo: **una convención escrita que la herramienta no aplica
+> no es una convención, es una intención.**
+
 Las ramas `spike/` son para explorar. Pueden tener código feo, código a medias y experimentos. No
 se mergean: lo que sirve se reescribe.
 
