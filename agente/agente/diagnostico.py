@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from agente.adaptadores import navegador
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -161,6 +162,27 @@ def _device_id(valor: str) -> Chequeo:
     return Chequeo("device_id", Estado.OK, valor, origen)
 
 
+def _chrome_puerto(puerto: int, *, escucha: bool) -> Chequeo:
+    """¿Chrome está abierto con el puerto de depuración?
+
+    Es lo que necesita el motor de envío. No es lo mismo que el chequeo
+    `chrome`, que sólo verifica que el ejecutable de Claude Code responda.
+
+    `n/a` y no falla cuando no escucha: el agente lo abre solo cuando llega
+    trabajo, así que que ahora esté cerrado no es un problema. Lo que sí sería
+    un problema —Chrome abierto SIN el puerto— se detecta al abrirlo, no acá.
+    """
+    origen = "Chrome 136+: el puerto se ignora sin --user-data-dir"
+    if escucha:
+        return Chequeo("chrome_puerto", Estado.OK, f"escuchando en {puerto}", origen)
+    return Chequeo(
+        "chrome_puerto",
+        Estado.NO_APLICA,
+        f"nada en el puerto {puerto}: el agente lo abre cuando haga falta",
+        origen,
+    )
+
+
 def _claude_md(carpeta: Path) -> Chequeo:
     """Problema #7 del MVP: el modelo se negaba a ejecutar sin contexto verificable.
 
@@ -223,9 +245,25 @@ def _selectores() -> Chequeo:
     Corre antes de cada corrida, no una vez por día: si el DOM cambió, todos los
     envíos van a fallar igual y conviene saberlo antes de encolar el primero.
 
-    Llega con el motor de envío, en la fase 4.
+    Acá sólo se reporta **si alguna vez se verificaron contra WhatsApp Web real**.
+    Comprobarlo de verdad necesita el navegador abierto y la página cargada, y
+    eso lo hace `verificar_selectores()` desde el motor.
+
+    Mientras la fecha sea `None`, un `ENVIAR` en modo real se rechaza. Por eso
+    esto es una FALLA y no un `n/a`: es lo único que separa al sistema de poder
+    escribir, y tiene que verse en el panel.
     """
-    return Chequeo("selectores", Estado.NO_APLICA, "necesita el motor de envío: llega en la fase 4")
+    from agente.adaptadores import selectores
+
+    origen = "F4.3"
+    if selectores.VERIFICADO is None:
+        return Chequeo(
+            "selectores",
+            Estado.FALLA,
+            "nunca se verificaron contra WhatsApp Web: el envío real está bloqueado",
+            origen,
+        )
+    return Chequeo("selectores", Estado.OK, f"verificados el {selectores.VERIFICADO}", origen)
 
 
 def _permisos_macos() -> Chequeo:
@@ -256,11 +294,13 @@ def ejecutar(
     carpeta_agente: Path,
     inicio: Path | None = None,
     con_navegador: bool = True,
+    chrome_puerto: int = 9222,
 ) -> Diagnostico:
-    """Corre los nueve chequeos.
+    """Corre los diez chequeos.
 
-    `con_navegador=False` saltea el que lanza un proceso: lo usan los tests y
-    sirve para un arranque rápido, porque `claude --version` tarda.
+    `con_navegador=False` saltea los dos que salen del proceso —lanzar
+    `claude --version` y mirar el puerto de Chrome—: los usan los tests, y
+    sirven para un arranque rápido porque el primero tarda.
     """
     hogar = inicio or Path(os.path.expanduser("~"))
 
@@ -270,6 +310,10 @@ def ejecutar(
         _permiso_sitio(),
         _device_id(device_id),
         _chrome(claude_bin) if con_navegador else Chequeo("chrome", Estado.NO_APLICA, "salteado"),
+        _chrome_puerto(
+            chrome_puerto,
+            escucha=con_navegador and navegador.puerto_escucha_sync(chrome_puerto),
+        ),
         _whatsapp_sesion(),
         _claude_md(carpeta_agente),
         _permisos_macos(),

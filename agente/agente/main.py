@@ -275,6 +275,50 @@ def correr_diagnostico(config: Configuracion) -> int:
     return SALIDA_DIAGNOSTICO
 
 
+def _abrir_pagina(config: Configuracion):
+    """Devuelve cómo conseguir la página de WhatsApp, para el motor de envío.
+
+    Se arma acá y no en el despachador porque es lo único que sabe de esta
+    máquina: dónde está Chrome, qué perfil usa el vendedor, en qué puerto.
+
+    Lo que hace, cada vez que hay un mensaje para escribir:
+
+    1. Se asegura de que Chrome esté abierto **con el puerto**. Si no está, lo
+       abre. El vendedor no hace nada.
+    2. Se engancha por CDP a esa misma instancia — la suya, con su sesión de
+       WhatsApp y su extensión.
+
+    Playwright se arranca una vez y queda vivo mientras viva el agente: abrirlo
+    y cerrarlo por cada mensaje costaría más que el mensaje.
+    """
+    from playwright.async_api import async_playwright
+
+    from agente.adaptadores import navegador
+    from agente.adaptadores.conexion import NoHayNavegador, conectar_cdp
+    from agente.adaptadores.whatsapp_web import PaginaWhatsApp
+
+    estado: dict[str, object] = {}
+
+    async def abrir():
+        listo = await navegador.asegurar_chrome(
+            chrome_bin=config.chrome_bin,
+            perfil=config.chrome_perfil,
+            perfil_dir=config.chrome_perfil_dir,
+            puerto=config.chrome_puerto,
+        )
+        if not listo.utilizable:
+            # No se escribe nada sin navegador, y el motivo viaja al panel.
+            raise NoHayNavegador(listo.detalle)
+
+        if "playwright" not in estado:
+            estado["playwright"] = await async_playwright().start()
+
+        pagina = await conectar_cdp(estado["playwright"], puerto=config.chrome_puerto)
+        return PaginaWhatsApp(pagina)
+
+    return abrir
+
+
 async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str) -> None:
     """El bucle y el latido, en paralelo, hasta que alguien pida parar."""
     cliente = Cliente(config.backend_url, config.token)
@@ -284,6 +328,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             claude_bin=config.claude_bin,
             device_id=config.device_id,
             carpeta_agente=CARPETA_AGENTE,
+            chrome_puerto=config.chrome_puerto,
         )
 
     trabajo = Bucle(
@@ -298,6 +343,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             # ganarle al entorno, que es para lo único que existe esa opción.
             modo=modo,
             diagnosticar=diagnosticar,
+            abrir_pagina=None if modo == "simulado" else _abrir_pagina(config),
         ),
     )
     fin = asyncio.Event()

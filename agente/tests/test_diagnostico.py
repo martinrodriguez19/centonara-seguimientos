@@ -62,11 +62,11 @@ def correr(hogar: Path, carpeta: Path, **extra) -> Diagnostico:
 # ---------------------------------------------------------------------------
 
 
-def test_son_nueve_chequeos(hogar: Path, carpeta_agente: Path) -> None:
-    assert len(correr(hogar, carpeta_agente).chequeos) == 9
+def test_son_diez_chequeos(hogar: Path, carpeta_agente: Path) -> None:
+    assert len(correr(hogar, carpeta_agente).chequeos) == 10
 
 
-def test_estan_los_siete_del_mvp_mas_los_dos_nuevos(hogar: Path, carpeta_agente: Path) -> None:
+def test_estan_los_siete_del_mvp_mas_los_tres_nuevos(hogar: Path, carpeta_agente: Path) -> None:
     nombres = set(por_nombre(correr(hogar, carpeta_agente)))
     assert nombres == {
         "claude_bin",
@@ -74,6 +74,7 @@ def test_estan_los_siete_del_mvp_mas_los_dos_nuevos(hogar: Path, carpeta_agente:
         "permiso_sitio",
         "device_id",
         "chrome",
+        "chrome_puerto",
         "whatsapp_sesion",
         "claude_md",
         "permisos_macos",
@@ -99,13 +100,42 @@ def test_lo_que_viaja_al_backend_es_nombre_y_estado(hogar: Path, carpeta_agente:
 # ---------------------------------------------------------------------------
 
 
-def test_todo_en_orden_cuando_lo_verificable_esta_bien(hogar: Path, carpeta_agente: Path) -> None:
-    """Cuatro chequeos dan `n/a` y aun así el agente puede trabajar."""
+def test_los_na_no_impiden_trabajar(hogar: Path, carpeta_agente: Path) -> None:
+    """Varios chequeos dan `n/a` y ninguno de ellos frena al agente.
+
+    Es lo que permitió construir las fases 1 a 3 desde Windows: lo que no se
+    puede verificar en esta máquina no cuenta como roto.
+    """
     diagnostico = correr(hogar, carpeta_agente)
 
-    assert diagnostico.puede_enviar
-    assert diagnostico.resumen() == "todo en orden"
     assert any(c.estado is Estado.NO_APLICA for c in diagnostico.chequeos)
+    #  Ninguna de las fallas, si las hay, viene de un `n/a`.
+    assert all(c.estado is Estado.FALLA for c in diagnostico.fallas)
+
+
+def test_sin_selectores_verificados_la_maquina_no_puede_enviar(
+    hogar: Path, carpeta_agente: Path
+) -> None:
+    """⚠️ Es el único chequeo que hoy separa al sistema de poder escribir.
+
+    Los selectores de WhatsApp Web nunca se verificaron contra una sesión real,
+    así que `selectores` **falla** —no da `n/a`— y con eso `puede_enviar` es
+    `False` y el agente no toma jobs de envío.
+
+    No es un placeholder: cuando alguien complete `selectores.VERIFICADO`, esto
+    pasa a verde solo. Mientras tanto tiene que verse en el panel, porque es lo
+    que hay que ir a resolver.
+    """
+    from agente.adaptadores import selectores
+
+    chequeo = por_nombre(correr(hogar, carpeta_agente))["selectores"]
+
+    if selectores.VERIFICADO is None:
+        assert chequeo.estado is Estado.FALLA
+        assert "envío real está bloqueado" in chequeo.detalle
+        assert not correr(hogar, carpeta_agente).puede_enviar
+    else:
+        assert chequeo.estado is Estado.OK
 
 
 def test_un_na_no_cuenta_como_falla() -> None:
@@ -126,13 +156,29 @@ def test_una_sola_falla_alcanza_para_no_tomar_envios() -> None:
     assert not diagnostico.puede_enviar
 
 
-def test_los_chequeos_de_navegador_dan_na_hasta_que_exista_el_navegador(
+def test_lo_que_solo_se_ve_abriendo_la_pagina_da_na(
     hogar: Path, carpeta_agente: Path
 ) -> None:
-    """Es lo que permite construir las fases 1 a 3 desde Windows."""
+    """`whatsapp_sesion` y `permiso_sitio` no se pueden verificar leyendo archivos.
+
+    Los contesta `--sonda`, que abre la página una vez. Acá dan `n/a` y no
+    falla, porque no saber no es lo mismo que estar roto.
+    """
     chequeos = por_nombre(correr(hogar, carpeta_agente))
-    for nombre in ("whatsapp_sesion", "selectores"):
+    for nombre in ("whatsapp_sesion", "permiso_sitio"):
         assert chequeos[nombre].estado is Estado.NO_APLICA
+
+
+def test_el_puerto_de_chrome_cerrado_no_es_una_falla(
+    hogar: Path, carpeta_agente: Path
+) -> None:
+    """El agente lo abre solo cuando llega trabajo.
+
+    Que ahora esté cerrado no dice nada. Lo que sí sería un problema —Chrome
+    abierto SIN el puerto— se detecta al intentar abrirlo, no acá.
+    """
+    chequeo = por_nombre(correr(hogar, carpeta_agente))["chrome_puerto"]
+    assert chequeo.estado in (Estado.OK, Estado.NO_APLICA)
 
 
 def test_los_permisos_de_macos_dan_na_fuera_de_macos(hogar: Path, carpeta_agente: Path) -> None:

@@ -91,6 +91,20 @@ class Configuracion(BaseSettings):
     # (problema #2 del MVP). Lo verifica el chequeo `claude_bin`.
     claude_bin: str = Field("", validation_alias="CLAUDE_BIN")
 
+    # --- Chrome, para el motor de envío -------------------------------------
+    #
+    # El agente se asegura de que Chrome esté abierto con el puerto de
+    # depuración antes de escribir. Vacío = se buscan las rutas habituales del
+    # sistema, que es lo que va a pasar en casi todas las máquinas.
+    chrome_bin: str = Field("", validation_alias="CHROME_BIN")
+    chrome_perfil: str = Field("", validation_alias="CHROME_PERFIL")
+
+    # ⚠️ El perfil DENTRO de `User Data`. Sin esto Chrome abre `Default`, que en
+    # una máquina con varios perfiles no es el que tiene la extensión ni la
+    # sesión de WhatsApp. Es el error más caro de esta sección.
+    chrome_perfil_dir: str = Field("Default", validation_alias="CHROME_PERFIL_DIR")
+    chrome_puerto: int = Field(9222, validation_alias="CHROME_PUERTO")
+
     # Logs en JSON: cómodo para archivo y para soporte, ilegible en una
     # terminal. Por defecto, JSON en todo lo que no sea local.
     log_json: bool | None = Field(None, validation_alias="LOG_JSON")
@@ -115,6 +129,8 @@ class Configuracion(BaseSettings):
             "device_id": self.device_id or None,
             "backend_url": self.backend_url,
             "claude_bin": self.claude_bin or None,
+            "chrome_perfil_dir": self.chrome_perfil_dir,
+            "chrome_puerto": self.chrome_puerto,
             "token_definido": bool(self.token),
         }
 
