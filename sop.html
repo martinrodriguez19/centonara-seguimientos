@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<title>SOP — Instalar el agente en una Mac</title>
+<style>
+@page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+
+:root {
+  --tinta: #1a1a1a;
+  --suave: #5b5b5b;
+  --linea: #e0e0e0;
+  --fondo-codigo: #f6f6f4;
+  --acento: #8a5a00;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  color: var(--tinta);
+  margin: 0;
+}
+
+/* Cada parte arranca en página nueva: se imprime y se reparte por partes. */
+h1 { font-size: 19pt; margin: 0 0 .6em; letter-spacing: -.02em; }
+h1 + * { margin-top: 0; }
+h1:not(:first-of-type) { page-break-before: always; padding-top: .2em; }
+
+h2 {
+  font-size: 13pt;
+  margin: 1.6em 0 .5em;
+  padding-bottom: .25em;
+  border-bottom: 1px solid var(--linea);
+  page-break-after: avoid;
+}
+h3 { font-size: 11pt; margin: 1.2em 0 .4em; page-break-after: avoid; }
+
+p, ul, ol, table { margin: .55em 0; }
+li { margin: .25em 0; }
+
+/* Un bloque de comandos no se parte a la mitad de la página. */
+pre {
+  background: var(--fondo-codigo);
+  border: 1px solid var(--linea);
+  border-radius: 5px;
+  padding: .7em .9em;
+  overflow-x: auto;
+  page-break-inside: avoid;
+  font-size: 9pt;
+  line-height: 1.45;
+}
+code {
+  font-family: "SF Mono", Consolas, "Cascadia Mono", monospace;
+  font-size: .92em;
+}
+:not(pre) > code {
+  background: var(--fondo-codigo);
+  border: 1px solid var(--linea);
+  border-radius: 3px;
+  padding: .08em .32em;
+}
+
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; page-break-inside: avoid; }
+th, td { border: 1px solid var(--linea); padding: .42em .6em; text-align: left; vertical-align: top; }
+th { background: var(--fondo-codigo); font-weight: 600; }
+
+/* Una tabla sin encabezados —las hay, y a proposito— no tiene por que mostrar
+   una banda gris vacia arriba. */
+thead:not(:has(th:not(:empty))) { display: none; }
+
+blockquote {
+  margin: .9em 0;
+  padding: .5em .9em;
+  border-left: 3px solid var(--acento);
+  background: #fdf9f0;
+  color: #3a3a3a;
+  page-break-inside: avoid;
+}
+blockquote p { margin: .35em 0; }
+
+hr { border: 0; border-top: 1px solid var(--linea); margin: 1.6em 0; }
+
+strong { font-weight: 600; }
+a { color: inherit; text-decoration: none; }
+
+.pie {
+  margin-top: 2.5em;
+  padding-top: .8em;
+  border-top: 1px solid var(--linea);
+  font-size: 8.5pt;
+  color: var(--suave);
+}
+</style></head>
+<body>
+<h1>SOP — Instalar el agente en una Mac</h1>
+<blockquote>
+<p>Se corre una vez por máquina. Media hora la primera vez, diez minutos después.</p>
+<p><strong>Antes de empezar, dos cosas que este sistema todavía no hace</strong>, para que
+nadie las espere:</p>
+<ul>
+<li><strong>No envía mensajes.</strong> Falta el adaptador de Playwright (<code>whatsapp_web.py</code>,
+  fase 4). El agente lee los chats y redacta borradores; el envío se rechaza
+  con un motivo explícito. Lo que se puede probar de punta a punta es
+  <strong>botón → leer WhatsApp → triage → borradores en el panel</strong>.</li>
+<li><strong>El vendedor no tiene ícono en la barra de menú</strong> para pausar su máquina
+  (fase 5). Se pausa desde el panel.</li>
+</ul>
+</blockquote>
+<hr />
+<h2>Antes de empezar — lo que hay que tener a mano</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cuenta de Claude</td>
+<td><strong>Una por máquina</strong>, del Enterprise del cliente (D2). Una API key <strong>no sirve</strong>: desactiva la integración con Chrome</td>
+</tr>
+<tr>
+<td>Chrome</td>
+<td>Con la extensión Claude in Chrome instalada</td>
+</tr>
+<tr>
+<td>WhatsApp Web</td>
+<td>Con la sesión de <strong>esa</strong> línea iniciada, sin QR pendiente</td>
+</tr>
+<tr>
+<td>La contraseña del panel</td>
+<td>Para la parte 1</td>
+</tr>
+</tbody>
+</table>
+<p>Y confirmar con el administrador de la organización que la extensión esté
+<strong>habilitada por política</strong>. Si está restringida, no funciona en ninguna máquina
+y no se arregla desde el código.</p>
+<hr />
+<h1>Parte 1 — En el panel</h1>
+<p>Cuatro pasos. Se hacen desde cualquier navegador y <strong>no necesitan la Mac
+delante</strong>: conviene hacerlos enteros antes de sentarse a la máquina.</p>
+<h2>Paso 1 — Entrar al panel</h2>
+<p><strong>https://frontend-produccion.onrender.com</strong>, con la contraseña del panel.</p>
+<p>Si no entra, lo único que puede faltar es <code>PANEL_PASSWORD</code> en el servicio
+<code>backend-produccion</code> de Render. Es la única variable que se carga a mano:
+<code>SESION_SECRET</code> lo genera Render solo (<code>generateValue: true</code> en el blueprint).</p>
+<h2>Paso 2 — ⚠️ Decir a quién puede escribirle</h2>
+<p><strong>Configuración → destinos permitidos.</strong> Cargar los números de prueba, y sólo
+esos.</p>
+<p>En una base nueva esta lista <strong>arranca vacía</strong>, y vacía significa <strong>a nadie</strong>
+(regla R4). No es un descuido del sistema: es su estado de fábrica, y es lo que
+hace imposible que un cliente real reciba algo por accidente.</p>
+<p>Pero tiene una consecuencia que confunde la primera vez: <strong>si se saltea este
+paso, la corrida lee los chats y no redacta ninguno.</strong> Se ve como si no hubiera
+funcionado, y en realidad funcionó exactamente como debía. El log lo cuenta:
+<code>no_permitidos</code>.</p>
+<p>Se guardan normalizados a E.164, así que se pueden escribir con espacios y
+guiones.</p>
+<p>En la misma pantalla, <strong>tope por corrida = 3</strong> mientras se esté probando.</p>
+<h2>Paso 3 — Dar de alta la máquina</h2>
+<p>Panel → <strong>Dar de alta una máquina</strong>:</p>
+<ul>
+<li><strong>Identificador</strong> — minúsculas, números y guiones. <code>mac-rocio</code>, no
+  <code>Mac de Rocío</code>. Es lo que se ve en logs y URLs, y el formulario lo rechaza si
+  no lo es.</li>
+<li><strong>Nombre del vendedor</strong> — acá sí, con mayúsculas y acentos.</li>
+<li><strong>Línea de WhatsApp</strong> — opcional.</li>
+</ul>
+<p>⚠️ <strong>El token se muestra una sola vez.</strong> Se guarda hasheado y no se puede
+recuperar; si se pierde hay que rotarlo y reconfigurar la máquina.</p>
+<p>La máquina <strong>nace inactiva</strong>. Instalar no es activar.</p>
+<h2>Paso 4 — Anotar la URL del backend</h2>
+<p>La que va a ir en el <code>.env</code> de la Mac:</p>
+<pre><code>https://backend-produccion-7yqr.onrender.com
+</code></pre>
+<p>⚠️ <strong>Lleva sufijo.</strong> <code>backend-produccion.onrender.com</code>, sin él, <strong>es la
+aplicación de otra persona</strong>: los subdominios de Render son globales, el nombre
+estaba tomado y Render asignó otro. Apuntar ahí mandaría credenciales a un
+servidor ajeno.</p>
+<p>Se comprueba en dos segundos:</p>
+<pre><code class="language-bash">curl https://backend-produccion-7yqr.onrender.com/health
+</code></pre>
+<p>Tiene que devolver <code>{"ok":true,"mongo":true,"entorno":"produccion"}</code>.</p>
+<blockquote>
+<p><strong>Alternativa para desarrollo:</strong> una máquina de la misma red, con el backend
+escuchando en <code>0.0.0.0</code> y el puerto abierto en el firewall
+(<code>http://192.168.x.x:8000</code>). Sirve para probar sin depender del despliegue.</p>
+</blockquote>
+<hr />
+<h1>Parte 2 — En la Mac</h1>
+<p>Diez pasos, del 5 al 14. Cada uno dice qué correr y qué tenés que ver.</p>
+<hr />
+<h2>Paso 5 — Instalar las herramientas</h2>
+<pre><code class="language-bash">curl -LsSf https://astral.sh/uv/install.sh | sh
+</code></pre>
+<pre><code class="language-bash">npm install -g @anthropic-ai/claude-code
+</code></pre>
+<hr />
+<h2>Paso 6 — Traer el proyecto</h2>
+<pre><code class="language-bash">git clone https://github.com/martinrodriguez19/centonara-seguimientos.git
+cd centonara-seguimientos
+</code></pre>
+<p><strong>Todo lo que sigue se corre desde esa carpeta.</strong> Si en algún momento algo falla
+con "no such file", casi siempre es que saliste de ahí. Para volver:</p>
+<pre><code class="language-bash">cd ~/centonara-seguimientos
+</code></pre>
+<hr />
+<h2>Paso 7 — Preparar el Chrome del vendedor</h2>
+<p>Abrí Chrome —el que usa el vendedor todos los días— y asegurate de que tenga
+estas dos cosas <strong>en el mismo perfil</strong>:</p>
+<ol>
+<li>La extensión <strong>Claude in Chrome</strong> instalada</li>
+<li><strong>WhatsApp Business</strong> abierto en <code>web.whatsapp.com</code>, con la sesión iniciada</li>
+</ol>
+<p>Después, <strong>usá la extensión una vez</strong> (abrila y pedile cualquier cosa). Eso hace
+que se registre en esta máquina, y el paso 9 lo va a necesitar.</p>
+<blockquote>
+<p>Si la Mac tiene un solo perfil de Chrome, no hay nada que elegir. Si tiene
+varios, el paso 9 te va a decir cuál quedó bien.</p>
+</blockquote>
+<hr />
+<h2>Paso 8 — Preparar el entorno del agente</h2>
+<pre><code class="language-bash">uv sync --directory agente
+</code></pre>
+<p>Tarda un minuto la primera vez.</p>
+<hr />
+<h2>Paso 9 — Averiguar los datos de esta máquina</h2>
+<p>Este comando mira la Mac y te dice todo lo que necesita saber el agente:</p>
+<pre><code class="language-bash">./agente/.venv/bin/python -m agente.main --datos
+</code></pre>
+<p><strong>Lo que vas a ver:</strong></p>
+<pre><code>PERFILES DE CHROME EN ESTA MÁQUINA
+  /Users/vendedor/Library/Application Support/Google/Chrome
+
+  Default        extensión + WhatsApp  &lt;-- este
+  Profile 1      nada
+
+PONÉ ESTO EN EL .env
+  /Users/vendedor/centonara-seguimientos/.env
+
+AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com
+AGENTE_MODO=simulado
+CLAUDE_BIN=/usr/local/bin/claude
+CHROME_PERFIL_DIR=Default
+CHROME_PUERTO=9222
+AGENTE_DEVICE_ID=f83d5f3e-3278-46c6-8ccc-148e58805116
+AGENTE_MACHINE_ID=
+   ^ el identificador que pusiste en el panel al dar de alta la máquina
+AGENTE_TOKEN=
+   ^ el que mostró el panel en ese momento. Se muestra UNA sola vez.
+</code></pre>
+<p><strong>Copiá ese bloque</strong>, desde <code>AGENTE_BACKEND_URL</code> hasta el final. Lo vas a pegar
+en el paso 10.</p>
+<p><strong>Si en vez de eso dice <code>NO SE PUEDE SEGUIR TODAVÍA</code></strong>, te va a explicar qué
+falta y qué hacer. Los tres casos posibles:</p>
+<table>
+<thead>
+<tr>
+<th>Lo que dice</th>
+<th>Qué hacer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>La extensión está en un perfil y WhatsApp en otro</td>
+<td>Abrí el Chrome del perfil que tiene WhatsApp e instalá ahí la extensión</td>
+</tr>
+<tr>
+<td>Ningún perfil tiene WhatsApp</td>
+<td>Abrí <code>web.whatsapp.com</code> en el perfil que tiene la extensión y escaneá el QR</td>
+</tr>
+<tr>
+<td>Ningún perfil tiene la extensión</td>
+<td>Instalá Claude in Chrome</td>
+</tr>
+<tr>
+<td><code>AGENTE_DEVICE_ID=</code> sale vacío</td>
+<td>La extensión está pero no se usó nunca. Usala una vez y volvé a correr esto</td>
+</tr>
+</tbody>
+</table>
+<p>Arreglás lo que diga y <strong>volvés a correr el mismo comando</strong>.</p>
+<hr />
+<h2>Paso 10 — Crear el archivo <code>.env</code></h2>
+<pre><code class="language-bash">cp .env.example .env
+</code></pre>
+<p>Abrilo:</p>
+<pre><code class="language-bash">open -e .env
+</code></pre>
+<p>Y pegá el bloque del paso 9, <strong>reemplazando</strong> las líneas que ya estén con esos
+mismos nombres.</p>
+<p><strong>Después completá las dos que quedaron vacías.</strong> Las dos salen del panel, de
+cuando diste de alta esta máquina:</p>
+<ul>
+<li><strong><code>AGENTE_MACHINE_ID</code></strong> — el identificador que escribiste vos, tipo
+  <code>mac-rocio</code>. Tiene que ser <strong>idéntico</strong>, letra por letra.</li>
+<li><strong><code>AGENTE_TOKEN</code></strong> — el que el panel mostró una sola vez, empieza con <code>sgc_</code>.</li>
+</ul>
+<blockquote>
+<p>Si perdiste el token: en el panel, en la máquina, hay un botón para <strong>rotarlo</strong>.
+Genera uno nuevo y el anterior deja de servir.</p>
+</blockquote>
+<p><strong>Dos cosas que rompen el archivo sin avisar:</strong></p>
+<ul>
+<li>Las líneas que empiezan con <code>^</code> en la salida del paso 9 <strong>son explicaciones, no
+  se pegan.</strong></li>
+<li>Un comentario <strong>al lado</strong> de un valor vacío se convierte en el valor. Si
+  querés anotar algo, ponelo en la línea de arriba.</li>
+</ul>
+<hr />
+<h2>Paso 11 — Correr el instalador</h2>
+<p>Fijate qué decía <code>CHROME_PERFIL_DIR</code> en el paso 9 y usalo acá.</p>
+<p>Si decía <code>Default</code>:</p>
+<pre><code class="language-bash">bash agente/instalador/instalar-mac.sh
+</code></pre>
+<p>Si decía otra cosa, por ejemplo <code>Profile 3</code>:</p>
+<pre><code class="language-bash">CHROME_PERFIL_DIR=&quot;Profile 3&quot; bash agente/instalador/instalar-mac.sh
+</code></pre>
+<p>Deja preparado el arranque automático del agente y de Chrome, y corre el
+diagnóstico. <strong>No arranca nada todavía.</strong></p>
+<hr />
+<h2>Paso 12 — Dar el permiso de sitio ⚠️</h2>
+<p>Este es <strong>manual</strong> y es el que más se olvida.</p>
+<p>En Chrome: <strong>ícono de Claude → configuración → permisos de sitios → habilitar
+<code>web.whatsapp.com</code>.</strong></p>
+<blockquote>
+<p>Si entrás por el menú de Chrome de la extensión vas a ver "Acceso al sitio:
+todos los sitios". <strong>Ese ya está bien y no es el que falta.</strong> Son dos permisos
+distintos con nombres parecidos: el de Chrome ya viene dado, el de la extensión
+hay que darlo.</p>
+<p>Sin este, el error es <code>Claude in Chrome requires permission</code>, lo tira el
+navegador, y <strong>no aparece en ningún log del agente</strong>.</p>
+</blockquote>
+<hr />
+<h2>Paso 13 — Comprobar que todo quedó bien</h2>
+<p>Primero lo que se lee de archivos:</p>
+<pre><code class="language-bash">./agente/.venv/bin/python -m agente.main --diagnostico
+</code></pre>
+<p>Después lo que sólo se sabe abriendo la página:</p>
+<pre><code class="language-bash">./agente/.venv/bin/python -m agente.main --sonda
+</code></pre>
+<p>Tiene que decir:</p>
+<pre><code>[OK ] permiso_sitio    la extensión puede entrar a web.whatsapp.com
+[OK ] whatsapp_sesion  sesión iniciada, N chats a la vista
+</code></pre>
+<p>Abre WhatsApp Web una vez, cuenta los chats y <strong>no lee ninguno</strong>. Tarda un par de
+minutos y cuesta alrededor de USD 0,50.</p>
+<p>Si falla:</p>
+<table>
+<thead>
+<tr>
+<th>Motivo</th>
+<th>Qué hacer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sin_permiso</code></td>
+<td>Falta el paso 12</td>
+</tr>
+<tr>
+<td><code>sesion_no_iniciada</code></td>
+<td>WhatsApp Web está pidiendo el QR. Escanealo</td>
+</tr>
+<tr>
+<td><code>browser_no_disponible</code></td>
+<td>El <code>AGENTE_DEVICE_ID</code> del <code>.env</code> no es el de este Chrome. Volvé a correr <code>--datos</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong><code>selectores</code> va a salir en rojo, y está bien.</strong> Los selectores de WhatsApp
+Web todavía no se verificaron contra una sesión real, así que el envío está
+bloqueado a propósito. La lectura y la redacción funcionan igual.</p>
+</blockquote>
+<hr />
+<h2>Paso 14 — Arrancar</h2>
+<p>Primero Chrome:</p>
+<pre><code class="language-bash">launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist
+</code></pre>
+<p>Comprobá que levantó el puerto:</p>
+<pre><code class="language-bash">curl http://localhost:9222/json/version
+</code></pre>
+<p>Tiene que devolver un JSON con <code>"Browser": "Chrome/..."</code>. <strong>Si no contesta nada</strong>,
+es que Chrome ya estaba abierto: cerralo del todo —todas las ventanas— y repetí
+el <code>bootstrap</code>.</p>
+<p>Después el agente:</p>
+<pre><code class="language-bash">launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
+</code></pre>
+<p>Ver que esté vivo:</p>
+<pre><code class="language-bash">launchctl print gui/$(id -u)/com.centonara.agente | head -20
+</code></pre>
+<p><strong>Desde acá arranca solo cada vez que el vendedor inicia sesión.</strong> Los logs
+quedan en <code>~/Library/Logs/centonara/</code>.</p>
+<p>Para parar las dos cosas:</p>
+<pre><code class="language-bash">launchctl bootout gui/$(id -u)/com.centonara.agente
+launchctl bootout gui/$(id -u)/com.centonara.chrome
+</code></pre>
+<hr />
+<h1>Parte 3 — Activar y probar</h1>
+<h2>Paso 15 — Activar la máquina, que es una decisión aparte</h2>
+<p>En el panel, la máquina aparece <strong>inactiva</strong>. Recién cuando se la activa empieza
+a tomar trabajo.</p>
+<p>Antes de activarla, la conversación de consentimiento con el vendedor, registrada
+(F5.7). El sistema <strong>envía mensajes desde su línea, con su nombre</strong>: eso tiene
+que estar dicho y aceptado, no supuesto.</p>
+<p>⚠️ Y si todavía circula el SOP viejo que dice <em>"No envía ningún mensaje. Nunca"</em>,
+retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.</p>
+<h2>Paso 16 — La primera corrida</h2>
+<ol>
+<li>En el panel, apretar el botón.</li>
+<li>El agente toma el <code>LISTAR</code> y lee los chats recientes. Tarda unos minutos.</li>
+<li>Se encola un <code>REDACTAR</code> <strong>sólo</strong> por los chats cuyo número esté en
+   <code>destinos_permitidos</code>. Los demás se cuentan y no se pagan.</li>
+<li>Los borradores aparecen en la pantalla de revisión.</li>
+</ol>
+<p>Lo que <strong>no</strong> va a pasar todavía: que salga un mensaje. <code>ENVIAR</code> se rechaza con
+<code>falta adaptadores/whatsapp_web.py</code>, que es lo correcto hasta la fase 4.</p>
+<p>Dos resultados que parecen fallas y no lo son:</p>
+<ul>
+<li><strong>Ningún borrador</strong>, porque ninguno de los chats recientes es de los números
+  autorizados. Es R4 haciendo su trabajo.</li>
+<li><strong>Borradores retenidos y vacíos</strong>, con la señal <code>SIN_CONTEXTO</code>. El modelo no
+  encontró con qué escribir y se negó a inventar, que es la respuesta que el
+  prompt le pide. Se escriben a mano desde el panel, o se descartan.</li>
+</ul>
+<hr />
+<h2>Si algo no anda</h2>
+<table>
+<thead>
+<tr>
+<th>Síntoma</th>
+<th>Causa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OPENSSL_Uplink(...): no OPENSSL_Applink</code></td>
+<td>Un antivirus dejó <code>SSLKEYLOGFILE</code> en el entorno. El agente ya la descarta al arrancar; si aparece igual, es otro proceso</td>
+</tr>
+<tr>
+<td><code>Claude in Chrome requires permission</code></td>
+<td>Falta el paso 12: el permiso de sitio de la extensión</td>
+</tr>
+<tr>
+<td><code>token_rechazado</code> en el log</td>
+<td>El token no es el de esta máquina, o se rotó</td>
+</tr>
+<tr>
+<td>El agente no toma trabajo</td>
+<td>La máquina está inactiva o pausada (paso 15), o el kill switch está puesto</td>
+</tr>
+<tr>
+<td><code>browser_no_disponible</code></td>
+<td>El <code>deviceId</code> es de otro Chrome</td>
+</tr>
+<tr>
+<td>Arranca a mano y falla con launchd</td>
+<td>Una ruta relativa en algún lado. Todo absoluto</td>
+</tr>
+<tr>
+<td>WhatsApp Web pide QR de golpe, sin que nadie tocara nada</td>
+<td><strong>La sesión expiró.</strong> Pasa: dura días, no meses. Hay que volver a vincular</td>
+</tr>
+<tr>
+<td><code>curl localhost:9222</code> no contesta</td>
+<td>Chrome estaba abierto al lanzarlo, o falta <code>--user-data-dir</code></td>
+</tr>
+<tr>
+<td>El panel muestra un error crudo</td>
+<td>Reportarlo: los mensajes del panel se escriben para quien lo usa, no para quien lo programó</td>
+</tr>
+</tbody>
+</table>
+<p class="pie">
+  Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
+  Generado el 24/08/2026 desde el commit 0914d45 2026-08-24<br>
+  <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
+  quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
+</p>
+</body></html>

@@ -66,6 +66,15 @@ def construir_parser() -> argparse.ArgumentParser:
             "y tarda minutos, por eso no va en --diagnostico. No lee ningún chat."
         ),
     )
+    parser.add_argument(
+        "--datos",
+        action="store_true",
+        help=(
+            "Averigua lo que se puede saber de esta máquina —qué perfil de Chrome "
+            "usar y cuál es su deviceId— e imprime las líneas del .env listas para "
+            "pegar. Es el primer comando que hay que correr al instalar."
+        ),
+    )
     parser.add_argument("--version", action="version", version=f"agente {__version__}")
     return parser
 
@@ -191,6 +200,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     configurar_logs(config)
 
+    if args.datos:
+        return correr_datos(config)
+
     if args.diagnostico:
         return correr_diagnostico(config)
 
@@ -227,6 +239,78 @@ def main(argv: Sequence[str] | None = None) -> int:
         return SALIDA_OK
 
     asyncio.run(_trabajar(config, parar, modo=modo))
+    return SALIDA_OK
+
+
+def correr_datos(config: Configuracion) -> int:
+    """`--datos`: lo que hay que poner en el `.env`, ya resuelto.
+
+    Existe para que instalar una máquina no requiera correr un `grep` con
+    espacios escapados ni comparar dos listas de rutas a ojo. Lo que la máquina
+    puede saber sola, lo dice; lo que no —el token y el identificador, que salen
+    del panel— lo deja marcado.
+    """
+    from agente import perfiles
+
+    todos = perfiles.listar()
+    recomendacion = perfiles.recomendar(todos)
+
+    print("PERFILES DE CHROME EN ESTA MÁQUINA")
+    print(f"  {perfiles.carpeta_chrome()}")
+    print()
+    if not todos:
+        print("  (ninguno)")
+    for perfil in todos:
+        marcas = []
+        if perfil.tiene_extension:
+            marcas.append("extensión")
+        if perfil.tiene_whatsapp:
+            marcas.append("WhatsApp")
+        estado = " + ".join(marcas) if marcas else "nada"
+        senial = (
+            "  <-- este"
+            if recomendacion.perfil and perfil.nombre == recomendacion.perfil.nombre
+            else ""
+        )
+        print(f"  {perfil.nombre:14} {estado}{senial}")
+    print()
+
+    if not recomendacion.listo:
+        print("NO SE PUEDE SEGUIR TODAVÍA")
+        print(f"  {recomendacion.problema}")
+        print()
+        print(f"  Qué hacer: {recomendacion.solucion}")
+        print()
+        print("  Después volvé a correr esto.")
+        return SALIDA_DIAGNOSTICO
+
+    perfil = recomendacion.perfil
+    assert perfil is not None
+
+    print("PONÉ ESTO EN EL .env")
+    print(f"  {CARPETA_AGENTE.parent / '.env'}")
+    print()
+    print("AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com")
+    print("AGENTE_MODO=simulado")
+    print(f"CLAUDE_BIN={config.claude_bin or '   <- falta: instalá Claude Code'}")
+    print(f"CHROME_PERFIL_DIR={perfil.nombre}")
+    print(f"CHROME_PUERTO={config.chrome_puerto}")
+
+    if perfil.device_id:
+        print(f"AGENTE_DEVICE_ID={perfil.device_id}")
+    else:
+        print("AGENTE_DEVICE_ID=")
+        print("   ^ vacío: la extensión está instalada pero nunca se usó en este perfil.")
+        print("     Abrí Chrome, usá la extensión una vez, y volvé a correr esto.")
+
+    print("AGENTE_MACHINE_ID=")
+    print("   ^ el identificador que pusiste en el panel al dar de alta la máquina")
+    print("AGENTE_TOKEN=")
+    print("   ^ el que mostró el panel en ese momento. Se muestra UNA sola vez.")
+    print()
+    print("Las líneas que empiezan con ^ son explicaciones: NO se pegan.")
+    print("Y los comentarios de un valor vacío van en la línea de arriba, nunca")
+    print("al lado: dotenv toma el '# ...' como si fuera el valor.")
     return SALIDA_OK
 
 

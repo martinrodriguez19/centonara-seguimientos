@@ -2,7 +2,7 @@
 
 Se corre así, desde la raíz del repositorio:
 
-    uv run --directory agente --with markdown python docs/generar-pdf.py
+    uv run --project agente --with markdown python docs/generar-pdf.py
 
 Usa el Chromium que ya trae Playwright para el motor de envío, así que no hay
 que instalar nada más.
