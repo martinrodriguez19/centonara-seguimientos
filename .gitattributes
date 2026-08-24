@@ -2,3 +2,14 @@
 # GitHub no la cuente en las estadísticas del lenguaje y colapse sus diffs, para
 # que un cambio ahí no se pierda entre 2000 líneas de un archivo que nadie tocó.
 referencia/** linguist-vendored
+
+# Los scripts de shell SIEMPRE con LF, se los edite donde se los edite.
+#
+# Un `.sh` con CRLF no corre: bash lee el `` como parte del comando y falla
+# con mensajes que no dicen nada ("$'': command not found"). Pasa solo, en
+# silencio, cuando alguien con `core.autocrlf=true` —el valor por defecto en
+# Windows, que es donde se desarrolla esto— hace checkout y vuelve a commitear.
+#
+# Los dos que importan corren fuera de Windows: `instalar-mac.sh` en la Mac del
+# vendedor, y `backup.sh` adentro del contenedor del cron.
+*.sh text eol=lf
