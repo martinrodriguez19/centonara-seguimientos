@@ -342,17 +342,67 @@ Genera uno nuevo y el anterior deja de servir.</p>
 diagnóstico. <strong>No arranca nada todavía.</strong></p>
 <hr />
 <h2>Paso 12 — Dar el permiso de sitio ⚠️</h2>
-<p>Este es <strong>manual</strong> y es el que más se olvida.</p>
-<p>En Chrome: <strong>ícono de Claude → configuración → permisos de sitios → habilitar
-<code>web.whatsapp.com</code>.</strong></p>
+<p>Son <strong>dos permisos distintos</strong> con nombres parecidos. Uno ya está resuelto; el
+otro es el único paso de toda la guía que no se puede hacer desde la terminal.</p>
+<table>
+<thead>
+<tr>
+<th>Permiso</th>
+<th>Quién lo pone</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mcp__claude-in-chrome</code>, para el modo headless</td>
+<td><strong>El instalador, en el paso 11.</strong> No hay nada que hacer</td>
+</tr>
+<tr>
+<td>La lista de sitios <strong>de la extensión</strong></td>
+<td>A mano, acá</td>
+</tr>
+</tbody>
+</table>
 <blockquote>
-<p>Si entrás por el menú de Chrome de la extensión vas a ver "Acceso al sitio:
-todos los sitios". <strong>Ese ya está bien y no es el que falta.</strong> Son dos permisos
-distintos con nombres parecidos: el de Chrome ya viene dado, el de la extensión
-hay que darlo.</p>
-<p>Sin este, el error es <code>Claude in Chrome requires permission</code>, lo tira el
-navegador, y <strong>no aparece en ningún log del agente</strong>.</p>
+<p>Si en algún lado encontrás un <code>echo '{...}' &gt; ~/.claude/settings.json</code>, <strong>no lo
+corras</strong>. Sobrescribe el archivo entero, y a alguien que ya usaba Claude Code
+le borra su configuración. El instalador lo escribe respetando lo que hubiera.</p>
 </blockquote>
+<h3>Lo que hay que hacer</h3>
+<p><strong>a.</strong> Arrancá el Chrome del sistema, que ya quedó configurado con el perfil
+correcto y el puerto:</p>
+<pre><code class="language-bash">launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist
+</code></pre>
+<blockquote>
+<p>Se hace acá y no más adelante a propósito. Abrir Chrome con <code>open --args</code> no
+sirve: si ya hay una instancia corriendo, macOS <strong>ignora los argumentos</strong> y la
+ventana sale con el perfil equivocado. El LaunchAgent lo abre bien, y es
+además como va a arrancar todos los días.</p>
+<p>Si Chrome ya estaba abierto, cerralo del todo antes —todas las ventanas— y
+volvé a correr el comando.</p>
+</blockquote>
+<p><strong>b.</strong> Comprobá que quedó bien:</p>
+<pre><code class="language-bash">curl http://localhost:9222/json/version
+</code></pre>
+<p>Tiene que devolver un JSON con <code>"Browser": "Chrome/..."</code>. Si no contesta nada,
+Chrome estaba abierto cuando corriste (a): cerralo y repetí.</p>
+<p><strong>c.</strong> En esa ventana de Chrome, entrá a <code>web.whatsapp.com</code>. Si pide QR,
+escanealo con la línea del vendedor.</p>
+<p><strong>d.</strong> Con esa pestaña adelante: <strong>ícono de Claude en la barra → configuración →
+permisos de sitios → habilitar <code>web.whatsapp.com</code>.</strong></p>
+<h3>Dos cosas que confunden acá</h3>
+<p><strong>El menú de Chrome no es este permiso.</strong> Si entrás por ahí vas a ver "Acceso al
+sitio: todos los sitios". Eso ya está bien y <strong>no es lo que falta</strong>: el de Chrome
+viene dado, el de la extensión hay que darlo.</p>
+<p><strong>Sin este, el error es <code>Claude in Chrome requires permission</code></strong> — lo tira el
+navegador, no el CLI, así que <strong>no aparece en ningún log del agente</strong>. Si lo ves,
+es esto.</p>
+<h3>Por qué este no se automatiza</h3>
+<p>Es una puerta de consentimiento: la extensión pide que una persona autorice, a
+propósito, que un programa opere sobre WhatsApp. Vive adentro del almacenamiento
+de la extensión, no en un archivo de configuración.</p>
+<p>Se podría forzar escribiendo ahí. <strong>No se hace</strong>: sería saltear un control de
+seguridad, y se rompería en la próxima versión de la extensión.</p>
+<p>Lo que sí se puede es <strong>verificarlo sin adivinar</strong>, y eso es el paso siguiente.</p>
 <hr />
 <h2>Paso 13 — Comprobar que todo quedó bien</h2>
 <p>Primero lo que se lee de archivos:</p>
@@ -396,17 +446,8 @@ Web todavía no se verificaron contra una sesión real, así que el envío está
 bloqueado a propósito. La lectura y la redacción funcionan igual.</p>
 </blockquote>
 <hr />
-<h2>Paso 14 — Arrancar</h2>
-<p>Primero Chrome:</p>
-<pre><code class="language-bash">launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist
-</code></pre>
-<p>Comprobá que levantó el puerto:</p>
-<pre><code class="language-bash">curl http://localhost:9222/json/version
-</code></pre>
-<p>Tiene que devolver un JSON con <code>"Browser": "Chrome/..."</code>. <strong>Si no contesta nada</strong>,
-es que Chrome ya estaba abierto: cerralo del todo —todas las ventanas— y repetí
-el <code>bootstrap</code>.</p>
-<p>Después el agente:</p>
+<h2>Paso 14 — Arrancar el agente</h2>
+<p>Chrome ya está corriendo desde el paso 12. Falta el agente:</p>
 <pre><code class="language-bash">launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
 </code></pre>
 <p>Ver que esté vivo:</p>
@@ -496,7 +537,7 @@ retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.</p>
 </table>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit 97bd5f9 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit b865200 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

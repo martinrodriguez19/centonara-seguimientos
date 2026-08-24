@@ -36,7 +36,7 @@ NO_CORRER = {
     "npm install": "instala Claude Code",
     "git clone": "clona el repositorio",
     "launchctl": "solo macOS",
-    "open -e": "solo macOS",
+    "open ": "solo macOS",
     "cp .env.example": "pisaría el .env de esta máquina",
     "--sonda": "cuesta USD 0,50 y abre el navegador",
     "cd ~/centonara": "ruta de la Mac",

@@ -157,6 +157,15 @@ echo "      $PLIST"
 # esto existe. Y como Chrome ya está abierto cuando él hace click en el Dock,
 # esa ventana se engancha a la instancia que tiene el puerto.
 
+# El permiso del modo headless. Sin esto, `claude -p` se auto-deniega las
+# acciones de navegador y el job falla con un 502 mudo (problema #3 del MVP).
+#
+# Lo escribe el agente y no un `echo` con redirección, porque ese archivo suele
+# tener otras cosas: un `echo >` lo sobrescribe entero y le borra la
+# configuración a alguien que ya usaba Claude Code.
+echo "      permiso del modo headless:"
+"$PYTHON" -c "from agente.permiso_mcp import asegurar; r = asegurar(); print('        ' + r.detalle)"
+
 echo "[4/5] Chrome al iniciar sesión"
 
 if [ ! -x "$CHROME_APP" ]; then

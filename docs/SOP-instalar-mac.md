@@ -288,18 +288,70 @@ diagnóstico. **No arranca nada todavía.**
 
 ## Paso 12 — Dar el permiso de sitio ⚠️
 
-Este es **manual** y es el que más se olvida.
+Son **dos permisos distintos** con nombres parecidos. Uno ya está resuelto; el
+otro es el único paso de toda la guía que no se puede hacer desde la terminal.
 
-En Chrome: **ícono de Claude → configuración → permisos de sitios → habilitar
-`web.whatsapp.com`.**
+| Permiso | Quién lo pone |
+|---|---|
+| `mcp__claude-in-chrome`, para el modo headless | **El instalador, en el paso 11.** No hay nada que hacer |
+| La lista de sitios **de la extensión** | A mano, acá |
 
-> Si entrás por el menú de Chrome de la extensión vas a ver "Acceso al sitio:
-> todos los sitios". **Ese ya está bien y no es el que falta.** Son dos permisos
-> distintos con nombres parecidos: el de Chrome ya viene dado, el de la extensión
-> hay que darlo.
+> Si en algún lado encontrás un `echo '{...}' > ~/.claude/settings.json`, **no lo
+> corras**. Sobrescribe el archivo entero, y a alguien que ya usaba Claude Code
+> le borra su configuración. El instalador lo escribe respetando lo que hubiera.
+
+### Lo que hay que hacer
+
+**a.** Arrancá el Chrome del sistema, que ya quedó configurado con el perfil
+correcto y el puerto:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist
+```
+
+> Se hace acá y no más adelante a propósito. Abrir Chrome con `open --args` no
+> sirve: si ya hay una instancia corriendo, macOS **ignora los argumentos** y la
+> ventana sale con el perfil equivocado. El LaunchAgent lo abre bien, y es
+> además como va a arrancar todos los días.
 >
-> Sin este, el error es `Claude in Chrome requires permission`, lo tira el
-> navegador, y **no aparece en ningún log del agente**.
+> Si Chrome ya estaba abierto, cerralo del todo antes —todas las ventanas— y
+> volvé a correr el comando.
+
+**b.** Comprobá que quedó bien:
+
+```bash
+curl http://localhost:9222/json/version
+```
+
+Tiene que devolver un JSON con `"Browser": "Chrome/..."`. Si no contesta nada,
+Chrome estaba abierto cuando corriste (a): cerralo y repetí.
+
+**c.** En esa ventana de Chrome, entrá a `web.whatsapp.com`. Si pide QR,
+escanealo con la línea del vendedor.
+
+**d.** Con esa pestaña adelante: **ícono de Claude en la barra → configuración →
+permisos de sitios → habilitar `web.whatsapp.com`.**
+
+### Dos cosas que confunden acá
+
+**El menú de Chrome no es este permiso.** Si entrás por ahí vas a ver "Acceso al
+sitio: todos los sitios". Eso ya está bien y **no es lo que falta**: el de Chrome
+viene dado, el de la extensión hay que darlo.
+
+**Sin este, el error es `Claude in Chrome requires permission`** — lo tira el
+navegador, no el CLI, así que **no aparece en ningún log del agente**. Si lo ves,
+es esto.
+
+### Por qué este no se automatiza
+
+Es una puerta de consentimiento: la extensión pide que una persona autorice, a
+propósito, que un programa opere sobre WhatsApp. Vive adentro del almacenamiento
+de la extensión, no en un archivo de configuración.
+
+Se podría forzar escribiendo ahí. **No se hace**: sería saltear un control de
+seguridad, y se rompería en la próxima versión de la extensión.
+
+Lo que sí se puede es **verificarlo sin adivinar**, y eso es el paso siguiente.
 
 ---
 
@@ -341,25 +393,9 @@ Si falla:
 
 ---
 
-## Paso 14 — Arrancar
+## Paso 14 — Arrancar el agente
 
-Primero Chrome:
-
-```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist
-```
-
-Comprobá que levantó el puerto:
-
-```bash
-curl http://localhost:9222/json/version
-```
-
-Tiene que devolver un JSON con `"Browser": "Chrome/..."`. **Si no contesta nada**,
-es que Chrome ya estaba abierto: cerralo del todo —todas las ventanas— y repetí
-el `bootstrap`.
-
-Después el agente:
+Chrome ya está corriendo desde el paso 12. Falta el agente:
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
