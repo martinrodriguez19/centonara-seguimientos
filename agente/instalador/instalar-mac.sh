@@ -204,58 +204,87 @@ echo "[5/5] diagnóstico"
 echo
 "$PYTHON" -m agente.main --diagnostico || true
 
+# ---------------------------------------------------------------------------
+# Las líneas del .env, ya resueltas
+# ---------------------------------------------------------------------------
+#
+# Lo que este script puede saber, lo dice. Lo que no —el token y el deviceId—
+# queda en blanco con el comando para conseguirlo al lado.
+#
+# `CHROME_PERFIL_DIR` se imprime a propósito aunque también quedó en el plist:
+# si los dos valores difieren, el día que el agente tenga que abrir Chrome él
+# va a abrir el perfil equivocado y no va a encontrar la sesión de WhatsApp.
+
+DEVICE_ID=$(grep -aoh 'bridgeDeviceId.\{0,60\}' \
+  "$HOME/Library/Application Support/Google/Chrome/"*"/Local Extension Settings/fcoeoabgfenejglbffodgkkbkcdhcgfn/"*.log 2>/dev/null \
+  | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+
+cat <<ENV
+
+---------------------------------------------------------------------------
+Poné esto en   ${REPO}/.env
+
+  cp .env.example .env      # si todavía no existe
+
+y completá o reemplazá estas líneas:
+
+AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com
+AGENTE_MODO=simulado
+CLAUDE_BIN=${CLAUDE_BIN}
+CHROME_PERFIL_DIR=${CHROME_PERFIL_DIR}
+CHROME_PUERTO=${CHROME_PUERTO}
+ENV
+
+if [ -n "$DEVICE_ID" ]; then
+  echo "AGENTE_DEVICE_ID=${DEVICE_ID}"
+else
+  echo "AGENTE_DEVICE_ID=          # <- vacío: la extensión no se usó todavía en esta"
+  echo "                           #    máquina. Usala una vez y volvé a correr esto."
+fi
+
+cat <<ENV2
+AGENTE_MACHINE_ID=         # <- el identificador que pusiste en el panel al dar
+                           #    de alta la máquina. IDÉNTICO.
+AGENTE_TOKEN=              # <- el que mostró el panel en ese momento.
+                           #    Se muestra UNA sola vez.
+
+⚠️ Los comentarios de arriba son para leer, NO se pegan: al lado de un valor
+   vacío, dotenv toma el "# ..." como el valor.
+---------------------------------------------------------------------------
+ENV2
+
 cat <<FIN
 
 ---------------------------------------------------------------------------
 Instalado. Lo que sigue NO lo puede hacer este script:
 
-  1. Completar ${REPO}/.env con:
-       AGENTE_BACKEND_URL   la URL del backend
-       AGENTE_TOKEN         el token que muestra el panel al dar de alta la
-                            máquina. Se muestra UNA sola vez.
-       AGENTE_MACHINE_ID    el mismo identificador con el que se dio de alta
-       AGENTE_DEVICE_ID     ver abajo
+  1. Pegar en ${REPO}/.env las lineas de arriba, y completar las dos que
+     quedaron en blanco (AGENTE_MACHINE_ID y AGENTE_TOKEN). Salen del panel,
+     de cuando se dio de alta esta maquina.
 
-  2. El deviceId de ESTE Chrome:
+  2. En la extension de Claude en Chrome: configuracion -> permisos de sitios
+     -> habilitar web.whatsapp.com.
 
-       grep -ao 'bridgeDeviceId.\\{0,60\\}' \\
-         ~/Library/Application\\ Support/Google/Chrome/*/Local\\ Extension\\ Settings/fcoeoabgfenejglbffodgkkbkcdhcgfn/*.log
+     Es MANUAL y es una capa DISTINTA del permiso de Chrome, que ya viene dado.
+     Si mirás el menú de Chrome vas a ver "todos los sitios" y ese NO es el que
+     falta. Sin este, falla con "requires permission" — y lo emite el navegador,
+     así que no aparece en ningún log del agente.
 
-  3. En la extensión de Claude en Chrome: configuración -> permisos de sitios
-     -> habilitar web.whatsapp.com. Es MANUAL y es una capa distinta del
-     permiso de Chrome, que ya viene dado. Sin esto falla con
-     "requires permission" y no aparece en ningún log del agente.
+  3. Dejar la sesion de WhatsApp Web iniciada en ese Chrome, en el perfil
+     ${CHROME_PERFIL_DIR}.
 
-  4. Dejar la sesión de WhatsApp Web iniciada en ese Chrome.
-
-  5. Comprobar que 3 y 4 quedaron bien, que es lo único que los verifica:
+  4. Comprobar 2 y 3, que es lo unico que los verifica:
 
        ${PYTHON} -m agente.main --sonda
 
-  6. Verificar que la extensión y la sesión de WhatsApp estén en el MISMO
-     perfil de Chrome, y que sea el que quedó configurado arriba
-     (${CHROME_PERFIL_DIR}). Ver docs/SOP-instalar-mac.md §2.5:
-
-       ls -d ~/Library/Application\\ Support/Google/Chrome/*/Extensions/fcoeoabgfenejglbffodgkkbkcdhcgfn
-       ls -d ~/Library/Application\\ Support/Google/Chrome/*/IndexedDB/*whatsapp*
-
-     Si no coinciden, el sistema no funciona: LISTAR usa la extensión y ENVIAR
-     usa esa misma ventana. Se corrige con:
-
-       CHROME_PERFIL_DIR="Profile N" bash agente/instalador/instalar-mac.sh
-
-  7. Recién ahí, arrancar las dos cosas:
+  5. Arrancar las dos cosas, Chrome primero:
 
        launchctl bootstrap gui/\$(id -u) ${PLIST_CHROME}
        launchctl bootstrap gui/\$(id -u) ${PLIST}
 
-     Comprobar que Chrome levantó el puerto:
+     Comprobar que Chrome levanto el puerto:
 
        curl http://localhost:${CHROME_PUERTO}/json/version
-
-     Y el estado del agente:
-
-       launchctl print gui/\$(id -u)/${ETIQUETA} | head -20
 
      Para parar:
 
@@ -264,7 +293,10 @@ Instalado. Lo que sigue NO lo puede hacer este script:
 
   Los logs quedan en ${LOGS}/
 
-  La máquina nace INACTIVA. Instalar no es activar: para que tome trabajo hay
+  La maquina nace INACTIVA. Instalar no es activar: para que tome trabajo hay
   que activarla desde el panel.
+
+  El paso a paso completo, con de donde sale cada dato:
+  docs/SOP-instalar-mac.md
 ---------------------------------------------------------------------------
 FIN
