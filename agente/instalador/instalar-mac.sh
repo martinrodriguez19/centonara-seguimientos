@@ -152,6 +152,14 @@ echo "      $PLIST"
 # silencio** si no se pasa `--user-data-dir` explícito: arranca, acepta el flag,
 # y no abre nada.
 #
+# ⚠️ Y verificado en la primera Mac (Chrome 152): tampoco alcanza con pasarlo
+# apuntando al directorio de siempre — Chrome rechaza el puerto sobre el data
+# dir POR DEFECTO ("DevTools remote debugging requires a non-default data
+# directory"). O sea: con este diseño el puerto no abre en Chrome moderno. Lo
+# necesita sólo el envío real, y la salida (un data dir dedicado, con su propia
+# sesión de WhatsApp) se decide en la fase 4. Mientras tanto el LaunchAgent
+# sigue sirviendo para que Chrome esté abierto al iniciar sesión.
+#
 # Se hace con un LaunchAgent y no pidiéndole al vendedor que abra Chrome de una
 # forma especial, por el motivo de siempre: el vendedor no tiene que saber que
 # esto existe. Y como Chrome ya está abierto cuando él hace click en el Dock,

@@ -368,14 +368,15 @@ launchctl bootout gui/$(id -u)/com.centonara.chrome
 <li><code>OPENSSL_Uplink(...): no OPENSSL_Applink</code> — un antivirus dejó
   <code>SSLKEYLOGFILE</code> en el entorno. El agente ya la descarta al arrancar; si
   aparece igual, es otro proceso.</li>
-<li>Si Chrome quedó abierto sin el puerto (<code>curl localhost:9222</code> no contesta),
-  el ciclo es: <code>launchctl bootout</code>, cerrar Chrome del todo (Cmd+Q), y
-  <code>launchctl bootstrap</code> — o directamente correr el instalador, que hace ese
-  ciclo solo.</li>
+<li>El puerto de depuración (9222) <strong>no va a estar disponible</strong> en Chrome 136 o
+  más nuevo: Chrome lo rechaza sobre el perfil normal del usuario ("DevTools
+  remote debugging requires a non-default data directory"). El instalador lo
+  intenta, lo avisa y sigue: hoy no bloquea nada — lo necesita sólo el envío
+  real (fase 4), y ahí se va a resolver con un directorio de datos dedicado.</li>
 </ul>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit c379dbc 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit 176feda 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

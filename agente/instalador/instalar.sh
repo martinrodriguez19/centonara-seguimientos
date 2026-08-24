@@ -308,18 +308,24 @@ fi
 launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.chrome.plist"
 echo "  esperando a que Chrome levante el puerto..."
 puerto_ok=no
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in 1 2 3 4; do
   sleep 2
   version=$(curl -s -m 3 "http://localhost:$PUERTO/json/version" || true)
   case "$version" in *'"Browser"'*) puerto_ok=si; break ;; esac
 done
-if [ "$puerto_ok" = no ]; then
-  echo "  MAL: Chrome arrancó pero el puerto $PUERTO no contesta." >&2
-  echo "  Mirá el log:  cat ~/Library/Logs/centonara/chrome.err" >&2
-  echo "  Y después volvé a correr este instalador." >&2
-  exit 1
+if [ "$puerto_ok" = si ]; then
+  echo "  ok  Chrome corriendo con el puerto $PUERTO"
+else
+  # Chrome 136+ rechaza el puerto sobre el perfil normal del usuario
+  # ("DevTools remote debugging requires a non-default data directory").
+  # No corta la instalación: el puerto lo necesita sólo el envío real
+  # (fase 4), que hoy ya está bloqueado por otro motivo. La lectura y los
+  # borradores van por la extensión y no lo usan.
+  echo "  aviso: Chrome está corriendo, pero sin el puerto $PUERTO."
+  echo "  Los Chrome nuevos (136 en adelante) no dejan abrirlo sobre el"
+  echo "  perfil normal. Hoy no bloquea nada: lo necesita recién el envío"
+  echo "  real (fase 4), y se resuelve en esa fase. Se sigue igual."
 fi
-echo "  ok  Chrome corriendo con el puerto $PUERTO"
 
 launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.agente.plist"
 echo "  ok  agente corriendo"

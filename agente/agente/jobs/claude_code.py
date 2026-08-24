@@ -159,12 +159,22 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
     crudo = salida.stdout.strip()
 
     if salida.returncode != 0:
-        log.error("claude_salio_mal", returncode=salida.returncode, stderr=salida.stderr[-500:])
+        # Lo que claude tenía para decir suele salir por stdout —con
+        # `--output-format json` el error viaja en el sobre— y stderr queda
+        # vacío. Sin mostrarlo, "código distinto de cero" es un callejón sin
+        # salida: pasó, instalando la primera Mac.
+        dijo = (salida.stderr.strip() or crudo)[-300:] or "sin salida"
+        log.error(
+            "claude_salio_mal",
+            returncode=salida.returncode,
+            stderr=salida.stderr[-500:],
+            stdout=crudo[-500:],
+        )
         return Invocacion(
             False,
             codigo="ERROR_INESPERADO",
             detalle={
-                "motivo": "claude devolvió un código distinto de cero",
+                "motivo": f"claude devolvió {salida.returncode} y dijo: {dijo}",
                 "returncode": salida.returncode,
             },
             raw=crudo,

@@ -247,7 +247,8 @@ curl https://backend-produccion-7yqr.onrender.com/health
 - `OPENSSL_Uplink(...): no OPENSSL_Applink` — un antivirus dejó
   `SSLKEYLOGFILE` en el entorno. El agente ya la descarta al arrancar; si
   aparece igual, es otro proceso.
-- Si Chrome quedó abierto sin el puerto (`curl localhost:9222` no contesta),
-  el ciclo es: `launchctl bootout`, cerrar Chrome del todo (Cmd+Q), y
-  `launchctl bootstrap` — o directamente correr el instalador, que hace ese
-  ciclo solo.
+- El puerto de depuración (9222) **no va a estar disponible** en Chrome 136 o
+  más nuevo: Chrome lo rechaza sobre el perfil normal del usuario ("DevTools
+  remote debugging requires a non-default data directory"). El instalador lo
+  intenta, lo avisa y sigue: hoy no bloquea nada — lo necesita sólo el envío
+  real (fase 4), y ahí se va a resolver con un directorio de datos dedicado.
