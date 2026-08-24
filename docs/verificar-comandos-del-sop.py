@@ -36,13 +36,22 @@ NO_CORRER = {
     "npm install": "instala Claude Code",
     "git clone": "clona el repositorio",
     "launchctl": "solo macOS",
+    "pgrep": "solo macOS",
+    "~/Library/": "ruta de la Mac",
     "open ": "solo macOS",
     "cp .env.example": "pisaría el .env de esta máquina",
     "--sonda": "cuesta USD 0,50 y abre el navegador",
     "cd ~/centonara": "ruta de la Mac",
+    "cd centonara-seguimientos": "entra a lo recién clonado, que acá no existe",
     "/Applications/Google": "solo macOS",
     "instalar-mac.sh": "solo macOS",
     "uv sync": "ya está sincronizado",
+}
+
+# Salidas distintas de 0 que igual significan que el comando anduvo. Sin esto,
+# `--diagnostico` se marca como roto justamente cuando hace bien su trabajo.
+SALIDAS_ESPERADAS = {
+    "--diagnostico": {0, 3},  # 3 = degradado, que es lo que informa
 }
 
 # Traducciones para poder correr en Windows lo que el SOP escribe para macOS.
@@ -82,7 +91,10 @@ def main() -> None:
                 real, shell=True, cwd=RAIZ, capture_output=True,
                 text=True, timeout=180, encoding="utf-8", errors="replace",
             )
-            ok = r.returncode == 0
+            esperadas = next(
+                (v for k, v in SALIDAS_ESPERADAS.items() if k in cmd), {0}
+            )
+            ok = r.returncode in esperadas
         except Exception as e:  # noqa: BLE001
             ok, r = False, type("R", (), {"stderr": str(e), "returncode": -1})()
 

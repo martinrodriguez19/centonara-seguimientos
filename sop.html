@@ -377,14 +377,36 @@ correcto y el puerto:</p>
 sirve: si ya hay una instancia corriendo, macOS <strong>ignora los argumentos</strong> y la
 ventana sale con el perfil equivocado. El LaunchAgent lo abre bien, y es
 además como va a arrancar todos los días.</p>
-<p>Si Chrome ya estaba abierto, cerralo del todo antes —todas las ventanas— y
-volvé a correr el comando.</p>
 </blockquote>
+<p>⚠️ <strong>Antes de correrlo, Chrome tiene que estar cerrado del todo.</strong> Con <code>Cmd+Q</code>,
+no cerrando las ventanas. Comprobalo:</p>
+<pre><code class="language-bash">pgrep -f &quot;Google Chrome&quot; | wc -l
+</code></pre>
+<p>Tiene que dar <strong>0</strong>. Si da otra cosa, Chrome sigue vivo y el <code>bootstrap</code> va a
+parecer que funcionó y no va a abrir el puerto.</p>
 <p><strong>b.</strong> Comprobá que quedó bien:</p>
 <pre><code class="language-bash">curl http://localhost:9222/json/version
 </code></pre>
-<p>Tiene que devolver un JSON con <code>"Browser": "Chrome/..."</code>. Si no contesta nada,
-Chrome estaba abierto cuando corriste (a): cerralo y repetí.</p>
+<p>Tiene que devolver un JSON con <code>"Browser": "Chrome/..."</code>.</p>
+<p><strong>Si no contesta nada</strong>, Chrome estaba abierto cuando corriste (a). Y acá viene
+lo que confunde: volver a correr el <code>bootstrap</code> <strong>no alcanza</strong>, porque el
+servicio ya quedó cargado y devuelve</p>
+<pre><code>Bootstrap failed: 5: Input/output error
+</code></pre>
+<p>Ese mensaje quiere decir <strong>"ya está cargado"</strong>, no que algo falló. El ciclo
+completo para reintentar es descargar, cerrar Chrome, y volver a cargar:</p>
+<pre><code class="language-bash">launchctl bootout gui/$(id -u)/com.centonara.chrome
+</code></pre>
+<pre><code class="language-bash">pgrep -f &quot;Google Chrome&quot; | wc -l
+</code></pre>
+<p>Con eso en <strong>0</strong>:</p>
+<pre><code class="language-bash">launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist &amp;&amp; sleep 5 &amp;&amp; curl -s http://localhost:9222/json/version
+</code></pre>
+<p>Si sigue sin contestar, mirá qué dice el servicio y su log:</p>
+<pre><code class="language-bash">launchctl print gui/$(id -u)/com.centonara.chrome | head -30
+</code></pre>
+<pre><code class="language-bash">cat ~/Library/Logs/centonara/chrome.err
+</code></pre>
 <p><strong>c.</strong> En esa ventana de Chrome, entrá a <code>web.whatsapp.com</code>. Si pide QR,
 escanealo con la línea del vendedor.</p>
 <p><strong>d.</strong> Con esa pestaña adelante: <strong>ícono de Claude en la barra → configuración →
@@ -459,6 +481,21 @@ quedan en <code>~/Library/Logs/centonara/</code>.</p>
 <pre><code class="language-bash">launchctl bootout gui/$(id -u)/com.centonara.agente
 launchctl bootout gui/$(id -u)/com.centonara.chrome
 </code></pre>
+<h3>Si un <code>bootstrap</code> devuelve <code>Input/output error</code></h3>
+<pre><code>Bootstrap failed: 5: Input/output error
+</code></pre>
+<p>Quiere decir <strong>"ese servicio ya está cargado"</strong>, no que algo salió mal. Pasa
+apenas corrés el mismo <code>bootstrap</code> dos veces. Para volver a arrancarlo de cero
+hay que descargarlo primero:</p>
+<pre><code class="language-bash">launchctl bootout gui/$(id -u)/com.centonara.agente
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
+</code></pre>
+<p>O, más corto, reiniciarlo sin descargarlo:</p>
+<pre><code class="language-bash">launchctl kickstart -k gui/$(id -u)/com.centonara.agente
+</code></pre>
+<p>Lo mismo vale para <code>com.centonara.chrome</code>, con una diferencia importante:
+<strong>Chrome además tiene que estar cerrado</strong> antes de volver a cargarlo, o vuelve a
+arrancar sin el puerto. Está explicado en el paso 12.</p>
 <hr />
 <h1>Parte 3 — Activar y probar</h1>
 <h2>Paso 15 — Activar la máquina, que es una decisión aparte</h2>
@@ -537,7 +574,7 @@ retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.</p>
 </table>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit b865200 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit b5dcab9 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

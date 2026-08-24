@@ -313,9 +313,16 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.pli
 > sirve: si ya hay una instancia corriendo, macOS **ignora los argumentos** y la
 > ventana sale con el perfil equivocado. El LaunchAgent lo abre bien, y es
 > además como va a arrancar todos los días.
->
-> Si Chrome ya estaba abierto, cerralo del todo antes —todas las ventanas— y
-> volvé a correr el comando.
+
+⚠️ **Antes de correrlo, Chrome tiene que estar cerrado del todo.** Con `Cmd+Q`,
+no cerrando las ventanas. Comprobalo:
+
+```bash
+pgrep -f "Google Chrome" | wc -l
+```
+
+Tiene que dar **0**. Si da otra cosa, Chrome sigue vivo y el `bootstrap` va a
+parecer que funcionó y no va a abrir el puerto.
 
 **b.** Comprobá que quedó bien:
 
@@ -323,8 +330,42 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.pli
 curl http://localhost:9222/json/version
 ```
 
-Tiene que devolver un JSON con `"Browser": "Chrome/..."`. Si no contesta nada,
-Chrome estaba abierto cuando corriste (a): cerralo y repetí.
+Tiene que devolver un JSON con `"Browser": "Chrome/..."`.
+
+**Si no contesta nada**, Chrome estaba abierto cuando corriste (a). Y acá viene
+lo que confunde: volver a correr el `bootstrap` **no alcanza**, porque el
+servicio ya quedó cargado y devuelve
+
+```
+Bootstrap failed: 5: Input/output error
+```
+
+Ese mensaje quiere decir **"ya está cargado"**, no que algo falló. El ciclo
+completo para reintentar es descargar, cerrar Chrome, y volver a cargar:
+
+```bash
+launchctl bootout gui/$(id -u)/com.centonara.chrome
+```
+
+```bash
+pgrep -f "Google Chrome" | wc -l
+```
+
+Con eso en **0**:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.chrome.plist && sleep 5 && curl -s http://localhost:9222/json/version
+```
+
+Si sigue sin contestar, mirá qué dice el servicio y su log:
+
+```bash
+launchctl print gui/$(id -u)/com.centonara.chrome | head -30
+```
+
+```bash
+cat ~/Library/Logs/centonara/chrome.err
+```
 
 **c.** En esa ventana de Chrome, entrá a `web.whatsapp.com`. Si pide QR,
 escanealo con la línea del vendedor.
@@ -416,6 +457,31 @@ Para parar las dos cosas:
 launchctl bootout gui/$(id -u)/com.centonara.agente
 launchctl bootout gui/$(id -u)/com.centonara.chrome
 ```
+
+### Si un `bootstrap` devuelve `Input/output error`
+
+```
+Bootstrap failed: 5: Input/output error
+```
+
+Quiere decir **"ese servicio ya está cargado"**, no que algo salió mal. Pasa
+apenas corrés el mismo `bootstrap` dos veces. Para volver a arrancarlo de cero
+hay que descargarlo primero:
+
+```bash
+launchctl bootout gui/$(id -u)/com.centonara.agente
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
+```
+
+O, más corto, reiniciarlo sin descargarlo:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.centonara.agente
+```
+
+Lo mismo vale para `com.centonara.chrome`, con una diferencia importante:
+**Chrome además tiene que estar cerrado** antes de volver a cargarlo, o vuelve a
+arrancar sin el puerto. Está explicado en el paso 12.
 
 ---
 
