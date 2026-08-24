@@ -254,6 +254,21 @@ AGENTE_TOKEN=
 </code></pre>
 <p><strong>Copiá ese bloque</strong>, desde <code>AGENTE_BACKEND_URL</code> hasta el final. Lo vas a pegar
 en el paso 10.</p>
+<blockquote>
+<p><strong>Si falta Claude Code</strong> —que es lo más probable en una Mac recién entregada—
+te lo va a decir arriba de todo, con el comando para instalarlo:</p>
+<p><code>``
+FALTA CLAUDE CODE
+  No se encontró el ejecutable</code>claude` en esta máquina.</p>
+<p>Qué hacer:
+    npm install -g @anthropic-ai/claude-code
+```</p>
+<p>El resto de los datos se imprime igual, así que podés ir armando el <code>.env</code>
+mientras se instala. Después volvés a correr el comando y completás la línea
+de <code>CLAUDE_BIN</code>, que va a salir resuelta.</p>
+<p>Ojo con una cosa: la línea va a decir <code>CLAUDE_BIN=</code> <strong>vacía</strong>, y abajo una
+explicación que empieza con <code>^</code>. Esa explicación <strong>no se pega</strong>.</p>
+</blockquote>
 <p><strong>Si en vez de eso dice <code>NO SE PUEDE SEGUIR TODAVÍA</code></strong>, te va a explicar qué
 falta y qué hacer. Los tres casos posibles:</p>
 <table>
@@ -279,6 +294,10 @@ falta y qué hacer. Los tres casos posibles:</p>
 <tr>
 <td><code>AGENTE_DEVICE_ID=</code> sale vacío</td>
 <td>La extensión está pero no se usó nunca. Usala una vez y volvé a correr esto</td>
+</tr>
+<tr>
+<td><code>FALTA CLAUDE CODE</code> arriba de todo</td>
+<td>Corré <code>npm install -g @anthropic-ai/claude-code</code> y volvé a correr esto</td>
 </tr>
 </tbody>
 </table>
@@ -477,7 +496,7 @@ retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.</p>
 </table>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit 688e578 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit 97bd5f9 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

@@ -81,6 +81,34 @@ class Diagnostico:
 # ---------------------------------------------------------------------------
 
 
+def encontrar_claude() -> str | None:
+    """La ruta COMPLETA al ejecutable de Claude Code, buscándolo en el sistema.
+
+    Hace falta antes de que exista el `.env`: `--datos` se corre para armarlo, y
+    leer `CLAUDE_BIN` de la configuración en ese momento devuelve siempre vacío
+    —el archivo todavía no está— aunque Claude Code esté perfectamente instalado.
+
+    Y devuelve el ejecutable **real**, no el shim. `npm install -g` deja un
+    `claude` que es un script o un enlace; bajo `launchd` el PATH no es el de la
+    terminal y ese shim puede no resolver. Es el problema #2 del MVP, y es el
+    mismo criterio que usa el instalador.
+    """
+    ruta = shutil.which("claude")
+    if ruta is None:
+        return None
+
+    real = Path(ruta).resolve()
+
+    # En Windows `claude.cmd` no es un enlace: hay que ir a buscar el .exe que
+    # npm dejó en node_modules, al lado del shim.
+    if real.suffix.lower() in (".cmd", ".ps1", ""):
+        candidato = real.parent / "node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+        if candidato.exists():
+            return str(candidato)
+
+    return str(real)
+
+
 def _claude_bin(ruta: str) -> Chequeo:
     """Problema #2 del MVP: `shutil.which("claude")` devolvía `None`.
 

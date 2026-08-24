@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from agente import diagnostico
 from agente.diagnostico import (
     PERMISO_MCP,
     Chequeo,
@@ -314,3 +315,57 @@ def test_un_diagnostico_vacio_no_rompe() -> None:
     vacio = Diagnostico()
     assert vacio.puede_enviar
     assert vacio.a_dict() == {}
+
+
+# ---------------------------------------------------------------------------
+# Encontrar el ejecutable, que hace falta ANTES de que exista el `.env`
+# ---------------------------------------------------------------------------
+
+
+def test_encontrar_claude_devuelve_el_ejecutable_real_y_no_el_shim(monkeypatch, tmp_path) -> None:
+    """⚠️ Problema #2 del MVP, otra vez.
+
+    `npm install -g` deja un `claude` que es un script o un enlace. Bajo
+    `launchd` el PATH no es el de la terminal, y ese shim puede no resolver. Hay
+    que guardar el ejecutable de verdad.
+    """
+    import shutil as _shutil
+
+    real = tmp_path / "node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+    real.parent.mkdir(parents=True)
+    real.write_text("")
+    shim = tmp_path / "claude.cmd"
+    shim.write_text("@echo off")
+
+    monkeypatch.setattr(_shutil, "which", lambda _: str(shim))
+
+    assert diagnostico.encontrar_claude() == str(real)
+
+
+def test_encontrar_claude_devuelve_None_si_no_esta(monkeypatch) -> None:
+    """Es el caso probable en una Mac recién entregada.
+
+    `--datos` lo usa para decir qué instalar en vez de dejar una línea rota en
+    el `.env`.
+    """
+    import shutil as _shutil
+
+    monkeypatch.setattr(_shutil, "which", lambda _: None)
+
+    assert diagnostico.encontrar_claude() is None
+
+
+def test_no_se_lee_del_env_porque_todavia_no_existe(monkeypatch, tmp_path) -> None:
+    """El `.env` se arma DESPUÉS de correr `--datos`.
+
+    Leer `CLAUDE_BIN` de la configuración en ese momento devuelve siempre vacío,
+    aunque Claude Code esté instalado. Por eso se busca en el sistema.
+    """
+    import shutil as _shutil
+
+    ejecutable = tmp_path / "claude"
+    ejecutable.write_text("")
+    monkeypatch.setattr(_shutil, "which", lambda _: str(ejecutable))
+    monkeypatch.delenv("CLAUDE_BIN", raising=False)
+
+    assert diagnostico.encontrar_claude() == str(ejecutable.resolve())

@@ -198,6 +198,24 @@ AGENTE_TOKEN=
 **Copiá ese bloque**, desde `AGENTE_BACKEND_URL` hasta el final. Lo vas a pegar
 en el paso 10.
 
+> **Si falta Claude Code** —que es lo más probable en una Mac recién entregada—
+> te lo va a decir arriba de todo, con el comando para instalarlo:
+>
+> ```
+> FALTA CLAUDE CODE
+>   No se encontró el ejecutable `claude` en esta máquina.
+>
+>   Qué hacer:
+>     npm install -g @anthropic-ai/claude-code
+> ```
+>
+> El resto de los datos se imprime igual, así que podés ir armando el `.env`
+> mientras se instala. Después volvés a correr el comando y completás la línea
+> de `CLAUDE_BIN`, que va a salir resuelta.
+>
+> Ojo con una cosa: la línea va a decir `CLAUDE_BIN=` **vacía**, y abajo una
+> explicación que empieza con `^`. Esa explicación **no se pega**.
+
 **Si en vez de eso dice `NO SE PUEDE SEGUIR TODAVÍA`**, te va a explicar qué
 falta y qué hacer. Los tres casos posibles:
 
@@ -207,6 +225,7 @@ falta y qué hacer. Los tres casos posibles:
 | Ningún perfil tiene WhatsApp | Abrí `web.whatsapp.com` en el perfil que tiene la extensión y escaneá el QR |
 | Ningún perfil tiene la extensión | Instalá Claude in Chrome |
 | `AGENTE_DEVICE_ID=` sale vacío | La extensión está pero no se usó nunca. Usala una vez y volvé a correr esto |
+| `FALTA CLAUDE CODE` arriba de todo | Corré `npm install -g @anthropic-ai/claude-code` y volvé a correr esto |
 
 Arreglás lo que diga y **volvés a correr el mismo comando**.
 

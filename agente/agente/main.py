@@ -287,12 +287,34 @@ def correr_datos(config: Configuracion) -> int:
     perfil = recomendacion.perfil
     assert perfil is not None
 
+    # ⚠️ Se BUSCA en el sistema, no se lee de la configuración. Este comando se
+    # corre para armar el `.env`, así que en ese momento el archivo todavía no
+    # existe y `config.claude_bin` está vacío aunque Claude Code esté instalado.
+    claude = config.claude_bin or diagnostico.encontrar_claude()
+
+    if not claude:
+        print("FALTA CLAUDE CODE")
+        print("  No se encontró el ejecutable `claude` en esta máquina.")
+        print()
+        print("  Qué hacer:")
+        print("    npm install -g @anthropic-ai/claude-code")
+        print()
+        print("  Después volvé a correr esto. El resto de los datos ya están")
+        print("  resueltos y se imprimen igual, así que podés ir adelantando.")
+        print()
+
     print("PONÉ ESTO EN EL .env")
     print(f"  {CARPETA_AGENTE.parent / '.env'}")
     print()
     print("AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com")
     print("AGENTE_MODO=simulado")
-    print(f"CLAUDE_BIN={config.claude_bin or '   <- falta: instalá Claude Code'}")
+    if claude:
+        print(f"CLAUDE_BIN={claude}")
+    else:
+        #  Sin valor, y sin nada pegable al lado: una línea con texto suelto
+        #  terminaría siendo el valor de la variable.
+        print("CLAUDE_BIN=")
+        print("   ^ vacío: falta instalar Claude Code (ver arriba)")
     print(f"CHROME_PERFIL_DIR={perfil.nombre}")
     print(f"CHROME_PUERTO={config.chrome_puerto}")
 
