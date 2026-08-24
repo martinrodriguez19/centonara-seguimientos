@@ -117,7 +117,9 @@ de `LISTAR` se guardaba y ahí moría.
 
 - [x] Implementar el ejecutor con la invocación validada del MVP (`--chrome`,
       prompt por stdin, `encoding="utf-8"`, `cwd` en la carpeta del agente).
-- [ ] **Correrlo contra WhatsApp Web y ver qué se rompe.** Es la primera vez que
+- [x] **Correrlo contra WhatsApp Web y ver qué se rompe.** Hecho el 21 de
+      agosto de 2026: 8 chats leídos, 0 descartados. No se rompió nada.
+      Original: Es la primera vez que
       el sistema nuevo toca la página, y el MVP se validó contra versiones
       anteriores de Claude Code, de la extensión y de WhatsApp. Si algo dejó de
       funcionar, se ve acá.
@@ -129,20 +131,37 @@ El prompt ya está escrito y migrado sin cambios funcionales, en
 
 - [x] Implementarlo. **No abre el navegador**: es una llamada de texto plano.
       Criterio verificable: redactar 20 borradores no abre ninguna pestaña.
-- [ ] Verificar que el costo baje como esperamos. Sacar el paso más frecuente
+- [x] ~~Verificar que el costo baje~~ · medido: `LISTAR` USD 3,128 por 8 chats
+      con navegador, `REDACTAR` USD 0,111 por borrador sin él. Ver
+      `docs/04-AGENTE.md` §6. Original: Sacar el paso más frecuente
       del circuito del navegador es donde está el ahorro del proyecto.
 
 El prompt está en `agente/prompts/prompt-redactar.txt`.
 
 ### F3.8 — Medir
 
-- [ ] Correr una generación completa y anotar el costo real. Ya se registra
+- [x] ~~Correr una generación completa y anotar el costo~~ · USD 3,463 la
+      corrida entera. Original: Ya se registra
       solo por job y por corrida; falta el número.
 - [ ] Comparar los borradores contra los del MVP. La forma que propuse:
       mezclarlos y que alguien del cliente los puntúe sin saber cuál es cuál. Si
       son peores, algo se rompió en la migración y es barato de arreglar ahora.
 
 ---
+
+## C — El envío · **bloqueado por una sola cosa**
+
+> **El motor existe y está probado**, pero `selectores.VERIFICADO` es `None` y
+> mientras lo sea **un `ENVIAR` en modo real se rechaza**. No es una fase que
+> falte: los selectores de WhatsApp Web son una hipótesis hasta que alguien los
+> corra contra una sesión real.
+>
+> **Todo lo que sigue en este bloque depende de eso**, y eso **no necesita una
+> Mac**: se hace en cualquier máquina con Chrome y una sesión de WhatsApp,
+> arrancando Chrome con `--remote-debugging-port=9222` y corriendo la
+> verificación, que es de sólo lectura y no abre ningún chat.
+>
+> Es el único ítem del proyecto que bloquea a otros seis.
 
 ## C — Necesita Playwright y una línea de WhatsApp descartable
 
@@ -197,10 +216,11 @@ Lo que falta es enchufarle un navegador de verdad.
 
 Antes de ejecutar, las cinco cosas:
 
-- [ ] Los 3 contactos aceptaron recibirlos
+- [x] Los 3 contactos aceptaron recibirlos
 - [ ] La prueba de identidad incorrecta pasó
-- [ ] `destinos_permitidos` tiene **exactamente** esos 3 números y ninguno más
-- [ ] El tope de 3 está activo
+- [x] `destinos_permitidos` tiene **exactamente** esos 3 números y ninguno más
+      — en la base **local**. En producción hay que cargarlos (§ Parte 1 del SOP)
+- [x] El tope de 3 está activo — en local. En producción, lo mismo
 - [ ] El kill switch probado, y sabés usarlo
 
 - [ ] Enviar de a uno, parando entre cada uno. Si algo se ve raro en el primero,
@@ -402,7 +422,7 @@ escrito.
 
 ## Dos cosas de infraestructura, de cinco minutos
 
-- [ ] **Borrar los servicios viejos de Render.** Quedaron cinco de más:
+- [x] ~~**Borrar los servicios viejos de Render.**~~ Hechos. Original: Quedaron cinco de más:
       `backend-staging`, `frontend-staging`, `n8n-produccion`, `n8n-staging`,
       `backup-staging`. Ya están fuera del blueprint; borrarlos es en el
       dashboard.
