@@ -158,7 +158,8 @@ Lo que falta es enchufarle un navegador de verdad.
 
 ### F4.2 — Cómo se conecta al Chrome
 
-- [ ] Probar las dos opciones y elegir **con evidencia**:
+- [ ] **Las dos están implementadas** en `adaptadores/conexion.py`, para poder
+      medirlas. Falta elegir **con evidencia**, en una Mac:
       **(A)** CDP sobre el Chrome del vendedor · **(B)** perfil dedicado de
       Playwright.
 - [ ] Criterio: cuál sobrevive a que el vendedor cierre el navegador, reinicie
@@ -170,12 +171,14 @@ Lo que falta es enchufarle un navegador de verdad.
 
 ### F4.3 — Los selectores
 
-- [ ] Escribir `agente/adaptadores/whatsapp_web.py`: la implementación real del
+- [x] Escribir `agente/adaptadores/whatsapp_web.py`: la implementación real del
       protocolo `Pagina`, que ya está definido con las ocho operaciones que hacen
       falta.
-- [ ] Todos los selectores en **un solo archivo**, con la fecha de última
+- [x] Todos los selectores en **un solo archivo** (`adaptadores/selectores.py`).
+      ⚠️ **La fecha sigue en `None`: nunca se verificaron contra WhatsApp Web.**
+      Mientras siga así, un `ENVIAR` en modo `real` se rechaza. Antes decía:
       verificación. Ninguno fuera de ahí.
-- [ ] La función que verifica que siguen respondiendo, para correr antes de cada
+- [x] La función que verifica que siguen respondiendo, para correr antes de cada
       corrida.
 
 ### F4.12 y F4.13 — Probar que aborta

@@ -31,16 +31,6 @@ def test_la_opcion_simulado_gana_sobre_el_entorno() -> None:
 
 
 @pytest.mark.parametrize("modo", ["prueba", "real"])
-def test_sin_simulado_el_agente_no_arranca(modo: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """El motor de envío llega en la fase 3, así que no hay nada que ejecutar en
-    esos modos. Falla cerrado (R2) en vez de arrancar a medias.
-
-    Este test se borra en la fase 3, junto con el bloque que lo hace pasar."""
-    monkeypatch.setenv("AGENTE_MODO", modo)
-    assert main([]) == SALIDA_CONFIGURACION
-
-
-@pytest.mark.parametrize("modo", ["prueba", "real"])
 def test_con_simulado_arranca_aunque_el_entorno_pida_enviar(
     modo: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

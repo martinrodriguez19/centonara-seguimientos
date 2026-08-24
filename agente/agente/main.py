@@ -199,23 +199,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     modo = resolver_modo(config, args.simulado)
 
-    # `prueba` y `real` necesitan el motor de Playwright, que llega en la fase 3.
-    # El agente no arranca a medias ni "hace lo que puede": corta acá (regla R2,
-    # falla cerrado).
+    # El bloque que cortaba acá cuando el modo no era `simulado` se fue: el motor
+    # de envío ya existe (`adaptadores/whatsapp_web.py`), así que negarse a
+    # arrancar sería negarse a hacer el trabajo.
     #
-    # Esto NO es lo que impide que un mensaje llegue a un cliente real: eso lo
-    # hace `configuracion.destinos_permitidos` (R4), que sigue vigente cuando
-    # este bloque desaparezca. Borrar en la fase 3, junto con el motor de envío.
-    if modo != "simulado":
-        log.error(
-            "modo_no_disponible",
-            modo=modo,
-            detalle=(
-                "El motor de envío llega en la fase 3. "
-                "Corré con --simulado o poné AGENTE_MODO=simulado."
-            ),
-        )
-        return SALIDA_CONFIGURACION
+    # Lo que impide que un mensaje llegue a alguien que no corresponde no era
+    # nunca este bloque, y sigue en pie:
+    #
+    #   - `destinos_permitidos`, verificado en el backend al encolar y otra vez
+    #     en el agente antes de escribir (R4)
+    #   - la comparación de identidad contra el chat abierto (R1)
+    #   - y, mientras los selectores no se hayan verificado contra WhatsApp Web,
+    #     un `ENVIAR` en modo `real` se rechaza en el despachador
+    #
+    # Además `AGENTE_MODO` viene en `simulado` por defecto en todos lados: para
+    # que algo salga hay que decirlo, y eso queda escrito en la máquina.
 
     parar = threading.Event()
     atender_apagado(parar)
@@ -228,7 +226,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ejecutar_simulado(config, parar=parar)
         return SALIDA_OK
 
-    asyncio.run(_trabajar(config, parar))
+    asyncio.run(_trabajar(config, parar, modo=modo))
     return SALIDA_OK
 
 
@@ -277,7 +275,7 @@ def correr_diagnostico(config: Configuracion) -> int:
     return SALIDA_DIAGNOSTICO
 
 
-async def _trabajar(config: Configuracion, parar: threading.Event) -> None:
+async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str) -> None:
     """El bucle y el latido, en paralelo, hasta que alguien pida parar."""
     cliente = Cliente(config.backend_url, config.token)
 
@@ -296,7 +294,9 @@ async def _trabajar(config: Configuracion, parar: threading.Event) -> None:
             claude_bin=config.claude_bin,
             device_id=config.device_id,
             carpeta=CARPETA_AGENTE,
-            modo=config.modo,
+            # El modo RESUELTO, no el de la configuración: `--simulado` tiene que
+            # ganarle al entorno, que es para lo único que existe esa opción.
+            modo=modo,
             diagnosticar=diagnosticar,
         ),
     )

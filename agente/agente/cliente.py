@@ -7,7 +7,7 @@ reemplazando esto por un doble.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -21,9 +21,18 @@ TIMEOUT = 30.0
 
 @dataclass(frozen=True)
 class Job:
+    """Un job, y las reglas vigentes al momento de entregarlo.
+
+    `vigente` trae, para `ENVIAR`, la lista de destinos permitidos **leída
+    recién**. El agente la revalida antes de escribir: entre que el mensaje se
+    encoló y que llegó hasta acá pudieron pasar minutos, y alguien pudo cerrar
+    la lista desde el panel (R4).
+    """
+
     id: str
     tipo: str
     payload: dict[str, Any]
+    vigente: dict[str, Any] = field(default_factory=dict)
 
 
 class SinTrabajo(Exception):
@@ -67,7 +76,14 @@ class Cliente:
             raise SinTrabajo
         self._revisar(respuesta)
         cuerpo = respuesta.json()
-        return Job(id=cuerpo["id"], tipo=cuerpo["tipo"], payload=cuerpo["payload"])
+        return Job(
+            id=cuerpo["id"],
+            tipo=cuerpo["tipo"],
+            payload=cuerpo["payload"],
+            #  Un backend viejo no lo manda. Ausente = lista vacía = a nadie,
+            #  que es el lado seguro.
+            vigente=cuerpo.get("vigente") or {},
+        )
 
     async def reportar(
         self,

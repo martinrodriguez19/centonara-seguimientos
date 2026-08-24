@@ -71,9 +71,25 @@ class Latido(Estricto):
 
 
 class JobEntregado(BaseModel):
+    """Un job, y las reglas que valían **en el momento de entregarlo**.
+
+    `payload` es lo que se decidió al encolar y no cambia. `vigente` es lo que
+    se lee recién ahora, y existe por una razón concreta:
+
+    El agente revalida `destinos_permitidos` antes de escribir (R4). No es
+    desconfianza del backend —ya lo verificó al encolar— es **contra el paso del
+    tiempo**: entre que un mensaje se encoló y que el agente lo toma pueden pasar
+    minutos, y en el medio alguien pudo cerrar la lista desde el panel.
+
+    Por eso no va en el payload. Un `destinos_permitidos` congelado al encolar
+    haría que la segunda verificación mire exactamente lo mismo que la primera,
+    que es lo mismo que no tenerla.
+    """
+
     id: str
     tipo: str
     payload: dict[str, Any]
+    vigente: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResultadoJob(Estricto):
@@ -170,7 +186,17 @@ async def proximo_job(maquina: Maquina):
         # cuerpo que validar.
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    return JobEntregado(id=str(job["_id"]), tipo=job["tipo"], payload=job["payload"])
+    # Sólo para `ENVIAR`: es el único que escribe, y leer la configuración en
+    # cada entrega de cualquier tipo sería una consulta de más por cada vuelta
+    # del bucle de cada máquina.
+    vigente: dict[str, Any] = {}
+    if job["tipo"] == cola.Tipo.ENVIAR:
+        config = await configuracion.obtener(base)
+        vigente["destinos_permitidos"] = config.get("destinos_permitidos", [])
+
+    return JobEntregado(
+        id=str(job["_id"]), tipo=job["tipo"], payload=job["payload"], vigente=vigente
+    )
 
 
 @router.post("/jobs/{job_id}/resultado")

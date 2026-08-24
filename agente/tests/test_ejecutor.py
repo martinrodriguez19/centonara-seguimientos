@@ -56,20 +56,104 @@ async def test_diagnostico_degradado_reporta_fallo_con_el_detalle() -> None:
     assert resultado["detalle"] == {"device_id": "falla"}
 
 
-async def test_enviar_se_rechaza_explicitamente_mientras_no_haya_navegador() -> None:
-    """⚠️ R2: falla cerrado y con motivo, no de una forma rara más adelante.
-
-    El motor de envío está escrito y probado contra la página simulada; lo que
-    falta es `adaptadores/whatsapp_web.py`. Hasta entonces un `ENVIAR` no puede
-    salir, y decirlo claro es mejor que un `ImportError` a mitad de una corrida.
-    """
-    resultado = await construir(modo="real")(
-        Job("1", "ENVIAR", {"mensaje_id": "x", "contacto_id": "+5491123231151", "texto": "hola"})
+def job_enviar(destinos=None, **cambios) -> Job:
+    """Un `ENVIAR` como lo entrega el backend, con lo vigente adjunto."""
+    payload = {
+        "mensaje_id": "m1",
+        "contacto_id": "+5491123231151",
+        "contacto_nombre": "Corralón San Justo",
+        "texto": "Hola, ¿seguimos?",
+    }
+    payload.update(cambios)
+    return Job(
+        "1",
+        "ENVIAR",
+        payload,
+        vigente={} if destinos is None else {"destinos_permitidos": destinos},
     )
 
+
+async def test_en_modo_real_no_se_envia_con_los_selectores_sin_verificar() -> None:
+    """⚠️ El guard no es una fase pendiente: es la precondición que falta.
+
+    Los selectores de WhatsApp Web nunca se probaron contra una sesión real. Un
+    envío real sería la primera vez que confiamos en algo que no verificamos, y
+    eso es justo lo que el proyecto decidió no hacer.
+
+    Desaparece solo el día que alguien complete `selectores.VERIFICADO`.
+    """
+    resultado = await construir(modo="real")(job_enviar(["+5491123231151"]))
+
     assert resultado["ok"] is False
-    assert "whatsapp_web" in resultado["detalle"]["motivo"]
-    assert resultado["detalle"]["modo"] == "real"
+    assert resultado["codigo"] == "SELECTOR_ROTO"
+    assert "nunca se verificaron" in resultado["detalle"]["motivo"]
+
+
+async def test_en_simulado_el_motor_corre_contra_la_pagina_en_memoria() -> None:
+    """Una máquina recién instalada recorre la cola sin tocar ningún navegador."""
+    resultado = await construir(modo="simulado")(job_enviar(["+5491123231151"]))
+
+    #  La página simulada no tiene ese chat, así que el motor aborta por eso —
+    #  que es lo correcto— y no por falta de navegador.
+    assert resultado["codigo"] == "CHAT_NO_ABRE"
+
+
+async def test_sin_destinos_vigentes_no_se_escribe_a_nadie() -> None:
+    """⚠️ R4, segunda verificación.
+
+    Si el backend no manda la lista, o la manda vacía, el agente no escribe. La
+    ausencia no habilita: significa a nadie, igual que en el backend.
+    """
+    for job in (job_enviar(None), job_enviar([])):
+        resultado = await construir(modo="simulado")(job)
+        assert resultado["codigo"] == "DESTINO_NO_PERMITIDO"
+
+
+async def test_un_destino_que_no_esta_en_la_lista_vigente_se_rechaza() -> None:
+    """La lista viene del backend al ENTREGAR el job, no al encolarlo.
+
+    Es lo que hace que cerrarla desde el panel tenga efecto sobre un mensaje que
+    ya estaba encolado.
+    """
+    resultado = await construir(modo="simulado")(job_enviar(["+5491199990000"]))
+
+    assert resultado["codigo"] == "DESTINO_NO_PERMITIDO"
+
+
+async def test_sin_forma_de_abrir_el_navegador_lo_dice(monkeypatch) -> None:
+    """Con los selectores ya verificados, falta decidir F4.2. Se reporta claro."""
+    monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", "2026-08-24")
+
+    resultado = await construir(modo="real")(job_enviar(["+5491123231151"]))
+
+    assert resultado["ok"] is False
+    assert "F4.2" in resultado["detalle"]["motivo"]
+
+
+async def test_en_modo_real_usa_la_pagina_que_le_dan(monkeypatch) -> None:
+    """El despachador no sabe de dónde sale el navegador, y no tiene por qué."""
+    from agente.adaptadores.simulada import Chat, PaginaSimulada
+
+    monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", "2026-08-24")
+    falsa = PaginaSimulada(
+        {"+5491123231151": Chat(nombre="Corralón San Justo", telefono="+5491123231151")}
+    )
+
+    async def abrir():
+        return falsa
+
+    ejecutar = ejecutor.construir(
+        claude_bin="",
+        device_id="dev-1",
+        carpeta=CARPETA,
+        modo="real",
+        diagnosticar=sano,
+        abrir_pagina=abrir,
+    )
+    resultado = await ejecutar(job_enviar(["+5491123231151"], modo="real"))
+
+    assert resultado["ok"] is True
+    assert falsa.enviados == [("+5491123231151", "Hola, ¿seguimos?")]
 
 
 async def test_listar_llega_a_su_ejecutor(monkeypatch) -> None:

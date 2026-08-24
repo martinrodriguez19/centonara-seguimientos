@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from bson import ObjectId
 from httpx import ASGITransport, AsyncClient
 
 from app import db
@@ -298,3 +299,89 @@ async def test_un_codigo_que_no_existe_lo_rechaza_el_esquema(cliente, base, maqu
         headers=auth(maquina_activa.token),
     )
     assert respuesta.status_code == 422
+
+
+@sin_mongo
+async def test_el_enviar_entregado_trae_los_destinos_vigentes(
+    cliente, base, maquina_activa
+) -> None:
+    """⚠️ R4, la segunda verificación, que hasta acá era imposible.
+
+    El agente revalida `destinos_permitidos` antes de escribir. Pero nadie se los
+    pasaba: no están en `PayloadEnviar` —y no deben estar, porque congelados al
+    encolar mirarían lo mismo que la primera verificación— y no había endpoint
+    que los devolviera. `enviar()` recibía `None`, que significa a nadie, y con
+    eso la segunda verificación rechazaba todo.
+
+    Ahora viajan en `vigente`, leídos **al entregar el job**. Ese es el momento
+    que importa: entre encolar y entregar pueden pasar minutos, y alguien pudo
+    cerrar la lista desde el panel.
+    """
+    from app.core import cola, configuracion
+
+    await configuracion.actualizar(base, {"destinos_permitidos": ["+5491123231151"]})
+    await cola.encolar(
+        base,
+        tipo=cola.Tipo.ENVIAR,
+        maquina="mac-rocio",
+        payload={
+            "mensaje_id": str(ObjectId()),
+            "contacto_id": "+5491123231151",
+            "contacto_nombre": "Corralón",
+            "texto": "hola",
+            "modo": "prueba",
+        },
+    )
+
+    entregado = (
+        await cliente.get("/api/agente/jobs/proximo", headers=auth(maquina_activa.token))
+    ).json()
+
+    assert entregado["vigente"]["destinos_permitidos"] == ["+5491123231151"]
+    #  Y no se cuela en el payload, que es lo que el esquema valida.
+    assert "destinos_permitidos" not in entregado["payload"]
+
+
+@sin_mongo
+async def test_lo_vigente_se_lee_al_entregar_y_no_al_encolar(cliente, base, maquina_activa) -> None:
+    """Cerrar la lista desde el panel tiene efecto sobre lo ya encolado."""
+    from app.core import cola, configuracion
+
+    await configuracion.actualizar(base, {"destinos_permitidos": ["+5491123231151"]})
+    await cola.encolar(
+        base,
+        tipo=cola.Tipo.ENVIAR,
+        maquina="mac-rocio",
+        payload={
+            "mensaje_id": str(ObjectId()),
+            "contacto_id": "+5491123231151",
+            "contacto_nombre": "Corralón",
+            "texto": "hola",
+            "modo": "prueba",
+        },
+    )
+
+    #  Alguien la cierra DESPUÉS de encolar y ANTES de que el agente lo tome.
+    await configuracion.actualizar(base, {"destinos_permitidos": []})
+
+    entregado = (
+        await cliente.get("/api/agente/jobs/proximo", headers=auth(maquina_activa.token))
+    ).json()
+
+    assert entregado["vigente"]["destinos_permitidos"] == []
+
+
+@sin_mongo
+async def test_los_otros_tipos_no_cargan_configuracion_de_mas(
+    cliente, base, maquina_activa
+) -> None:
+    """Leerla en cada entrega sería una consulta por cada vuelta de cada máquina."""
+    from app.core import cola
+
+    await cola.encolar(base, tipo=cola.Tipo.DIAGNOSTICO, maquina="mac-rocio", payload={})
+
+    entregado = (
+        await cliente.get("/api/agente/jobs/proximo", headers=auth(maquina_activa.token))
+    ).json()
+
+    assert entregado["vigente"] == {}

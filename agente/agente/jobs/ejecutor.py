@@ -9,11 +9,15 @@ llamada y una llamada a un reporte. Qué se reintenta lo decide `cola.Codigo` en
 el backend; qué se hace con un borrador lo decide el triage; a quién se le puede
 escribir lo decide `destinos_permitidos`.
 
-`ENVIAR` es el caso incómodo y está tratado aparte: el adaptador real de
-WhatsApp Web —`adaptadores/whatsapp_web.py`— todavía no existe, así que sólo se
-puede ejecutar contra la página simulada. Un `ENVIAR` real se **rechaza
-explícitamente** en vez de fallar raro más adelante: es la regla R2, y el modo
-por defecto de todo el sistema es el que no manda nada.
+`ENVIAR` es el caso incómodo y está tratado aparte, por dos motivos:
+
+- **El modo decide contra qué se ejecuta.** `simulado` va contra la página en
+  memoria y no toca ningún navegador. `prueba` y `real` van contra WhatsApp Web,
+  y la diferencia entre esos dos la decide el motor, no esto.
+- **Los selectores no están verificados contra WhatsApp Web real.** Mientras
+  `selectores.VERIFICADO` sea `None`, un `ENVIAR` en modo `real` se rechaza. No
+  es una fase pendiente: es la precondición concreta que falta, y el guard
+  desaparece solo el día que alguien la cumpla.
 """
 
 from __future__ import annotations
@@ -22,8 +26,11 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from agente.adaptadores import selectores
+from agente.adaptadores.simulada import PaginaSimulada
 from agente.cliente import Job
 from agente.diagnostico import Diagnostico
+from agente.jobs import enviar as enviar_job
 from agente.jobs import listar as listar_job
 from agente.jobs import redactar as redactar_job
 from agente.logging import obtener_logger
@@ -38,8 +45,15 @@ def construir(
     carpeta: Path,
     modo: str,
     diagnosticar: Callable[[], Diagnostico],
+    abrir_pagina: Callable[[], Awaitable[Any]] | None = None,
 ) -> Callable[[Job], Awaitable[dict[str, Any]]]:
-    """Devuelve el ejecutor que espera `Bucle`, ya atado a esta máquina."""
+    """Devuelve el ejecutor que espera `Bucle`, ya atado a esta máquina.
+
+    `abrir_pagina` es de dónde sale el navegador para `ENVIAR`. En `simulado` no
+    hace falta y no se usa. Se inyecta porque **cómo conectarse al Chrome sigue
+    sin decidirse** (F4.2, ver `adaptadores/conexion.py`): esto no tiene por qué
+    saberlo, y así la decisión se puede tomar sin tocar el despachador.
+    """
 
     async def ejecutar(job: Job) -> dict[str, Any]:
         carga = job.payload or {}
@@ -75,7 +89,7 @@ def construir(
             }
 
         if job.tipo == "ENVIAR":
-            return _todavia_no_hay_navegador(modo)
+            return await _enviar(job, carga, modo=modo, abrir_pagina=abrir_pagina)
 
         return {
             "ok": False,
@@ -86,20 +100,64 @@ def construir(
     return ejecutar
 
 
-def _todavia_no_hay_navegador(modo: str) -> dict[str, Any]:
-    """`ENVIAR` sin adaptador real.
+async def _enviar(
+    job: Job,
+    carga: dict[str, Any],
+    *,
+    modo: str,
+    abrir_pagina: Callable[[], Awaitable[Any]] | None,
+) -> dict[str, Any]:
+    """Escribe un mensaje, o explica por qué no.
 
-    El motor (`jobs/enviar.py`) está escrito y probado contra la página
-    simulada; lo que falta es la implementación de `Pagina` sobre Playwright.
-    Mientras tanto esto reporta un fallo claro, con el modo incluido, en vez de
-    dejar que el job reviente con un `ImportError` a mitad de una corrida.
+    Lo único que decide acá es **contra qué página** corre el motor. El resto
+    —la verificación de identidad, los topes, si se aprieta enviar— es de
+    `jobs/enviar.py`, que ya lo tiene probado.
     """
-    log.error("enviar_sin_adaptador", modo=modo)
-    return {
-        "ok": False,
-        "codigo": "ERROR_INESPERADO",
-        "detalle": {
-            "motivo": "falta adaptadores/whatsapp_web.py: el envío real llega en la fase 4",
-            "modo": modo,
-        },
-    }
+    # ⚠️ R4, segunda verificación. La lista viene de `job.vigente`, leída por el
+    # backend **al entregar el job** y no al encolarlo: entre una cosa y la otra
+    # pueden pasar minutos, y alguien pudo cerrarla desde el panel.
+    #
+    # Ausente significa lista vacía, que significa a nadie. Un backend que no la
+    # manda no habilita nada.
+    permitidos = job.vigente.get("destinos_permitidos") or []
+
+    if modo == "simulado":
+        # No toca ningún navegador. Sirve para que una máquina recién instalada
+        # recorra la cola entera sin escribir en ningún lado.
+        pagina: Any = PaginaSimulada()
+    else:
+        if selectores.VERIFICADO is None and modo == "real":
+            # ⚠️ El guard no es una fase pendiente: es la precondición que falta.
+            # Los selectores nunca se probaron contra WhatsApp Web, así que un
+            # envío real es la primera vez que confiaríamos en algo no
+            # verificado. Desaparece solo cuando alguien complete la fecha.
+            log.error("selectores_sin_verificar", modo=modo)
+            return {
+                "ok": False,
+                "codigo": "SELECTOR_ROTO",
+                "detalle": {
+                    "motivo": (
+                        "los selectores de WhatsApp Web nunca se verificaron contra una "
+                        "sesión real. Correr `--sonda` y verificarlos antes de enviar"
+                    )
+                },
+            }
+
+        if abrir_pagina is None:
+            log.error("sin_forma_de_abrir_el_navegador", modo=modo)
+            return {
+                "ok": False,
+                "codigo": "ERROR_INESPERADO",
+                "detalle": {"motivo": "no se configuró cómo conectarse al navegador (F4.2)"},
+            }
+        pagina = await abrir_pagina()
+
+    resultado = await enviar_job.enviar(
+        pagina,
+        contacto_id=str(carga.get("contacto_id", "")),
+        contacto_nombre=str(carga.get("contacto_nombre", "")),
+        texto=str(carga.get("texto", "")),
+        modo=str(carga.get("modo", modo)),
+        destinos_permitidos=permitidos,
+    )
+    return resultado.a_reporte()

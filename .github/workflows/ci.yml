@@ -138,6 +138,15 @@ jobs:
           enable-cache: true
       - run: uv python install 3.12
       - run: uv sync --frozen
+      # El navegador del motor de envío. Los tests del adaptador corren contra
+      # un Chromium de verdad sobre una página con la estructura que sus
+      # selectores esperan: sin esto se saltean, y saltearlos es no probar la
+      # parte que le escribe al chat de una persona.
+      #
+      # `--with-deps` sólo en Linux: en macOS y Windows no hace falta y en
+      # Linux instala las bibliotecas del sistema que Chromium necesita.
+      - name: Navegador para el motor de envío
+        run: uv run playwright install ${{ matrix.os == 'ubuntu-latest' && '--with-deps' || '' }} chromium
       # Lint y formato una sola vez: en Windows el checkout usa CRLF y el
       # chequeo de formato daría un falso positivo.
       - name: Lint (ruff)
