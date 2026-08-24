@@ -53,6 +53,23 @@ log = obtener_logger(__name__)
 ESPERA_MS = 15_000
 ESPERA_CORTA_MS = 3_000
 
+# ⚠️ Seleccionar todo NO es `Control+A` en macOS: es `Cmd+A`. Y macOS es donde
+# esto va a correr.
+#
+# Lo agarró el CI, que prueba el agente en los tres sistemas. Las consecuencias
+# de equivocarse acá no son cosméticas:
+#
+#   - El buscador no se limpia, así que la búsqueda anterior sigue puesta y se
+#     abre el chat del contacto anterior. En una corrida eso es el segundo
+#     mensaje entrando al chat del primero.
+#   - `limpiar_campo()` no borra nada, así que el modo prueba **deja el texto
+#     escrito en el chat del vendedor**: abre la conversación, ve un mensaje
+#     redactado, y lo manda sin saber de dónde salió. Es exactamente la trampa
+#     que el modo prueba existe para no dejar.
+#
+# `ControlOrMeta` lo resuelve Playwright según el sistema.
+SELECCIONAR_TODO = "ControlOrMeta+A"
+
 
 class PaginaWhatsApp:
     """El protocolo `Pagina`, contra una `Page` de Playwright."""
@@ -107,7 +124,7 @@ class PaginaWhatsApp:
         #  Se limpia antes de escribir: si quedó una búsqueda anterior, los
         #  resultados serían de otro contacto y se abriría el chat equivocado.
         await buscador.click()
-        await self._page.keyboard.press("Control+A")
+        await self._page.keyboard.press(SELECCIONAR_TODO)
         await self._page.keyboard.press("Delete")
         await buscador.type(identificador, delay=20)
 
@@ -218,7 +235,7 @@ class PaginaWhatsApp:
         """
         campo = await self._exigir(selectores.CAMPO_DE_TEXTO)
         await campo.click()
-        await self._page.keyboard.press("Control+A")
+        await self._page.keyboard.press(SELECCIONAR_TODO)
         await self._page.keyboard.press("Delete")
 
     async def apretar_enviar(self) -> None:

@@ -391,3 +391,25 @@ async def test_el_motor_no_escribe_a_un_destino_no_permitido(navegador) -> None:
 
     assert not resultado.ok
     assert resultado.codigo == "DESTINO_NO_PERMITIDO"
+
+
+def test_el_atajo_de_seleccionar_todo_sirve_en_macos() -> None:
+    """⚠️ `Control+A` no selecciona todo en macOS, y macOS es donde esto corre.
+
+    Lo agarró el CI, que prueba el agente en los tres sistemas. Los dos efectos
+    de equivocarse:
+
+    - El buscador no se limpia, la búsqueda anterior sigue puesta, y se abre el
+      chat del contacto anterior. En una corrida, el segundo mensaje entra al
+      chat del primero.
+    - `limpiar_campo()` no borra, así que el modo prueba **deja el texto escrito
+      en el chat del vendedor** — la trampa exacta que ese modo existe para no
+      dejar.
+
+    Este test no reemplaza al de macOS en CI: es para que quien lea el código
+    entienda por qué no dice `Control`.
+    """
+    from agente.adaptadores import whatsapp_web
+
+    assert whatsapp_web.SELECCIONAR_TODO == "ControlOrMeta+A"
+    assert "Control+A" not in whatsapp_web.SELECCIONAR_TODO.replace("ControlOrMeta", "")
