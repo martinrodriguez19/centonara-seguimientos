@@ -14,14 +14,14 @@
 
 ---
 
-## 0. Lo que hay que tener a mano
+## Antes de empezar — lo que hay que tener a mano
 
 | | |
 |---|---|
 | Cuenta de Claude | **Una por máquina**, del Enterprise del cliente (D2). Una API key **no sirve**: desactiva la integración con Chrome |
 | Chrome | Con la extensión Claude in Chrome instalada |
 | WhatsApp Web | Con la sesión de **esa** línea iniciada, sin QR pendiente |
-| La URL del backend | Ver §2 |
+| La contraseña del panel | Para la parte 1 |
 
 Y confirmar con el administrador de la organización que la extensión esté
 **habilitada por política**. Si está restringida, no funciona en ninguna máquina
@@ -29,7 +29,83 @@ y no se arregla desde el código.
 
 ---
 
-## 1. Instalar las herramientas
+# Parte 1 — En el panel
+
+Se hace desde cualquier navegador y **no necesita la Mac delante**. Conviene
+hacerla entera antes de sentarse a la máquina.
+
+## 1.1 · Entrar
+
+**https://frontend-produccion.onrender.com**, con la contraseña del panel.
+
+Si no entra, lo único que puede faltar es `PANEL_PASSWORD` en el servicio
+`backend-produccion` de Render. Es la única variable que se carga a mano:
+`SESION_SECRET` lo genera Render solo (`generateValue: true` en el blueprint).
+
+## 1.2 · ⚠️ A quién puede escribirle — el paso que no se puede saltear
+
+**Configuración → destinos permitidos.** Cargar los números de prueba, y sólo
+esos.
+
+En una base nueva esta lista **arranca vacía**, y vacía significa **a nadie**
+(regla R4). No es un descuido del sistema: es su estado de fábrica, y es lo que
+hace imposible que un cliente real reciba algo por accidente.
+
+Pero tiene una consecuencia que confunde la primera vez: **si se saltea este
+paso, la corrida lee los chats y no redacta ninguno.** Se ve como si no hubiera
+funcionado, y en realidad funcionó exactamente como debía. El log lo cuenta:
+`no_permitidos`.
+
+Se guardan normalizados a E.164, así que se pueden escribir con espacios y
+guiones.
+
+En la misma pantalla, **tope por corrida = 3** mientras se esté probando.
+
+## 1.3 · Dar de alta la máquina
+
+Panel → **Dar de alta una máquina**:
+
+- **Identificador** — minúsculas, números y guiones. `mac-rocio`, no
+  `Mac de Rocío`. Es lo que se ve en logs y URLs, y el formulario lo rechaza si
+  no lo es.
+- **Nombre del vendedor** — acá sí, con mayúsculas y acentos.
+- **Línea de WhatsApp** — opcional.
+
+⚠️ **El token se muestra una sola vez.** Se guarda hasheado y no se puede
+recuperar; si se pierde hay que rotarlo y reconfigurar la máquina.
+
+La máquina **nace inactiva**. Instalar no es activar.
+
+## 1.4 · La URL del backend
+
+La que va a ir en el `.env` de la Mac:
+
+```
+https://backend-produccion-7yqr.onrender.com
+```
+
+⚠️ **Lleva sufijo.** `backend-produccion.onrender.com`, sin él, **es la
+aplicación de otra persona**: los subdominios de Render son globales, el nombre
+estaba tomado y Render asignó otro. Apuntar ahí mandaría credenciales a un
+servidor ajeno.
+
+Se comprueba en dos segundos:
+
+```bash
+curl https://backend-produccion-7yqr.onrender.com/health
+```
+
+Tiene que devolver `{"ok":true,"mongo":true,"entorno":"produccion"}`.
+
+> **Alternativa para desarrollo:** una máquina de la misma red, con el backend
+> escuchando en `0.0.0.0` y el puerto abierto en el firewall
+> (`http://192.168.x.x:8000`). Sirve para probar sin depender del despliegue.
+
+---
+
+# Parte 2 — En la Mac
+
+## 2.1 · Las herramientas
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -39,65 +115,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 npm install -g @anthropic-ai/claude-code
 ```
 
-Y clonar el repositorio donde vaya a vivir:
-
 ```bash
 git clone https://github.com/martinrodriguez19/centonara-seguimientos.git
 cd centonara-seguimientos
 ```
 
----
-
-## 2. Elegir contra qué backend va a trabajar
-
-Dos opciones, y la diferencia importa.
-
-**Producción** — es lo que va a usar el cliente:
-
-```
-AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com
-```
-
-⚠️ La URL lleva sufijo. `backend-produccion.onrender.com` **es de otra
-persona**: el nombre estaba tomado y Render asignó otro. Nunca usar la de
-adelante.
-
-**Una máquina de desarrollo en la misma red** — para probar sin depender del
-despliegue:
-
-```
-AGENTE_BACKEND_URL=http://192.168.x.x:8000
-```
-
-Requiere que el backend escuche en `0.0.0.0` y que el firewall deje pasar el
-puerto. Se comprueba desde la Mac con:
-
-```bash
-curl http://192.168.x.x:8000/health
-```
-
-Tiene que devolver `{"ok":true,"mongo":true,...}`. Si dice `mongo:false`, la base
-de esa máquina no está levantada y el agente no va a poder hacer nada.
-
----
-
-## 3. Dar de alta la máquina en el panel
-
-En el panel, **Dar de alta una máquina**:
-
-- **Identificador** — minúsculas, números y guiones. `mac-rocio`, no
-  `Mac de Rocío`. Es lo que se ve en logs y URLs.
-- **Nombre del vendedor** — acá sí va con mayúsculas y acentos.
-- **Línea de WhatsApp** — opcional.
-
-⚠️ **El token se muestra una sola vez.** Se guarda hasheado y no se puede
-recuperar; si se pierde, se rota y hay que reconfigurar la máquina.
-
-La máquina **nace inactiva**. Instalar no es activar.
-
----
-
-## 4. Correr el instalador
+## 2.2 · Correr el instalador
 
 ```bash
 bash agente/instalador/instalar-mac.sh
@@ -107,12 +130,10 @@ Verifica las herramientas, crea el entorno, escribe el LaunchAgent con **rutas
 absolutas** y corre el diagnóstico. No arranca nada.
 
 Lo de las rutas absolutas no es cosmético: `launchd` no tiene el PATH de una
-terminal, y `claude` a secas se resuelve a `None`. Es el problema #2 del MVP, el
+terminal, y `claude` a secas se resuelve a nada. Es el problema #2 del MVP, el
 que hace que ande a mano y falle cuando arranca solo.
 
----
-
-## 5. Completar el `.env`
+## 2.3 · Completar el `.env`
 
 ```bash
 cp .env.example .env
@@ -121,10 +142,10 @@ cp .env.example .env
 Cuatro valores:
 
 ```
-AGENTE_BACKEND_URL=   # el de §2
-AGENTE_TOKEN=         # el que mostró el panel en §3
-AGENTE_MACHINE_ID=    # el MISMO identificador de §3
-AGENTE_DEVICE_ID=     # el de §6
+AGENTE_BACKEND_URL=   # §1.4
+AGENTE_TOKEN=         # el que mostró el panel en §1.3
+AGENTE_MACHINE_ID=    # el MISMO identificador de §1.3
+AGENTE_DEVICE_ID=     # §2.4
 ```
 
 `CLAUDE_BIN` lo resolvió el instalador y lo dejó en el LaunchAgent.
@@ -133,9 +154,7 @@ AGENTE_DEVICE_ID=     # el de §6
 lado de un valor vacío, `dotenv` toma el `# ...` como el valor, y el diagnóstico
 da un OK falso.
 
----
-
-## 6. El `deviceId` de ese Chrome
+## 2.4 · El `deviceId` de ese Chrome
 
 Es el identificador que la extensión se asigna a sí misma. Sin él, con más de un
 Chrome conectado a la cuenta, el modo headless no sabe a cuál ir.
@@ -150,9 +169,7 @@ Sale el UUID a continuación de la clave. Ese valor va en `AGENTE_DEVICE_ID`.
 **No sirve** listar los navegadores conectados a la cuenta: devuelve nombres
 genéricos que no dicen cuál es cuál.
 
----
-
-## 7. Los permisos, que son dos capas ⚠️
+## 2.5 · Los permisos, que son dos capas ⚠️
 
 Este es el paso que más se olvida, porque uno de los dos **ya viene dado** y
 parece que está todo.
@@ -174,17 +191,15 @@ Y el permiso MCP para headless, si el instalador lo marcó en rojo:
 mkdir -p ~/.claude && echo '{"permissions":{"allow":["mcp__claude-in-chrome"]}}' > ~/.claude/settings.json
 ```
 
----
-
-## 8. Comprobar antes de arrancar
+## 2.6 · Comprobar antes de arrancar
 
 ```bash
 ./agente/.venv/bin/python -m agente.main --diagnostico
 ```
 
-Los cinco que se pueden verificar leyendo archivos tienen que estar en verde.
+Los cinco que se verifican leyendo archivos tienen que estar en verde.
 
-Y después el único que comprueba los dos de §7:
+Y después el único que comprueba los dos de §2.5:
 
 ```bash
 ./agente/.venv/bin/python -m agente.main --sonda
@@ -202,13 +217,11 @@ Si falla, distingue los tres casos, que se arreglan distinto:
 
 | Motivo | Qué hacer |
 |---|---|
-| `sin_permiso` | Falta §7 |
+| `sin_permiso` | Falta §2.5 |
 | `sesion_no_iniciada` | WhatsApp Web pide QR |
-| `browser_no_disponible` | El `deviceId` de §6 no es el de este Chrome |
+| `browser_no_disponible` | El `deviceId` de §2.4 no es el de este Chrome |
 
----
-
-## 9. Arrancar
+## 2.7 · Arrancar
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.centonara.agente.plist
@@ -233,7 +246,9 @@ esa sesión y no ve ese Chrome (D16).
 
 ---
 
-## 10. Activarla, que es una decisión aparte
+# Parte 3 — Activar y probar
+
+## 3.1 · Activarla, que es una decisión aparte
 
 En el panel, la máquina aparece **inactiva**. Recién cuando se la activa empieza
 a tomar trabajo.
@@ -245,11 +260,7 @@ que estar dicho y aceptado, no supuesto.
 ⚠️ Y si todavía circula el SOP viejo que dice *"No envía ningún mensaje. Nunca"*,
 retirarlo de Drive, de los mails y de lo impreso. Dejó de ser cierto.
 
----
-
-## 11. La primera corrida
-
-Con `destinos_permitidos` en los números de prueba y **sólo esos**:
+## 3.2 · La primera corrida
 
 1. En el panel, apretar el botón.
 2. El agente toma el `LISTAR` y lee los chats recientes. Tarda unos minutos.
@@ -260,6 +271,14 @@ Con `destinos_permitidos` en los números de prueba y **sólo esos**:
 Lo que **no** va a pasar todavía: que salga un mensaje. `ENVIAR` se rechaza con
 `falta adaptadores/whatsapp_web.py`, que es lo correcto hasta la fase 4.
 
+Dos resultados que parecen fallas y no lo son:
+
+- **Ningún borrador**, porque ninguno de los chats recientes es de los números
+  autorizados. Es R4 haciendo su trabajo.
+- **Borradores retenidos y vacíos**, con la señal `SIN_CONTEXTO`. El modelo no
+  encontró con qué escribir y se negó a inventar, que es la respuesta que el
+  prompt le pide. Se escriben a mano desde el panel, o se descartan.
+
 ---
 
 ## Si algo no anda
@@ -267,8 +286,9 @@ Lo que **no** va a pasar todavía: que salga un mensaje. `ENVIAR` se rechaza con
 | Síntoma | Causa |
 |---|---|
 | `OPENSSL_Uplink(...): no OPENSSL_Applink` | Un antivirus dejó `SSLKEYLOGFILE` en el entorno. El agente ya la descarta al arrancar; si aparece igual, es otro proceso |
-| `Claude in Chrome requires permission` | §7, la capa de la extensión |
+| `Claude in Chrome requires permission` | §2.5, la capa de la extensión |
 | `token_rechazado` en el log | El token no es el de esta máquina, o se rotó |
-| El agente no toma trabajo | La máquina está inactiva o pausada (§10), o el kill switch está puesto |
+| El agente no toma trabajo | La máquina está inactiva o pausada (§3.1), o el kill switch está puesto |
 | `browser_no_disponible` | El `deviceId` es de otro Chrome |
 | Arranca a mano y falla con launchd | Una ruta relativa en algún lado. Todo absoluto |
+| El panel muestra un error crudo | Reportarlo: los mensajes del panel se escriben para quien lo usa, no para quien lo programó |

@@ -242,7 +242,7 @@ final.
 
 ---
 
-## Producción nunca estuvo enchufada
+## ~~Producción nunca estuvo enchufada~~ · **resuelta el 24 de agosto de 2026**
 
 Se sondeó el 21 de agosto de 2026, yendo a buscar los deploy hooks. Lo que hay
 no es "la versión vieja andando": es un esqueleto sin conectar.
@@ -286,10 +286,24 @@ no es "la versión vieja andando": es un esqueleto sin conectar.
       Pero corre **el esqueleto**: `/openapi.json` expone **una sola ruta**,
       `/health`. No están ni la API del panel ni la del agente. Es la versión de
       `38d27e1`, del sprint 0. Lo mismo que el frontend.
-- [ ] Configurar `BACKEND_URL` en `frontend-produccion` con esa URL real.
-- [ ] Confirmar que el backend tenga `MONGO_URL`, `PANEL_PASSWORD` y
-      `SESION_SECRET`. Los tres son `sync: false`, así que no están en el
-      blueprint y nadie sabe desde acá si están puestos.
+> **Estado al 24 de agosto de 2026.** Las dos mitades están desplegadas con la
+> versión de `main` y enchufadas entre sí. El backend expone las **24 rutas** —el
+> panel y el agente completos— con `mongo:true`, y el panel responde en
+> `https://frontend-produccion.onrender.com`.
+>
+> Falta una sola cosa antes de conectar una Mac, y se hace desde el panel:
+> **`destinos_permitidos` arranca vacío en una base nueva**, y vacío significa a
+> nadie. Sin eso una corrida lee los chats y no redacta ninguno.
+
+- [x] ~~Configurar `BACKEND_URL`~~ · hecho. `/api/estado` del frontend devuelve
+      **401**, que es FastAPI pidiendo sesión: el proxy llega al backend real.
+- [x] ~~Confirmar las variables del backend~~ · `MONGO_URL` anda (`mongo:true`)
+      y `POST /api/sesion` con una clave incorrecta devuelve
+      `401 contraseña incorrecta`, así que el login funciona.
+
+      Y una corrección: **`SESION_SECRET` no era manual.** El blueprint lo tiene
+      con `generateValue: true`, o sea que Render lo genera solo. La única
+      `sync: false` que hay que cargar a mano en el backend es `PANEL_PASSWORD`.
 - [ ] Copiar los deploy hooks de cada servicio, para el secreto de abajo.
 
 ⚠️ **Y antes de disparar la primera corrida en producción**: `destinos_permitidos`
