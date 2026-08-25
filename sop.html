@@ -295,9 +295,13 @@ resultados que parecen fallas y no lo son:</p>
 <li><strong>Todo arranca solo.</strong> Cada vez que el vendedor prende la Mac e inicia
   sesión, Chrome y el agente se levantan sin que nadie toque nada. Si el
   agente se cae, se vuelve a levantar solo.</li>
-<li><strong>Lo único que puede volver a pedir atención</strong>: la sesión de WhatsApp Web
-  expira cada tanto (dura días, no meses). Cuando pida QR, se escanea de nuevo
-  y listo.</li>
+<li><strong>Dos cosas pueden volver a pedir atención</strong>, y las dos son sesiones que
+  vencen, no fallas:</li>
+<li>La de <strong>WhatsApp Web</strong> expira cada tanto (dura días, no meses). Cuando
+    pida QR, se escanea de nuevo y listo.</li>
+<li>La de <strong>Claude Code</strong> también caduca. El síntoma es un error que dice
+    <code>la sesión de Claude Code venció</code>. Se arregla en la Terminal: correr
+    <code>claude</code>, iniciar sesión, salir con <code>/exit</code>.</li>
 <li><strong>Actualizar el programa</strong> = volver a pegar el comando del paso 2.2. No
   vuelve a preguntar nada.</li>
 <li><strong>Los logs</strong> quedan en <code>~/Library/Logs/centonara/</code>.</li>
@@ -324,6 +328,10 @@ launchctl bootout gui/$(id -u)/com.centonara.chrome
 <tr>
 <td>WhatsApp pide QR de golpe</td>
 <td>La sesión expiró; pasa cada tanto. Escanear de nuevo</td>
+</tr>
+<tr>
+<td><code>la sesión de Claude Code venció</code> (o un <code>401</code> de OAuth)</td>
+<td>El token caduca cada tanto. Correr <code>claude</code>, iniciar sesión con la cuenta de esa máquina, salir con <code>/exit</code></td>
 </tr>
 <tr>
 <td><code>token_rechazado</code> en el log</td>
@@ -376,7 +384,7 @@ launchctl bootout gui/$(id -u)/com.centonara.chrome
 </ul>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit 176feda 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit cb0f305 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

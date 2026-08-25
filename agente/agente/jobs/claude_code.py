@@ -164,6 +164,16 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         # vacío. Sin mostrarlo, "código distinto de cero" es un callejón sin
         # salida: pasó, instalando la primera Mac.
         dijo = (salida.stderr.strip() or crudo)[-300:] or "sin salida"
+        # El fallo con nombre propio: el token OAuth de Claude Code vence cada
+        # tanto, y un 401 crudo no le dice a nadie qué hacer. Pasó en la
+        # primera Mac, con todo lo demás en verde.
+        if "OAuth access token has expired" in crudo or '"api_error_status":401' in crudo:
+            motivo = (
+                "la sesión de Claude Code venció: correr `claude`, iniciar "
+                "sesión de nuevo, salir con /exit y volver a intentar"
+            )
+        else:
+            motivo = f"claude devolvió {salida.returncode} y dijo: {dijo}"
         log.error(
             "claude_salio_mal",
             returncode=salida.returncode,
@@ -174,7 +184,7 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
             False,
             codigo="ERROR_INESPERADO",
             detalle={
-                "motivo": f"claude devolvió {salida.returncode} y dijo: {dijo}",
+                "motivo": motivo,
                 "returncode": salida.returncode,
             },
             raw=crudo,

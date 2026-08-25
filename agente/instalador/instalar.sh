@@ -95,18 +95,35 @@ echo "  claude: $CLAUDE_BIN"
 # ---------------------------------------------------------------------------
 titulo "[2/7] La sesión de Claude Code"
 #
-# El agente corre `claude` sin nadie mirando: si no hay sesión iniciada, todo
-# lo demás se instala bien y después nada funciona. Mejor cortarlo acá.
-# En macOS la credencial vive en el Llavero; el archivo es el plan B.
+# El agente corre `claude` sin nadie mirando: si la sesión no sirve, todo lo
+# demás se instala bien y después nada funciona. Mejor cortarlo acá.
+#
+# Dos chequeos, porque fallan distinto: sin credencial en el Llavero nunca
+# hubo sesión; y con credencial igual puede estar VENCIDA — el token OAuth
+# caduca cada tanto, y pasó en la primera Mac con todo lo demás en verde. Lo
+# segundo sólo se sabe preguntando de verdad: una llamada mínima, que tarda
+# unos segundos y cuesta centavos.
 
+sesion_ok=no
 if security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1 \
    || [ -f "$HOME/.claude/.credentials.json" ]; then
-  echo "  ok  hay una sesión iniciada"
+  echo "  comprobando que la sesión siga viva (unos segundos)..."
+  if printf 'Contestá una sola palabra: ok' | "$CLAUDE_BIN" -p >/dev/null 2>&1; then
+    sesion_ok=si
+    echo "  ok  sesión iniciada y viva"
+  else
+    echo "  Hay una sesión guardada, pero está VENCIDA: el token caduca cada tanto."
+  fi
 else
-  echo "  Falta iniciar sesión en Claude Code. Es una sola vez:"
+  echo "  Nunca se inició sesión en Claude Code en esta máquina."
+fi
+
+if [ "$sesion_ok" = no ]; then
   echo
+  echo "  Cómo se arregla:"
   echo "    1. En esta Terminal, corré:  claude"
-  echo "    2. Iniciá sesión con la cuenta de Claude de ESTA máquina"
+  echo "    2. Iniciá sesión (si no la ofrece, escribí /login) con la cuenta"
+  echo "       de Claude de ESTA máquina"
   echo "    3. Salí escribiendo:  /exit"
   echo "    4. Volvé a correr este instalador, el mismo comando de antes"
   exit 1

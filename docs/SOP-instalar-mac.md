@@ -194,9 +194,13 @@ resultados que parecen fallas y no lo son:
 - **Todo arranca solo.** Cada vez que el vendedor prende la Mac e inicia
   sesión, Chrome y el agente se levantan sin que nadie toque nada. Si el
   agente se cae, se vuelve a levantar solo.
-- **Lo único que puede volver a pedir atención**: la sesión de WhatsApp Web
-  expira cada tanto (dura días, no meses). Cuando pida QR, se escanea de nuevo
-  y listo.
+- **Dos cosas pueden volver a pedir atención**, y las dos son sesiones que
+  vencen, no fallas:
+  - La de **WhatsApp Web** expira cada tanto (dura días, no meses). Cuando
+    pida QR, se escanea de nuevo y listo.
+  - La de **Claude Code** también caduca. El síntoma es un error que dice
+    `la sesión de Claude Code venció`. Se arregla en la Terminal: correr
+    `claude`, iniciar sesión, salir con `/exit`.
 - **Actualizar el programa** = volver a pegar el comando del paso 2.2. No
   vuelve a preguntar nada.
 - **Los logs** quedan en `~/Library/Logs/centonara/`.
@@ -218,6 +222,7 @@ Para volver a arrancar: correr el instalador de nuevo, o reiniciar la sesión.
 |---|---|
 | `Claude in Chrome requires permission` | Falta el permiso de la extensión (paso 2.1, punto 4). Lo emite el navegador, por eso no aparece en ningún log del agente |
 | WhatsApp pide QR de golpe | La sesión expiró; pasa cada tanto. Escanear de nuevo |
+| `la sesión de Claude Code venció` (o un `401` de OAuth) | El token caduca cada tanto. Correr `claude`, iniciar sesión con la cuenta de esa máquina, salir con `/exit` |
 | `token_rechazado` en el log | El token no es el de esta máquina, o se rotó. Rotar en el panel, borrar la línea `AGENTE_TOKEN` del `.env` y correr el instalador de nuevo |
 | El agente no toma trabajo | La máquina está inactiva o pausada en el panel, o el kill switch está puesto |
 | `browser_no_disponible` | El Chrome registrado no es este. Correr el instalador de nuevo |

@@ -208,6 +208,39 @@ async def test_un_codigo_de_salida_distinto_de_cero_es_fallo() -> None:
     assert "navegador" in resultado.stderr
 
 
+async def test_un_fallo_cuenta_lo_que_claude_dijo() -> None:
+    """Con `--output-format json` el error viaja por stdout y stderr queda
+    vacío. Sin repetirlo en el motivo, "código distinto de cero" es un callejón
+    sin salida: pasó, instalando la primera Mac."""
+    espia = Espia(Salida(1, '{"result": "Invalid model name"}', ""))
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia
+    )
+
+    assert not resultado.ok
+    assert "Invalid model name" in resultado.detalle["motivo"]
+
+
+async def test_la_sesion_vencida_tiene_un_motivo_con_nombre_propio() -> None:
+    """El token OAuth de Claude Code vence cada tanto. Un 401 crudo no le dice
+    a nadie qué hacer; el motivo sí: volver a iniciar sesión."""
+    espia = Espia(
+        Salida(
+            1,
+            '{"api_error_status":401,"result":"Failed to authenticate. API Error: '
+            '401 OAuth access token has expired. Re-authenticate to continue."}',
+            "",
+        )
+    )
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia
+    )
+
+    assert not resultado.ok
+    assert "venció" in resultado.detalle["motivo"]
+    assert "claude" in resultado.detalle["motivo"]
+
+
 async def test_el_timeout_tiene_su_propio_codigo() -> None:
     """Se distingue de un error genérico porque la cola sí lo reintenta."""
     espia = Espia(revienta=subprocess.TimeoutExpired("claude", 600))
