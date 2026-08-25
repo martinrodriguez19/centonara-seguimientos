@@ -78,7 +78,8 @@ export type Configuracion = {
    * cuando se va del 10 al 20%—.
    */
   palabras_comerciales: string[];
-  /** Sólo lectura: no está en `CambioConfiguracion`, no se edita desde acá. */
+  /** El horario de envío. Editable desde el panel (D26): lo maneja el
+   * responsable. `24:00` como `fin` significa hasta el final del día. */
   ventana: { inicio: string; fin: string; dias: number[] };
   /** Sólo lectura, en segundos: [mínimo, máximo] entre dos envíos. */
   pausa_entre_envios_s: [number, number];

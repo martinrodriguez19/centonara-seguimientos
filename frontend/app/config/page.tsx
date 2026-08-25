@@ -125,35 +125,31 @@ export default function Config() {
         onGuardar={(palabras_comerciales) => guardar.mutate({ palabras_comerciales })}
       />
 
-      {/* Lo que no se edita desde acá pero hay que poder mirar.
-          Las dos llegan en cada respuesta de configuración y no se dibujaban
-          en ningún lado, así que "¿en qué horario sale esto?" y "¿cada cuánto
-          sale un mensaje?" se contestaban abriendo el código. */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Cuándo y a qué ritmo sale</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Esto no se cambia desde el panel. Está acá para que puedas responderlo sin
-            preguntarle a nadie.
+            El horario lo manejás vos (se evalúa en hora argentina). Hoy:{" "}
+            <span className="tabular-nums">
+              {datos.ventana.inicio} a {datos.ventana.fin}
+            </span>
+            , {diasDeLaVentana(datos.ventana.dias)}.
           </p>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <p className="text-sm font-medium">Horario</p>
-            <p className="text-sm tabular-nums text-muted-foreground">
-              {datos.ventana.inicio} a {datos.ventana.fin}, {diasDeLaVentana(datos.ventana.dias)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Se evalúa en hora argentina. Fuera de esta ventana no sale ningún mensaje.
-            </p>
-          </div>
+        <CardContent className="grid gap-6 sm:grid-cols-2">
+          <VentanaDeEnvio
+            ventana={datos.ventana}
+            guardando={guardar.isPending}
+            onGuardar={(ventana) => guardar.mutate({ ventana })}
+          />
           <div>
             <p className="text-sm font-medium">Espera entre mensajes</p>
             <p className="text-sm tabular-nums text-muted-foreground">
               entre {datos.pausa_entre_envios_s[0]} y {datos.pausa_entre_envios_s[1]} segundos
             </p>
             <p className="text-xs text-muted-foreground">
-              Al azar dentro de ese rango. Es lo que evita que la línea parezca un robot.
+              Al azar dentro de ese rango. Es lo que evita que la línea parezca un robot. Esto sí
+              es fijo.
             </p>
           </div>
         </CardContent>
@@ -353,6 +349,95 @@ function Palabras({
  * nada a nadie, y el caso normal —de lunes a viernes— merece decirse así y no
  * como una enumeración de cinco días.
  */
+/**
+ * El horario de envío, editable (D26): lo maneja el responsable del panel.
+ *
+ * `24:00` como fin significa "hasta el final del día". El atajo de un click
+ * deja la ventana sin efecto práctico — sigue existiendo como mecanismo y el
+ * cambio queda en la auditoría, pero no frena nada.
+ */
+function VentanaDeEnvio({
+  ventana,
+  guardando,
+  onGuardar,
+}: {
+  ventana: { inicio: string; fin: string; dias: number[] };
+  guardando: boolean;
+  onGuardar: (ventana: { inicio: string; fin: string; dias: number[] }) => void;
+}) {
+  const [inicio, setInicio] = useState(ventana.inicio);
+  const [fin, setFin] = useState(ventana.fin);
+  const [dias, setDias] = useState<number[]>([...ventana.dias].sort((a, b) => a - b));
+  const NOMBRES = ["", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+  const alternar = (dia: number) =>
+    setDias((antes) =>
+      antes.includes(dia) ? antes.filter((d) => d !== dia) : [...antes, dia].sort((a, b) => a - b),
+    );
+
+  const sinRestriccion =
+    ventana.inicio === "00:00" && ventana.fin === "24:00" && ventana.dias.length === 7;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium">Horario de envío</p>
+      <div className="flex items-center gap-2">
+        <input
+          className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-center font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          value={inicio}
+          onChange={(evento) => setInicio(evento.target.value)}
+          placeholder="09:00"
+          aria-label="Desde (HH:MM)"
+        />
+        <span className="text-sm text-muted-foreground">a</span>
+        <input
+          className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-center font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          value={fin}
+          onChange={(evento) => setFin(evento.target.value)}
+          placeholder="19:00"
+          aria-label="Hasta (HH:MM, 24:00 = fin del día)"
+        />
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {[1, 2, 3, 4, 5, 6, 7].map((dia) => (
+          <Button
+            key={dia}
+            type="button"
+            size="sm"
+            variant={dias.includes(dia) ? "default" : "outline"}
+            onClick={() => alternar(dia)}
+          >
+            {NOMBRES[dia]}
+          </Button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          disabled={guardando || dias.length === 0}
+          onClick={() => onGuardar({ inicio, fin, dias })}
+        >
+          Guardar horario
+        </Button>
+        {!sinRestriccion && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={guardando}
+            onClick={() => onGuardar({ inicio: "00:00", fin: "24:00", dias: [1, 2, 3, 4, 5, 6, 7] })}
+          >
+            Sin restricción (24/7)
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Formato HH:MM; 24:00 vale como fin del día. Fuera de la ventana, el botón de enviar
+        contesta que no es horario.
+      </p>
+    </div>
+  );
+}
+
 function diasDeLaVentana(dias: number[]): string {
   const NOMBRES = ["", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
   const ordenados = [...dias].sort((a, b) => a - b);

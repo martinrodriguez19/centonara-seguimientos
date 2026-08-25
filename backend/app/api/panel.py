@@ -17,7 +17,7 @@ from typing import Annotated, Any, Literal
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app import db
 from app.config import Configuracion, obtener_configuracion
@@ -537,8 +537,39 @@ async def ver_configuracion(_: Autenticado) -> dict[str, Any]:
     return config
 
 
+class VentanaCambio(Estricto):
+    """El horario en que puede salir un mensaje (G6), ahora del dueño (D26).
+
+    Quien no quiera restricción pone `00:00` a `24:00` y los siete días: la
+    ventana sigue existiendo como mecanismo —y como registro en la auditoría—
+    pero deja de frenar nada. `24:00` es fin de día inclusive; un `fin` de
+    `23:59` dejaría ese último minuto afuera.
+    """
+
+    inicio: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+    fin: Annotated[str, Field(pattern=r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$")]
+    dias: Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(min_length=1, max_length=7)]
+
+    @field_validator("dias")
+    @classmethod
+    def _ordenados_y_sin_repetir(cls, dias: list[int]) -> list[int]:
+        return sorted(set(dias))
+
+    @model_validator(mode="after")
+    def _al_derecho(self) -> VentanaCambio:
+        inicio = int(self.inicio[:2]) * 60 + int(self.inicio[3:])
+        fin = int(self.fin[:2]) * 60 + int(self.fin[3:])
+        if inicio >= fin:
+            raise ValueError(
+                f"la ventana quedaría al revés: {self.inicio} no es antes de {self.fin}"
+            )
+        return self
+
+
 class CambioConfiguracion(Estricto):
     n_chats_por_defecto: Annotated[int | None, Field(ge=1, le=50)] = None
+    # El horario de envío. Era fijo en el código; lo maneja el responsable.
+    ventana: VentanaCambio | None = None
     # La ventana de antigüedad: desde y hasta cuántos días de silencio vale la
     # pena un seguimiento. Que min <= max se verifica en el endpoint, contra lo
     # que va a quedar guardado: acá puede venir un solo extremo.

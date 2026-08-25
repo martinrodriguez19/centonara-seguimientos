@@ -695,3 +695,42 @@ async def test_el_estado_ofrece_revisar_cuando_la_generacion_termino(
 
     cuerpo = (await adentro.get("/api/estado")).json()
     assert cuerpo["ultima_corrida"]["id"] == str(corrida_id)
+
+
+# ---------------------------------------------------------------------------
+# La ventana de envío, del dueño (D26)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_la_ventana_se_puede_abrir_de_par_en_par(adentro, base) -> None:
+    """El pedido del dueño: hay alguien responsable apretando el botón, así que
+    la ventana tiene que poder quedar sin efecto. 24:00 es fin de día inclusive."""
+    respuesta = await adentro.patch(
+        "/api/configuracion",
+        json={"ventana": {"inicio": "00:00", "fin": "24:00", "dias": [1, 2, 3, 4, 5, 6, 7]}},
+    )
+    assert respuesta.status_code == 200
+    assert respuesta.json()["ventana"] == {
+        "inicio": "00:00",
+        "fin": "24:00",
+        "dias": [1, 2, 3, 4, 5, 6, 7],
+    }
+
+    #  Y con eso, el guardrail no frena a ninguna hora de ningún día.
+    from app.core.guardrails import revisar_ventana
+
+    config = await configuracion.obtener(base)
+    madrugada_de_domingo = datetime(2026, 8, 30, 3, 7, tzinfo=UTC)
+    assert revisar_ventana(config["ventana"], ahora=madrugada_de_domingo) is None
+
+
+@sin_mongo
+async def test_una_ventana_al_reves_o_sin_dias_se_rechaza(adentro, base) -> None:
+    for cuerpo in (
+        {"ventana": {"inicio": "19:00", "fin": "09:00", "dias": [1]}},
+        {"ventana": {"inicio": "09:00", "fin": "19:00", "dias": []}},
+        {"ventana": {"inicio": "9am", "fin": "19:00", "dias": [1]}},
+    ):
+        respuesta = await adentro.patch("/api/configuracion", json=cuerpo)
+        assert respuesta.status_code == 422, cuerpo

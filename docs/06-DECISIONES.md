@@ -383,6 +383,23 @@ o cachear números ya resueltos en `contactos`.
 
 ---
 
+### D26 — La ventana horaria de envío la maneja el dueño desde el panel
+
+**Contexto.** G6 (ventana 09:00–19:00, lunes a viernes) estaba fija en la configuración sin forma
+de editarla, y frenó el primer envío de prueba a las 19:14. El dueño fue explícito: "va a estar
+manejado por alguien responsable, no necesita ventanas".
+
+**Decisión: la ventana pasa a ser editable desde Configuración** (horario y días, con `24:00`
+como fin-de-día inclusive y un atajo "sin restricción 24/7"). El mecanismo no se borra: sigue
+existiendo, con su valor por defecto conservador para instalaciones nuevas, y cada cambio queda
+en la auditoría como el resto de la configuración. El sistema no decide por el dueño; deja
+registro de lo que el dueño decidió.
+
+**Qué la revertiría.** Un bloqueo de línea o reporte de spam atribuible a horarios no humanos.
+Ahí la conversación es sobre el valor configurado, no sobre el mecanismo — que para eso quedó.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |
