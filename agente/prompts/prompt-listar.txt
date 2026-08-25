@@ -28,9 +28,16 @@ Pasos:
      campo hace que el sistema le escriba a otra persona. (Un null aca no
      descarta el chat: otro proceso abre el chat despues y lee el numero real
      del panel de contacto.)
-   - el ultimo mensaje visible, resumido en UNA linea. No lo copies textual.
-   - quien lo mando (contacto o yo)
-   - cuanto hace que fue, en dias enteros, segun lo que muestre la interfaz
+   - un resumen en UNA linea de QUE SE ESTABA HABLANDO en esa conversacion:
+     el tema comercial concreto (producto, cotizacion, pedido, entrega, obra)
+     si lo hay. Para esto abri el chat y mira los ultimos mensajes, no solo el
+     ultimo: si el ultimo es un "ok", un sticker o un saludo, el tema esta mas
+     arriba. No copies texto textual. Y si de verdad no hay ningun tema (puros
+     saludos o mensajes de cortesia), decilo literal: "sin tema comercial
+     visible" — NO lo inventes.
+   - quien mando el ultimo mensaje (contacto o yo)
+   - cuanto hace que fue ese ultimo mensaje, en dias enteros, segun lo que
+     muestre la interfaz
 
 3. Devolve UNICAMENTE un objeto JSON, sin texto antes ni despues, sin backticks:
 

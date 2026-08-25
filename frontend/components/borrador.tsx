@@ -99,7 +99,7 @@ export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: 
 
         {mensaje.resumen && (
           <p className="text-sm text-muted-foreground">
-            <span className="font-medium">Último mensaje del chat:</span> {mensaje.resumen}
+            <span className="font-medium">De qué se hablaba:</span> {mensaje.resumen}
           </p>
         )}
 
