@@ -123,10 +123,10 @@ class PaginaWhatsApp:
 
         #  Se limpia antes de escribir: si quedó una búsqueda anterior, los
         #  resultados serían de otro contacto y se abriría el chat equivocado.
-        await buscador.click()
+        await buscador.click(timeout=self._espera)
         await self._page.keyboard.press(SELECCIONAR_TODO)
         await self._page.keyboard.press("Delete")
-        await buscador.type(identificador, delay=20)
+        await buscador.press_sequentially(identificador, delay=20)
 
         try:
             await self._page.wait_for_selector(
@@ -136,8 +136,15 @@ class PaginaWhatsApp:
             log.info("contacto_sin_resultados", identificador=identificador)
             return False
 
-        resultados = await self._page.query_selector_all(selectores.RESULTADO_DE_BUSQUEDA.css)
-        if not resultados:
+        # ⚠️ Locators y no handles, y cada fila protegida. WhatsApp redibuja la
+        # lista de resultados mientras se la mira: un handle agarrado hace medio
+        # segundo puede estar "not attached to the DOM" al clickearlo — mató al
+        # primer RESOLVER real, en el segundo contacto del lote. El locator se
+        # re-resuelve en el momento del click, y si la fila igual desapareció,
+        # se prueba la siguiente en vez de reventar el job entero.
+        filas = self._page.locator(selectores.RESULTADO_DE_BUSQUEDA.css)
+        cantidad = min(await filas.count(), 4)
+        if cantidad == 0:
             return False
 
         # ⚠️ La primera fila no siempre es un chat: la lista nueva es una grilla
@@ -149,11 +156,16 @@ class PaginaWhatsApp:
         # encabezado viejo haría pasar por buena a una fila muerta. La señal es
         # que el encabezado visible DIGA lo que decía la fila clickeada. Cuál
         # chat es, lo sigue decidiendo la comparación de identidad (R1).
-        for resultado in resultados[:4]:
-            texto_fila = ((await resultado.inner_text()) or "").strip()
-            if not texto_fila:
+        for i in range(cantidad):
+            fila = filas.nth(i)
+            try:
+                texto_fila = ((await fila.inner_text(timeout=ESPERA_CORTA_MS)) or "").strip()
+                if not texto_fila:
+                    continue
+                await fila.click(timeout=ESPERA_CORTA_MS)
+            except Exception:
+                #  La fila se redibujó o desapareció entre leerla y clickearla.
                 continue
-            await resultado.click()
             try:
                 await self._page.wait_for_function(
                     """([css, fila]) => {
@@ -174,7 +186,7 @@ class PaginaWhatsApp:
         # el motor lo reporta como CHAT_NO_ABRE y no escribe nada. Si lo que en
         # verdad pasa es que el DOM cambió, los selectores del chat abierto lo
         # van a decir con nombre propio en la próxima corrida que sí abra.
-        log.info("resultados_sin_chat", filas=min(len(resultados), 4))
+        log.info("resultados_sin_chat", filas=cantidad)
         return False
 
     # -- Leer quién es --------------------------------------------------------
@@ -185,11 +197,15 @@ class PaginaWhatsApp:
         `None` no es "está vacío": es "no sé qué dice", y con eso el motor no
         escribe nada.
         """
-        elemento = await self._page.query_selector(selectores.TITULO_DEL_HEADER.css)
-        if elemento is None:
+        loc = self._page.locator(selectores.TITULO_DEL_HEADER.css).first
+        try:
+            if await loc.count() == 0:
+                return None
+            titulo = await loc.get_attribute("title", timeout=ESPERA_CORTA_MS)
+            texto = titulo or (await loc.inner_text(timeout=ESPERA_CORTA_MS))
+        except Exception:
+            #  Se redibujó mientras se leía. "No sé qué dice" y no un valor viejo.
             return None
-        titulo = await elemento.get_attribute("title")
-        texto = titulo or (await elemento.inner_text())
         limpio = (texto or "").strip()
         return limpio or None
 
@@ -214,10 +230,10 @@ class PaginaWhatsApp:
         #  Abrir el panel es la única forma de ver el teléfono de un contacto
         #  agendado. Es de sólo lectura: no toca la conversación.
         try:
-            titulo = await self._page.query_selector(selectores.TITULO_DEL_HEADER.css)
-            if titulo is None:
+            titulo = self._page.locator(selectores.TITULO_DEL_HEADER.css).first
+            if await titulo.count() == 0:
                 return None
-            await titulo.click()
+            await titulo.click(timeout=ESPERA_CORTA_MS)
             await self._page.wait_for_selector(
                 selectores.PANEL_DE_CONTACTO.css, timeout=ESPERA_CORTA_MS
             )
@@ -226,10 +242,13 @@ class PaginaWhatsApp:
             return None
 
         try:
-            for elemento in await self._page.query_selector_all(
-                selectores.TELEFONO_EN_EL_PANEL.css
-            ):
-                texto = (await elemento.inner_text() or "").strip()
+            telefonos = self._page.locator(selectores.TELEFONO_EN_EL_PANEL.css)
+            for i in range(min(await telefonos.count(), 40)):
+                try:
+                    texto = (await telefonos.nth(i).inner_text(timeout=1_000) or "").strip()
+                except Exception:
+                    #  Ese span se redibujó: se sigue con el próximo.
+                    continue
                 if numero := _numero_en(texto):
                     return numero
             return None
@@ -249,18 +268,19 @@ class PaginaWhatsApp:
     async def campo_tiene_texto(self) -> bool:
         """¿Hay algo escrito? Si lo hay, el vendedor está usando ese chat."""
         campo = await self._exigir(selectores.CAMPO_DE_TEXTO)
-        return bool((await campo.inner_text() or "").strip())
+        return bool((await campo.inner_text(timeout=self._espera) or "").strip())
 
     async def escribir(self, texto: str) -> None:
         """Pone el texto en el campo. **Literal.**
 
-        `type` y no `fill`: el campo es un `contenteditable` y WhatsApp escucha
-        los eventos de teclado para habilitar el botón de enviar. Un `fill`
-        cambia el DOM sin que la aplicación se entere, y el botón queda muerto.
+        Tecla por tecla y no `fill`: el campo es un `contenteditable` y WhatsApp
+        escucha los eventos de teclado para habilitar el botón de enviar. Un
+        `fill` cambia el DOM sin que la aplicación se entere, y el botón queda
+        muerto.
         """
         campo = await self._exigir(selectores.CAMPO_DE_TEXTO)
-        await campo.click()
-        await campo.type(texto, delay=10)
+        await campo.click(timeout=self._espera)
+        await campo.press_sequentially(texto, delay=10)
 
     async def limpiar_campo(self) -> None:
         """Borra lo escrito. Se usa al abortar en modo prueba.
@@ -269,14 +289,14 @@ class PaginaWhatsApp:
         redactado y lo manda sin saber de dónde salió.
         """
         campo = await self._exigir(selectores.CAMPO_DE_TEXTO)
-        await campo.click()
+        await campo.click(timeout=self._espera)
         await self._page.keyboard.press(SELECCIONAR_TODO)
         await self._page.keyboard.press("Delete")
 
     async def apretar_enviar(self) -> None:
         """El único método de este archivo que hace que un mensaje salga."""
         boton = await self._exigir(selectores.BOTON_ENVIAR)
-        await boton.click()
+        await boton.click(timeout=self._espera)
 
     async def confirmar_en_hilo(self, texto: str, *, timeout_s: float = 15) -> bool:
         """¿Apareció en la conversación?
@@ -301,20 +321,22 @@ class PaginaWhatsApp:
     # -- Interno ---------------------------------------------------------------
 
     async def _exigir(self, selector: selectores.Selector):
-        """El elemento, o `ErrorDeSelector`.
+        """Un locator ya presente, o `ErrorDeSelector`.
 
         Se usa para lo estructural: si el campo de escritura no está, WhatsApp
         cambió y los envíos siguientes van a fallar igual.
+
+        Devuelve un **locator** y no un handle, a propósito: WhatsApp redibuja
+        sus elementos sin avisar, y un handle agarrado hace un instante puede
+        estar "not attached to the DOM" al usarlo. El locator se re-resuelve en
+        cada acción.
         """
+        loc = self._page.locator(selector.css).first
         try:
-            elemento = await self._page.wait_for_selector(
-                selector.css, timeout=self._espera, state="attached"
-            )
+            await loc.wait_for(state="attached", timeout=self._espera)
         except Exception as error:
             raise ErrorDeSelector(f"no apareció {selector.que_busca}: {selector.css}") from error
-        if elemento is None:
-            raise ErrorDeSelector(f"no apareció {selector.que_busca}: {selector.css}")
-        return elemento
+        return loc
 
 
 # ---------------------------------------------------------------------------

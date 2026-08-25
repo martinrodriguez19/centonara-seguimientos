@@ -76,6 +76,14 @@ async def resolver(pagina, *, contactos: list[str]) -> Resultado:
                     "resueltos_antes_de_fallar": len(leidos),
                 },
             )
+        except Exception as error:
+            # Un tropiezo con UN contacto —la página que se redibujó en el
+            # momento justo, un timeout suelto— no tira el lote entero: ese
+            # contacto queda sin número, con el motivo anotado, y se sigue.
+            # Antes de esto, un solo "not attached to the DOM" mataba el job
+            # tres veces seguidas y la corrida quedaba sin borradores.
+            log.warning("resolver_contacto_fallo", nombre=nombre[:60], error=str(error)[:200])
+            leidos.append({"nombre": nombre, "telefono": None, "motivo": "error_al_abrir"})
 
     resueltos = sum(1 for c in leidos if c["telefono"])
     log.info("resolver_ok", pedidos=len(nombres), resueltos=resueltos)
