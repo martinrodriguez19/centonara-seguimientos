@@ -272,16 +272,17 @@ async def test_la_verificacion_falla_si_falta_la_lista_de_chats(navegador) -> No
     assert "lista de chats" in revision.como_texto()
 
 
-async def test_los_selectores_todavia_no_se_verificaron_contra_whatsapp() -> None:
-    """Cuando alguien los verifique, este test cambia junto con la fecha.
-
-    Existe para que nadie confunda "los tests pasan" con "esto anda contra
-    WhatsApp Web".
+async def test_los_selectores_estan_verificados_contra_whatsapp_real() -> None:
+    """La fecha existe y es la de la pasada entera en verde (25/8/2026, la
+    primera Mac, WhatsApp Business). Si alguien la vuelve a `None` —porque
+    WhatsApp cambió y hay que recalibrar— este test se lo recuerda: el envío
+    en modo real queda bloqueado hasta la próxima pasada verde.
     """
     from agente.adaptadores import selectores
 
-    assert selectores.VERIFICADO is None, (
-        "si ya se verificaron, actualizá este test y la fecha en selectores.py"
+    assert selectores.VERIFICADO == "2026-08-25", (
+        "la fecha de VERIFICADO cambió: si fue una recalibración, actualizá "
+        "este test junto con la pasada verde que la respalda"
     )
 
 

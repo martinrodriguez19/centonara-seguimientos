@@ -50,10 +50,10 @@ def construir(
 ) -> Callable[[Job], Awaitable[dict[str, Any]]]:
     """Devuelve el ejecutor que espera `Bucle`, ya atado a esta máquina.
 
-    `abrir_pagina` es de dónde sale el navegador para `ENVIAR`. En `simulado` no
-    hace falta y no se usa. Se inyecta porque **cómo conectarse al Chrome sigue
-    sin decidirse** (F4.2, ver `adaptadores/conexion.py`): esto no tiene por qué
-    saberlo, y así la decisión se puede tomar sin tocar el despachador.
+    `abrir_pagina` es de dónde sale el navegador para `ENVIAR` y `RESOLVER`. En
+    `simulado` no hace falta y no se usa. Se inyecta porque cómo conseguir la
+    página es una decisión aparte (D24: el navegador dedicado, ver
+    `adaptadores/conexion.py`) y el despachador no tiene por qué saberla.
     """
 
     async def ejecutar(job: Job) -> dict[str, Any]:
@@ -170,7 +170,7 @@ async def _enviar(
             return {
                 "ok": False,
                 "codigo": "ERROR_INESPERADO",
-                "detalle": {"motivo": "no se configuró cómo conectarse al navegador (F4.2)"},
+                "detalle": {"motivo": "no se configuró cómo conectarse al navegador"},
             }
         pagina = await abrir_pagina()
 

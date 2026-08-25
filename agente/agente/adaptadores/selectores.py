@@ -9,22 +9,23 @@ sin explicación es imposible de arreglar por alguien que no lo escribió.
 
 ---
 
-## ⚠️ ESTADO: SIN VERIFICAR CONTRA WHATSAPP WEB
+## ESTADO: VERIFICADOS CONTRA WHATSAPP WEB REAL
 
-**Última verificación contra WhatsApp Web real: NUNCA COMPLETA.**
+**Última verificación completa: 25/8/2026**, con `--verificar-selectores
+--chat` sobre una sesión real de WhatsApp Business (Chrome 152, macOS, la
+primera Mac instalada). Las siete piezas respondieron: lista, buscador,
+apertura del chat, encabezado, número en el panel, campo y botón de enviar.
 
-Primera pasada parcial el 25/8/2026 (`--verificar-selectores`, Mac real):
-`LISTA_DE_CHATS` respondió; `BUSCADOR` con `data-tab='3'` estaba muerto y se
-reancló al panel lateral. El resto sigue siendo una hipótesis hasta que una
-pasada con `--chat` salga entera en verde. Lo que sí está probado es la lógica
-del adaptador que los usa, contra una página de prueba con esta estructura.
+Lo que esa calibración encontró y quedó documentado selector por selector: el
+buscador pasó de `contenteditable` a un `<input>` común, el título perdió su
+atributo `title`, el teléfono vive en el `drawer-right` — y el panel abierto
+se come los clicks, por eso `resolver_numero` lo cierra con Escape.
 
-No es un detalle menor: un selector que no matchea hace que el motor aborte con
-`SELECTOR_ROTO`, que **frena la corrida entera**. Eso es lo correcto —es
-preferible frenar que escribir a ciegas— pero significa que hasta la primera
-verificación real este módulo no manda nada.
-
-Cuando se verifiquen, actualizar la fecha de arriba y la de `VERIFICADO`.
+Un selector que deje de matchear hace que el motor aborte con `SELECTOR_ROTO`,
+que **frena la corrida entera**. Es lo correcto: preferible frenar que escribir
+a ciegas. El día que WhatsApp cambie de nuevo, el camino es el mismo que esta
+vez: `--verificar-selectores --chat <número de prueba>`, leer la radiografía,
+reanclar acá, y actualizar la fecha de `VERIFICADO`.
 
 ---
 
@@ -44,7 +45,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # La fecha que importa. `None` = nunca se verificó contra WhatsApp Web real.
-VERIFICADO: str | None = None
+# Se completa a mano, después de una pasada entera en verde de
+# `--verificar-selectores --chat` en una Mac real: es el acto deliberado que
+# levanta el guard del despachador para el modo real.
+VERIFICADO: str | None = "2026-08-25"
 
 URL = "https://web.whatsapp.com/"
 

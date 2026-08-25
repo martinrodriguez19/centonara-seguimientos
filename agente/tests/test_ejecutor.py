@@ -73,15 +73,14 @@ def job_enviar(destinos=None, **cambios) -> Job:
     )
 
 
-async def test_en_modo_real_no_se_envia_con_los_selectores_sin_verificar() -> None:
-    """⚠️ El guard no es una fase pendiente: es la precondición que falta.
+async def test_en_modo_real_no_se_envia_con_los_selectores_sin_verificar(monkeypatch) -> None:
+    """⚠️ El guard sigue vivo aunque hoy `VERIFICADO` tenga fecha (25/8/2026).
 
-    Los selectores de WhatsApp Web nunca se probaron contra una sesión real. Un
-    envío real sería la primera vez que confiamos en algo que no verificamos, y
-    eso es justo lo que el proyecto decidió no hacer.
-
-    Desaparece solo el día que alguien complete `selectores.VERIFICADO`.
+    El día que WhatsApp cambie y una recalibración vuelva la fecha a `None`,
+    el envío real se tiene que bloquear solo, sin que nadie se acuerde de nada.
+    Esto es lo que lo garantiza.
     """
+    monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", None)
     resultado = await construir(modo="real")(job_enviar(["+5491123231151"]))
 
     assert resultado["ok"] is False
@@ -121,13 +120,13 @@ async def test_un_destino_que_no_esta_en_la_lista_vigente_se_rechaza() -> None:
 
 
 async def test_sin_forma_de_abrir_el_navegador_lo_dice(monkeypatch) -> None:
-    """Con los selectores ya verificados, falta decidir F4.2. Se reporta claro."""
+    """Si nadie inyectó `abrir_pagina`, el motivo lo tiene que decir claro."""
     monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", "2026-08-24")
 
     resultado = await construir(modo="real")(job_enviar(["+5491123231151"]))
 
     assert resultado["ok"] is False
-    assert "F4.2" in resultado["detalle"]["motivo"]
+    assert "navegador" in resultado["detalle"]["motivo"]
 
 
 async def test_en_modo_real_usa_la_pagina_que_le_dan(monkeypatch) -> None:

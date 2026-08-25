@@ -4,8 +4,10 @@
 —busca, abre, lee el header, resuelve el número, escribe, envía, confirma— contra
 un DOM con la estructura que los selectores esperan, usando un Chromium de
 verdad. **No prueba que WhatsApp Web se vea así hoy**: eso sólo se sabe corriendo
-`verificar_selectores()` contra una sesión real, y hasta que eso pase la fecha de
-`selectores.VERIFICADO` sigue en `None`.
+`--verificar-selectores` contra una sesión real, que es lo que respalda la fecha
+de `selectores.VERIFICADO`. Cuando esa pasada encuentra un cambio, esta página
+se actualiza para imitar la estructura nueva — pasó con el buscador, que dejó
+de ser un `contenteditable`.
 
 Que la distinción esté clara importa: alguien podría mirar estos tests en verde y
 concluir que el envío funciona. Lo que funciona es la lógica.
