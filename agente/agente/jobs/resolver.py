@@ -54,9 +54,7 @@ async def resolver(pagina, *, contactos: list[str]) -> Resultado:
     try:
         await pagina.abrir_whatsapp()
         if not await pagina.sesion_iniciada():
-            return Resultado(
-                False, "SESION_CAIDA", {"motivo": "WhatsApp Web está pidiendo el QR"}
-            )
+            return Resultado(False, "SESION_CAIDA", {"motivo": "WhatsApp Web está pidiendo el QR"})
     except ErrorDeSelector as error:
         #  `contactos` vacío y presente: el backend lee siempre la misma forma.
         return Resultado(False, "SELECTOR_ROTO", {"motivo": str(error), "contactos": []})

@@ -199,9 +199,7 @@ async def ultima_corrida(base) -> dict[str, Any] | None:
     return await progreso(base, ultima["_id"]) if ultima else None
 
 
-async def cancelar(
-    base, corrida_id: ObjectId, *, quien: str, ahora: datetime | None = None
-) -> int:
+async def cancelar(base, corrida_id: ObjectId, *, quien: str, ahora: datetime | None = None) -> int:
     """Corta una corrida: sus jobs sin hacer se marcan fallidos y se termina.
 
     Existe porque una corrida sin esto no tiene salida: un `REDACTAR` que
