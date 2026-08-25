@@ -19,7 +19,9 @@ import sys
 
 import markdown
 
-RAIZ = pathlib.Path(r"C:\Users\Usuario\Desktop\centonara-seguimientos")
+# La raíz del repositorio, deducida de dónde vive este archivo. Antes era una
+# ruta absoluta a la máquina de quien lo escribió: el script sólo corría ahí.
+RAIZ = pathlib.Path(__file__).resolve().parent.parent
 ORIGEN = RAIZ / "docs" / "SOP-instalar-mac.md"
 SALIDA = RAIZ / "docs" / "SOP-instalar-mac.pdf"
 

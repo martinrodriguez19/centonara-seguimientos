@@ -341,6 +341,59 @@ async def test_una_corrida_que_no_existe_da_404(adentro) -> None:
     assert (await adentro.get("/api/corridas/no-es-un-id")).status_code == 404
 
 
+@sin_mongo
+async def test_listar_corridas_trae_las_mas_nuevas_primero(adentro, base, maquina_lista) -> None:
+    """El listado que le faltaba al panel, y en el orden en que se lee.
+
+    `GET /estado` trae sólo la última, así que "¿qué corridas hubo esta semana?"
+    no tenía respuesta en ningún lado.
+    """
+    primera = (await adentro.post("/api/corridas", json={})).json()["id"]
+    segunda = (await adentro.post("/api/corridas", json={})).json()["id"]
+
+    cuerpo = (await adentro.get("/api/corridas")).json()
+    ids = [corrida["id"] for corrida in cuerpo["corridas"]]
+
+    assert ids == [segunda, primera]
+
+
+@sin_mongo
+async def test_listar_corridas_cuenta_los_jobs_de_cada_una(adentro, base, maquina_lista) -> None:
+    """El conteo por corrida sale de una sola consulta, no de una por corrida.
+
+    Este test es el que agarra el día que alguien "optimice" el listado y le
+    ponga el `corrida_id` equivocado a algún conteo: con dos corridas, cruzar
+    los jobs de una con la otra no se nota a ojo.
+    """
+    primera = (await adentro.post("/api/corridas", json={})).json()["id"]
+    job = await cola.tomar(base, "mac-rocio")
+    await cola.reportar(base, job["_id"], ok=True)
+
+    segunda = (await adentro.post("/api/corridas", json={})).json()["id"]
+
+    por_id = {c["id"]: c for c in (await adentro.get("/api/corridas")).json()["corridas"]}
+
+    assert por_id[primera]["terminada"] is True
+    assert por_id[primera]["jobs"]["pendientes"] == 0
+    assert por_id[segunda]["terminada"] is False
+    assert por_id[segunda]["jobs"]["pendientes"] == 1
+
+
+@sin_mongo
+async def test_listar_corridas_sin_sesion_da_401(cliente) -> None:
+    assert (await cliente.get("/api/corridas")).status_code == 401
+
+
+@sin_mongo
+async def test_listar_corridas_sin_ninguna_devuelve_lista_vacia(adentro) -> None:
+    """Sin corridas no revienta ni devuelve `null`: devuelve una lista vacía.
+
+    La consulta de jobs se saltea cuando no hay corridas, y ese atajo es
+    justamente el que puede devolver algo raro si nadie lo prueba.
+    """
+    assert (await adentro.get("/api/corridas")).json() == {"corridas": []}
+
+
 # ---------------------------------------------------------------------------
 # Kill switch
 # ---------------------------------------------------------------------------

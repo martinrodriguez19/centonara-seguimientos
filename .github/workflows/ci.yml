@@ -118,6 +118,21 @@ jobs:
         run: pnpm lint
       - name: Tipos
         run: pnpm typecheck
+      # Los tests de componente. No es cobertura por la cobertura: prueban las
+      # cuatro cosas que, si se rompen en silencio, terminan en un mensaje que
+      # no debía salir — que el envío real exija la confirmación, que no se
+      # ofrezca con la lista de destinos vacía, que la banda de modo dependa de
+      # esa lista y no del entorno, y que el botón dispare una generación.
+      #
+      # El panel era lo único del repositorio sin un solo test, y es el que
+      # toca el botón de enviar.
+      - name: Tests
+        run: pnpm test
+      # ⚠️ `build` y no sólo `typecheck`. Son cosas distintas: `tsc --noEmit` no
+      # ejecuta el prerender de Next, así que un error de compilación de una
+      # página aparecía recién en el despliegue — con producción ya rota.
+      - name: Compila
+        run: pnpm build
 
   # El agente corre en la Mac del vendedor, pero se desarrolla en modo simulado
   # desde cualquier sistema (04-AGENTE §11). macOS es el que importa; los otros

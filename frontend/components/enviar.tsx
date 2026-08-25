@@ -1,0 +1,115 @@
+"use client";
+
+import { Send, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { textos } from "@/lib/textos";
+
+export type Modo = "prueba" | "real";
+
+/**
+ * Los dos botones de envío, con la fricción repartida según lo que cuesta.
+ *
+ * **Ensayo** es un click: hace todo el recorrido menos apretar enviar, y nadie
+ * recibe nada. Ponerle fricción sólo lograría que se use menos, que es lo
+ * contrario de lo que conviene.
+ *
+ * **De verdad** pide escribir la cantidad de mensajes que van a salir. Es la
+ * misma fricción que ya usa liberar retenidos en lote, y por el mismo motivo:
+ * escribir el número obliga a leerlo. Un `confirm()` se acepta sin mirar, y
+ * esta es exactamente la acción que alguien apurado haría sin mirar.
+ *
+ * Y con la lista de destinos vacía no se ofrece siquiera: R4 dice que vacía
+ * significa a nadie, así que un envío real no alcanzaría a nadie. La pantalla
+ * lo explica en vez de dejar que alguien apriete y no pase nada.
+ */
+export function Enviar({
+  cuantos,
+  destinosPermitidos,
+  enviando,
+  onEnviar,
+}: {
+  cuantos: number;
+  destinosPermitidos: number;
+  enviando: boolean;
+  onEnviar: (modo: Modo) => void;
+}) {
+  const [confirmacion, setConfirmacion] = useState("");
+  const [abierto, setAbierto] = useState(false);
+
+  const puedeEnviarDeVerdad = destinosPermitidos > 0;
+
+  if (abierto) {
+    return (
+      <div className="space-y-2 rounded-md border border-critico-borde bg-critico-suave p-3">
+        <p className="max-w-md text-sm font-medium">
+          {textos.revision.enviarRealConfirmar(cuantos)}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input
+            inputMode="numeric"
+            autoFocus
+            aria-label={`Escribí ${cuantos} para confirmar`}
+            className="w-20 rounded-md border border-input bg-background px-3 py-1.5 text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={confirmacion}
+            onChange={(evento) => setConfirmacion(evento.target.value)}
+          />
+          <Button
+            variant="destructive"
+            disabled={confirmacion !== String(cuantos) || enviando}
+            onClick={() => onEnviar("real")}
+          >
+            <Send className="size-4" aria-hidden />
+            {enviando ? textos.revision.enviando : textos.revision.enviarRealBoton(cuantos)}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={enviando}
+            onClick={() => {
+              setAbierto(false);
+              setConfirmacion("");
+            }}
+          >
+            {textos.revision.cancelar}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium">{textos.revision.modoTitulo}</p>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="flex-1 space-y-1">
+          <Button size="lg" disabled={enviando} onClick={() => onEnviar("prueba")}>
+            <ShieldCheck className="size-4" aria-hidden />
+            {enviando ? textos.revision.enviando : textos.revision.modoPrueba}
+          </Button>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {textos.revision.modoPruebaDetalle}
+          </p>
+        </div>
+
+        <div className="flex-1 space-y-1">
+          <Button
+            size="lg"
+            variant="destructive"
+            disabled={enviando || !puedeEnviarDeVerdad}
+            onClick={() => setAbierto(true)}
+          >
+            <Send className="size-4" aria-hidden />
+            {textos.revision.modoReal}
+          </Button>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {puedeEnviarDeVerdad
+              ? textos.revision.modoRealDetalle
+              : textos.revision.modoRealSinDestinos}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

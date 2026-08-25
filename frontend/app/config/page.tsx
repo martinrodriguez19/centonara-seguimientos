@@ -124,6 +124,40 @@ export default function Config() {
         palabras={datos.palabras_comerciales}
         onGuardar={(palabras_comerciales) => guardar.mutate({ palabras_comerciales })}
       />
+
+      {/* Lo que no se edita desde acá pero hay que poder mirar.
+          Las dos llegan en cada respuesta de configuración y no se dibujaban
+          en ningún lado, así que "¿en qué horario sale esto?" y "¿cada cuánto
+          sale un mensaje?" se contestaban abriendo el código. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Cuándo y a qué ritmo sale</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Esto no se cambia desde el panel. Está acá para que puedas responderlo sin
+            preguntarle a nadie.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="text-sm font-medium">Horario</p>
+            <p className="text-sm tabular-nums text-muted-foreground">
+              {datos.ventana.inicio} a {datos.ventana.fin}, {diasDeLaVentana(datos.ventana.dias)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Se evalúa en hora argentina. Fuera de esta ventana no sale ningún mensaje.
+            </p>
+          </div>
+          <div>
+            <p className="text-sm font-medium">Espera entre mensajes</p>
+            <p className="text-sm tabular-nums text-muted-foreground">
+              entre {datos.pausa_entre_envios_s[0]} y {datos.pausa_entre_envios_s[1]} segundos
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Al azar dentro de ese rango. Es lo que evita que la línea parezca un robot.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </main>
   );
 }
@@ -151,7 +185,7 @@ function DestinosPermitidos({
   const numeros = () => lista.split("\n").map((l) => l.trim()).filter(Boolean);
 
   return (
-    <Card className={abierto ? "border-destructive/50" : "border-amber-500/50"}>
+    <Card className={abierto ? "border-critico-borde bg-critico-suave" : "border-atencion-borde"}>
       <CardHeader>
         <CardTitle className="text-base">Destinos permitidos</CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -310,4 +344,26 @@ function Palabras({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Los días de la ventana, en palabras.
+ *
+ * El backend los manda como números de ISO (1 es lunes). "1,2,3,4,5" no le dice
+ * nada a nadie, y el caso normal —de lunes a viernes— merece decirse así y no
+ * como una enumeración de cinco días.
+ */
+function diasDeLaVentana(dias: number[]): string {
+  const NOMBRES = ["", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+  const ordenados = [...dias].sort((a, b) => a - b);
+
+  if (ordenados.length === 0) return "ningún día";
+  if (ordenados.length === 7) return "todos los días";
+
+  // Un rango corrido se dice como rango. Lunes a viernes es el caso de fábrica.
+  const corrido = ordenados.every((dia, i) => i === 0 || dia === ordenados[i - 1] + 1);
+  if (corrido && ordenados.length > 2) {
+    return `de ${NOMBRES[ordenados[0]]} a ${NOMBRES[ordenados[ordenados.length - 1]]}`;
+  }
+  return ordenados.map((dia) => NOMBRES[dia]).join(", ");
 }

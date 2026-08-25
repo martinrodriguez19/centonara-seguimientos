@@ -125,6 +125,22 @@ export type Alerta = {
   accion: string;
 };
 
+/** Cómo salió una corrida. Lo que devuelve `GET /corridas/{id}/metricas`. */
+export type MetricasDeCorrida = {
+  mensajes: number;
+  /** Cuántos quedaron en cada estado. Las claves son los seis de la máquina. */
+  por_estado: Record<string, number>;
+  enviados: number;
+  descartados: number;
+  costo_usd: number;
+  /**
+   * Sobre lo que una persona pudo mirar. Un rechazado por guardrail nunca
+   * estuvo sobre la mesa, así que no dice nada de la calidad del borrador.
+   */
+  tasa_edicion: number;
+  editados: number;
+};
+
 export type Metricas = {
   dias: number;
   corridas: number;
@@ -166,6 +182,20 @@ export class ErrorDeApi extends Error {
 
   get esPausa(): boolean {
     return this.status === 423;
+  }
+
+  /**
+   * El backend no contestó.
+   *
+   * Lo emite el proxy de Next (`app/api/[...ruta]/route.ts`) con su propio
+   * código cuando el `fetch` al backend falla o expira. Se distingue del resto
+   * porque **no hay nada que arreglar del lado de quien mira**: no es un dato
+   * mal cargado ni una sesión vencida, es un servidor que se está despertando.
+   * Decirle "revisá los datos" a alguien cuyo problema es que Render tardó en
+   * levantar la instancia es hacerle perder el tiempo.
+   */
+  get esBackendCaido(): boolean {
+    return this.codigo === "BACKEND_NO_DISPONIBLE" || this.status === 502;
   }
 }
 
@@ -273,6 +303,28 @@ export const dispararCorrida = (tipo: "diagnostico" | "generacion" = "diagnostic
   pedir<{ id: string; maquinas: string[]; jobs: number }>("/corridas", conCuerpo("POST", { tipo }));
 
 export const traerCorrida = (id: string) => pedir<Corrida>(`/corridas/${id}`);
+
+/**
+ * Las últimas corridas.
+ *
+ * Distinto del historial, que es el registro de auditoría y sirve para
+ * reconstruir qué pasó con **un mensaje**. Esto es para mirar el trabajo de los
+ * últimos días.
+ */
+export const traerCorridas = (limite = 50) =>
+  pedir<{ corridas: Corrida[] }>(`/corridas?limite=${limite}`);
+
+/**
+ * Cómo salió una corrida.
+ *
+ * ⚠️ Esta ruta existía en el backend desde hacía tiempo y **no estaba en este
+ * archivo**: era la única de las del panel que el front no llamaba nunca. Es
+ * justo lo que necesita la pantalla de detalle — cómo se repartieron los
+ * mensajes, cuántos salieron, cuánto costó y qué proporción reescribió un
+ * humano.
+ */
+export const traerMetricasDeCorrida = (id: string) =>
+  pedir<MetricasDeCorrida>(`/corridas/${id}/metricas`);
 
 export const cancelarCorrida = (id: string) =>
   pedir<{ ok: boolean; jobs_cortados: number }>(`/corridas/${id}/cancelar`, conCuerpo("POST"));

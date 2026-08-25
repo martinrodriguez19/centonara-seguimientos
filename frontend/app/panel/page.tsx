@@ -10,9 +10,12 @@ import { AltaMaquina, TokenReciente } from "@/components/alta-maquina";
 import { BandaModo } from "@/components/banda-modo";
 import { BotonCorrida } from "@/components/boton-corrida";
 import { AvisoFrenado, KillSwitch } from "@/components/kill-switch";
+import { ErrorDeCarga } from "@/components/error-de-carga";
 import { TarjetaMaquina } from "@/components/maquina";
 import { Metricas } from "@/components/metricas";
+import { SelectorDeTema } from "@/components/tema";
 import { Button } from "@/components/ui/button";
+import { EsqueletoDelPanel } from "@/components/ui/esqueleto";
 import { ErrorDeApi, salir, traerEstado } from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
@@ -61,16 +64,13 @@ export default function Panel() {
     }
   }, [estado.error, router]);
 
-  if (estado.isPending) {
-    return <p className="p-8 text-sm text-muted-foreground">Cargando…</p>;
-  }
+  // Con la forma reservada, la pantalla no salta cuando llegan los datos.
+  if (estado.isPending) return <EsqueletoDelPanel />;
 
   if (estado.isError) {
     return (
-      <main className="p-8">
-        <p className="text-sm text-destructive">
-          No se pudo leer el estado del sistema: {estado.error.message}
-        </p>
+      <main className="mx-auto max-w-5xl px-6 py-8">
+        <ErrorDeCarga error={estado.error} onReintentar={() => void estado.refetch()} />
       </main>
     );
   }
@@ -93,6 +93,9 @@ export default function Panel() {
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
+              <Link href="/corridas">{textos.panel.corridas}</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
               <Link href="/config">{textos.panel.configuracion}</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild>
@@ -101,6 +104,7 @@ export default function Panel() {
             {/* El freno, siempre visible. Un freno al que hay que ir a buscar
                 no es un freno. */}
             <KillSwitch pausado={datos.pausa_global} />
+            <SelectorDeTema />
             <Button
               variant="ghost"
               size="sm"
@@ -120,7 +124,7 @@ export default function Panel() {
         <Alertas />
 
         <BotonCorrida
-          hayMaquinas={maquinasUtiles.length > 0}
+          maquinas={maquinasUtiles.length}
           pausado={datos.pausa_global}
           enCurso={datos.corrida_en_curso}
           ultima={datos.ultima_corrida}

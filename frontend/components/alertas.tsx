@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Info } from "lucide-react";
 
+import { Aviso } from "@/components/ui/estado";
 import { traerAlertas } from "@/lib/panel";
 
 /**
@@ -27,38 +27,17 @@ export function Alertas() {
 
   return (
     <section className="space-y-2" aria-label="Alertas">
-      {alertas.data.alertas.map((alerta) => {
-        const urgente = alerta.nivel === "urgente";
-        const Icono = urgente ? AlertTriangle : Info;
-        return (
-          <div
-            key={alerta.codigo + alerta.titulo}
-            role={urgente ? "alert" : "status"}
-            className={
-              urgente
-                ? "flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4"
-                : "flex items-start gap-3 rounded-lg border bg-muted/40 p-4"
-            }
-          >
-            <Icono
-              className={
-                urgente
-                  ? "mt-0.5 size-5 shrink-0 text-destructive"
-                  : "mt-0.5 size-5 shrink-0 text-muted-foreground"
-              }
-              aria-hidden
-            />
-            <div className="space-y-1">
-              <p className={urgente ? "font-semibold text-destructive" : "font-semibold"}>
-                {alerta.titulo}
-              </p>
-              <p className="text-sm">{alerta.detalle}</p>
-              {/* Qué hacer. Sin esto, la alerta sólo genera ansiedad. */}
-              <p className="text-sm text-muted-foreground">{alerta.accion}</p>
-            </div>
-          </div>
-        );
-      })}
+      {alertas.data.alertas.map((alerta) => (
+        <Aviso
+          key={alerta.codigo + alerta.titulo}
+          nivel={alerta.nivel === "urgente" ? "critico" : "atencion"}
+          titulo={alerta.titulo}
+          // Qué hacer. Sin esto, la alerta sólo genera ansiedad.
+          accion={alerta.accion}
+        >
+          {alerta.detalle}
+        </Aviso>
+      ))}
     </section>
   );
 }

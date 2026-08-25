@@ -3,6 +3,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { ProveedorDeAvisos } from "@/components/ui/avisos-flotantes";
+
 /**
  * Proveedores de cliente de toda la app.
  *
@@ -30,5 +32,11 @@ export function Proveedores({ children }: { children: React.ReactNode }) {
       }),
   );
 
-  return <QueryClientProvider client={cliente}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={cliente}>
+      {/* Adentro del de consultas: los avisos los dispara lo que pasa con una
+          mutación, así que todo lo que avisa vive más adentro que los dos. */}
+      <ProveedorDeAvisos>{children}</ProveedorDeAvisos>
+    </QueryClientProvider>
+  );
 }

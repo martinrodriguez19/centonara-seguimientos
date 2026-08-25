@@ -4,25 +4,67 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ===========================================================================
+   El sistema visual del panel.
+   ===========================================================================
+
+   Antes esto era el archivo que genera shadcn con `baseColor: neutral`, sin una
+   sola modificación: TODOS los colores estaban declarados con croma cero
+   —`oklch(0.556 0 0)`—, así que no había color de marca ni colores de estado, y
+   una máquina sana, una degradada y una sin conexión terminaban siendo el mismo
+   gris con un texto distinto. Donde hacía falta señalar algo se inventaba la
+   clase en el momento: había 41 usos sueltos de `amber-500/40` y
+   `destructive/10` repartidos por seis componentes, cada uno con su intensidad.
+
+   ---------------------------------------------------------------------------
+   ## La regla de reparto, que es lo único importante de este archivo
+   ---------------------------------------------------------------------------
+
+   La identidad de Centonara es enteramente cálida: marrón, terracota, greige.
+   Y los colores con los que se avisa un peligro también son cálidos. Si se
+   mezclan, "el sistema puede escribirle a un cliente real" se parece al
+   encabezado — y el criterio que este panel se puso es reconocer el modo en dos
+   segundos.
+
+   Así que:
+
+   1. **La aplicación se viste de neutros cálidos.** El papel, la tinta y los
+      grises salen del sitio de Centonara. Eso es lo que la hace suya.
+   2. **Lo interactivo usa un color frío** (`--accion`). Un azul pizarra no se
+      puede confundir con una advertencia por más cálido que sea el resto.
+   3. **Los tres colores de estado no aparecen en ningún otro lado.** Si algo
+      está en ámbar es porque pide una decisión, nunca porque queda lindo.
+   4. **El marrón de marca no viste ningún control.** Vive en `--marca` y se usa
+      sólo en el logotipo de la pantalla de ingreso. Un botón marrón, al lado de
+      un aviso ámbar, es exactamente la ambigüedad que hay que evitar.
+
+   ---------------------------------------------------------------------------
+   ## Por qué hexadecimales y no `oklch`
+   ---------------------------------------------------------------------------
+
+   Porque estos valores se comparan a ojo contra el sitio de Centonara y contra
+   una captura de pantalla, y en ese trabajo `#6E4034` se verifica y
+   `oklch(0.42 0.06 38)` no. Tailwind acepta los dos.
+
+   ⚠️ Los valores de marca están leídos de una captura del sitio, porque desde
+   la máquina donde se escribió esto la red no deja abrir `centonara.com.ar`.
+   Hay que confirmarlos contra su CSS. Si difieren, manda el sitio.
+   =========================================================================== */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
+
+  /* Dos familias con trabajos separados. Antes era una sola (Geist) para todo,
+     incluido `--font-heading`, y por eso nada tenía jerarquía.
+
+     Con pila de reserva de verdad: si la fuente no llega —red del cliente,
+     bloqueo de Google Fonts— el panel cae en la del sistema y se sigue leyendo,
+     en vez de caer en la serif por defecto del navegador. */
+  --font-sans: var(--fuente-cuerpo), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-heading: var(--fuente-titulo), var(--fuente-cuerpo), ui-sans-serif, sans-serif;
+  --font-mono: var(--fuente-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -39,6 +81,42 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* La marca. NO se usa en controles: ver la regla de reparto de arriba. */
+  --color-marca: var(--marca);
+  --color-marca-contraste: var(--marca-contraste);
+
+  /* Lo interactivo. Frío a propósito. */
+  --color-accion: var(--accion);
+  --color-accion-suave: var(--accion-suave);
+
+  /* Los estados. Cada uno con su tinta, su fondo teñido y su borde, para que
+     un aviso se arme siempre igual y no haya que elegir una opacidad. */
+  --color-ok: var(--estado-ok);
+  --color-ok-suave: var(--estado-ok-suave);
+  --color-ok-borde: var(--estado-ok-borde);
+  --color-atencion: var(--estado-atencion);
+  --color-atencion-suave: var(--estado-atencion-suave);
+  --color-atencion-borde: var(--estado-atencion-borde);
+  --color-critico: var(--estado-critico);
+  --color-critico-suave: var(--estado-critico-suave);
+  --color-critico-borde: var(--estado-critico-borde);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -48,83 +126,205 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* --------------------------------------------------------------------------
+   Claro
+   -------------------------------------------------------------------------- */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* El papel y la tinta salen del sitio: blanco roto cálido y el negro del
+     logotipo. Nada de gris plano. */
+  --background: #faf8f6;
+  --foreground: #211a16;
+  --card: #ffffff;
+  --card-foreground: #211a16;
+  --popover: #ffffff;
+  --popover-foreground: #211a16;
+
+  /* El botón primario es grafito cálido, no marrón: tiene que poder estar al
+     lado de un aviso sin competir con él. */
+  --primary: #2b2724;
+  --primary-foreground: #faf8f6;
+
+  --secondary: #f0ece8;
+  --secondary-foreground: #2b2724;
+  --muted: #f0ece8;
+  --muted-foreground: #6e6560;
+  --accent: #ede8e3;
+  --accent-foreground: #2b2724;
+
+  --border: #e6e1dd;
+  --input: #ddd6d0;
+
+  /* El foco, frío. Se ve sobre cualquier fondo de esta paleta y no se lee como
+     una advertencia. */
+  --ring: #35606f;
+
+  --marca: #6e4034;
+  --marca-contraste: #faf8f6;
+
+  --accion: #35606f;
+  --accion-suave: #e7eff2;
+
+  --estado-ok: #2f6b4a;
+  --estado-ok-suave: #e4f0e9;
+  --estado-ok-borde: #a9cdb8;
+
+  /* Ámbar profundo y saturado. Un ocre tira a marrón y se pierde contra los
+     neutros cálidos, que es justo lo que no puede pasar. */
+  --estado-atencion: #9a5b00;
+  --estado-atencion-suave: #fbeedc;
+  --estado-atencion-borde: #e3be7e;
+
+  --estado-critico: #b32318;
+  --estado-critico-suave: #fbe7e4;
+  --estado-critico-borde: #e9a9a1;
+
+  /* `destructive` es el mismo rojo que el estado crítico: son la misma cosa
+     dicha por dos vocabularios, y si se separan terminan siendo dos rojos. */
+  --destructive: #b32318;
+
+  --chart-1: #35606f;
+  --chart-2: #2f6b4a;
+  --chart-3: #9a5b00;
+  --chart-4: #6e4034;
+  --chart-5: #6e6560;
+
+  --radius: 0.5rem;
+
+  --sidebar: #f0ece8;
+  --sidebar-foreground: #211a16;
+  --sidebar-primary: #2b2724;
+  --sidebar-primary-foreground: #faf8f6;
+  --sidebar-accent: #ede8e3;
+  --sidebar-accent-foreground: #2b2724;
+  --sidebar-border: #e6e1dd;
+  --sidebar-ring: #35606f;
 }
 
+/* --------------------------------------------------------------------------
+   Oscuro
+   --------------------------------------------------------------------------
+
+   No es el claro invertido. Dos cosas cambian de rol a propósito:
+
+   - El marrón de la barra de promoción no funciona sobre fondo oscuro: no
+     contrasta. Se aclara hasta una terracota que sí.
+   - Los tres colores de estado suben en luminosidad y bajan en saturación. El
+     mismo rojo del modo claro sobre negro vibra y cansa.
+   -------------------------------------------------------------------------- */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #17130f;
+  --foreground: #ede7e1;
+  --card: #1f1a16;
+  --card-foreground: #ede7e1;
+  --popover: #1f1a16;
+  --popover-foreground: #ede7e1;
+
+  --primary: #ede7e1;
+  --primary-foreground: #1f1a16;
+
+  --secondary: #2a241f;
+  --secondary-foreground: #ede7e1;
+  --muted: #2a241f;
+  --muted-foreground: #a69c94;
+  --accent: #2a241f;
+  --accent-foreground: #ede7e1;
+
+  --border: #322b25;
+  --input: #3d352e;
+  --ring: #7fafc1;
+
+  --marca: #c08a78;
+  --marca-contraste: #17130f;
+
+  --accion: #8fbece;
+  --accion-suave: #17282e;
+
+  --estado-ok: #6fc08e;
+  --estado-ok-suave: #16281d;
+  --estado-ok-borde: #2e5540;
+
+  --estado-atencion: #e0a64e;
+  --estado-atencion-suave: #2c2114;
+  --estado-atencion-borde: #5a4322;
+
+  --estado-critico: #e4796c;
+  --estado-critico-suave: #2e1815;
+  --estado-critico-borde: #5c2a24;
+
+  --destructive: #e4796c;
+
+  --chart-1: #8fbece;
+  --chart-2: #6fc08e;
+  --chart-3: #e0a64e;
+  --chart-4: #c08a78;
+  --chart-5: #a69c94;
+
+  --sidebar: #1f1a16;
+  --sidebar-foreground: #ede7e1;
+  --sidebar-primary: #ede7e1;
+  --sidebar-primary-foreground: #1f1a16;
+  --sidebar-accent: #2a241f;
+  --sidebar-accent-foreground: #ede7e1;
+  --sidebar-border: #322b25;
+  --sidebar-ring: #7fafc1;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
+  }
+
+  /* Los títulos van en la familia de títulos sin que cada componente tenga que
+     acordarse. Es lo que hace que la jerarquía exista por defecto en vez de
+     depender de que alguien ponga la clase. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading;
+  }
+
+  /* Los números que se comparan entre filas tienen que alinearse. Antes esto
+     dependía de que cada componente se acordara de `tabular-nums`, y en la
+     mitad de los lugares no pasaba. */
+  table,
+  time,
+  output,
+  .cifra {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Quien pidió menos movimiento en su Mac lo pidió en serio: a mucha gente el
+     movimiento le da mareo, y el panel tiene un esqueleto que late y un
+     indicador que gira. Se quedan quietos, no desaparecen — sigue haciendo
+     falta ver que algo está cargando. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Safari no aplica `backdrop-filter` sin el prefijo, y el panel lo usa en dos
+     barras fijas: la de arriba, donde vive el kill switch, y la de abajo de la
+     revisión, donde está el botón de enviar. Sin esto las dos quedan
+     translúcidas sin desenfoque y el texto de atrás se lee a través — justo en
+     los dos controles que tienen que leerse sin dudar. */
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-\[2px\] {
+    -webkit-backdrop-filter: blur(8px);
   }
 }

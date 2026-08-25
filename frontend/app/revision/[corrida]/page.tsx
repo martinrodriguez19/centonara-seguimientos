@@ -1,20 +1,23 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Send } from "lucide-react";
 import Link from "next/link";
 import { use, useState } from "react";
 
 import { Borrador } from "@/components/borrador";
+import { ErrorDeCarga } from "@/components/error-de-carga";
 import { Button } from "@/components/ui/button";
+import { EsqueletoDeLista } from "@/components/ui/esqueleto";
 import {
   enviarCorrida,
   ErrorDeApi,
   liberarMensaje,
+  traerEstado,
   traerMensajes,
   validarCorrida,
   type Mensaje,
 } from "@/lib/panel";
+import { Enviar, type Modo } from "@/components/enviar";
 import { textos } from "@/lib/textos";
 
 /**
@@ -27,18 +30,24 @@ import { textos } from "@/lib/textos";
  *   3. Los descartados, que están ahí sólo para que nadie se pregunte a dónde
  *      fueron a parar
  *
- * Y abajo el botón de enviar, que dice **cuántos** van a salir. "Enviar" a
- * secas no deja claro si son tres o treinta.
+ * Y abajo los dos botones de enviar, que dicen **cuántos** van a salir y **en
+ * qué modo**. "Enviar" a secas no deja claro si son tres o treinta, ni si
+ * llegan a alguien.
  */
 export default function Revision({ params }: { params: Promise<{ corrida: string }> }) {
   const { corrida } = use(params);
   const clienteQuery = useQueryClient();
-  const [enviado, setEnviado] = useState<number | null>(null);
+  const [enviado, setEnviado] = useState<{ cuantos: number; modo: Modo } | null>(null);
 
   const revision = useQuery({
     queryKey: ["mensajes", corrida],
     queryFn: () => traerMensajes(corrida),
   });
+
+  // Para saber si la lista de destinos está abierta. Enviar de verdad con la
+  // lista vacía no alcanza a nadie (regla R4), así que el botón lo dice en vez
+  // de dejar que alguien apriete y no pase nada.
+  const estado = useQuery({ queryKey: ["estado"], queryFn: traerEstado });
 
   const validar = useMutation({
     mutationFn: () => validarCorrida(corrida),
@@ -46,19 +55,27 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
   });
 
   const enviar = useMutation({
-    mutationFn: () => enviarCorrida(corrida, "prueba"),
+    mutationFn: (modo: Modo) => enviarCorrida(corrida, modo),
     onSuccess: (resultado) => {
-      setEnviado(resultado.mensajes);
+      setEnviado({ cuantos: resultado.mensajes, modo: resultado.modo as Modo });
       void clienteQuery.invalidateQueries({ queryKey: ["mensajes", corrida] });
       void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
     },
   });
 
   if (revision.isPending) {
-    return <p className="p-8 text-sm text-muted-foreground">{textos.revision.cargando}</p>;
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-8">
+        <EsqueletoDeLista filas={3} />
+      </main>
+    );
   }
   if (revision.isError) {
-    return <p className="p-8 text-sm text-destructive">{revision.error.message}</p>;
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-8">
+        <ErrorDeCarga error={revision.error} onReintentar={() => void revision.refetch()} />
+      </main>
+    );
   }
 
   const mensajes = revision.data.mensajes;
@@ -123,21 +140,26 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
       <div className="sticky bottom-0 space-y-2 border-t bg-background/95 py-4 backdrop-blur">
         {enviado !== null ? (
           <p className="text-sm">
-            Se encolaron <strong>{enviado}</strong> mensajes. {textos.revision.enviarAyuda}
+            {/* ⚠️ El resultado dice el MODO. "Se encolaron 3 mensajes" a secas
+                deja al operador sin saber si acaba de escribirle a un cliente
+                real: es la ambigüedad más cara que puede tener esta pantalla. */}
+            {enviado.modo === "real"
+              ? textos.revision.enviadoReal(enviado.cuantos)
+              : textos.revision.enviadoPrueba(enviado.cuantos)}{" "}
+            {enviado.modo === "real" && textos.revision.enviarAyuda}
           </p>
+        ) : listos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{textos.revision.nadaQueEnviar}</p>
         ) : (
           <>
-            <Button
-              size="lg"
-              disabled={listos.length === 0 || enviar.isPending}
-              onClick={() => enviar.mutate()}
-            >
-              <Send className="size-4" aria-hidden />
-              {enviar.isPending ? textos.revision.enviando : textos.revision.enviar(listos.length)}
-            </Button>
-            {listos.length === 0 && (
-              <p className="text-sm text-muted-foreground">{textos.revision.nadaQueEnviar}</p>
-            )}
+            <Enviar
+              cuantos={listos.length}
+              // Ausente mientras carga el estado: hasta saberlo, se asume
+              // cerrada. Fallar cerrado también acá (regla R2).
+              destinosPermitidos={estado.data?.destinos_permitidos ?? 0}
+              enviando={enviar.isPending}
+              onEnviar={(modo) => enviar.mutate(modo)}
+            />
             {enviar.error instanceof ErrorDeApi && (
               <p className="text-sm text-destructive">{enviar.error.message}</p>
             )}
@@ -222,7 +244,7 @@ function LiberarTodos({ mensajes, corrida }: { mensajes: Mensaje[]; corrida: str
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-amber-500/40 p-3">
+    <div className="space-y-2 rounded-md border border-atencion-borde bg-atencion-suave p-3">
       <p className="max-w-xs text-sm">
         {textos.revision.liberarTodosConfirmar(mensajes.length)}
       </p>

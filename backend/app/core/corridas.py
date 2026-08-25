@@ -199,6 +199,52 @@ async def ultima_corrida(base) -> dict[str, Any] | None:
     return await progreso(base, ultima["_id"]) if ultima else None
 
 
+async def recientes(base, *, limite: int = 50) -> list[dict[str, Any]]:
+    """Las últimas corridas, de la más nueva a la más vieja.
+
+    Existe porque el panel no tenía forma de contestar "¿qué corridas hubo esta
+    semana?". Había `estado` —que trae sólo la última— y el historial de
+    auditoría, que es un registro de eventos y sirve para otra cosa: para
+    reconstruir qué pasó con **un mensaje**, no para mirar el trabajo de los
+    últimos días.
+
+    Trae los jobs de todas de una sola consulta y no una por corrida. Con
+    cincuenta corridas, hacerlo adentro del bucle son cincuenta viajes a la base
+    para pintar una tabla que alguien mira dos segundos.
+    """
+    documentos = await base["corridas"].find().sort("creada_en", -1).limit(limite).to_list(None)
+    if not documentos:
+        return []
+
+    ids = [documento["_id"] for documento in documentos]
+    jobs = await base["jobs"].find({"corrida_id": {"$in": ids}}).to_list(None)
+
+    por_corrida: dict[Any, dict[str, int]] = {}
+    for job in jobs:
+        conteo = por_corrida.setdefault(job["corrida_id"], {})
+        conteo[job["estado"]] = conteo.get(job["estado"], 0) + 1
+
+    resumen = []
+    for documento in documentos:
+        conteo = por_corrida.get(documento["_id"], {})
+        total = sum(conteo.values())
+        pendientes = conteo.get("pendiente", 0) + conteo.get("tomado", 0)
+        resumen.append(
+            {
+                "id": str(documento["_id"]),
+                "tipo": documento["tipo"],
+                "modo": documento["modo"],
+                "estado": documento["estado"],
+                "maquinas": documento["maquinas"],
+                "creada_en": documento["creada_en"],
+                "jobs": {"total": total, "pendientes": pendientes, **conteo},
+                "terminada": pendientes == 0 and total > 0,
+                "costo_usd": documento.get("costo_usd", 0.0),
+            }
+        )
+    return resumen
+
+
 async def cancelar(base, corrida_id: ObjectId, *, quien: str, ahora: datetime | None = None) -> int:
     """Corta una corrida: sus jobs sin hacer se marcan fallidos y se termina.
 

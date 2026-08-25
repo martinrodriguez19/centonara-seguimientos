@@ -2,8 +2,12 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ban, Play } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAvisos } from "@/components/ui/avisos-flotantes";
+import { Confirmacion } from "@/components/ui/dialogo";
+import { Aviso } from "@/components/ui/estado";
 import { pausarSistema } from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
@@ -20,12 +24,27 @@ import { textos } from "@/lib/textos";
  *    esquivando, y la que importa es la primera.
  * 3. **Reanudar no confirma nada.** Frenar de más no le hace daño a nadie;
  *    hacer difícil el freno, sí.
+ *
+ * La confirmación era un `confirm()` del navegador. En una Mac eso aparece como
+ * una hoja gris del sistema con botones que dicen "Aceptar" y "Cancelar" —
+ * justo en el control donde hace falta leer qué va a pasar. Ahora es el diálogo
+ * del panel, sin fricción de escribir: frenar es reversible.
  */
 export function KillSwitch({ pausado }: { pausado: boolean }) {
   const clienteQuery = useQueryClient();
+  const { avisar } = useAvisos();
+  const [confirmando, setConfirmando] = useState(false);
 
   const cambiar = useMutation({
     mutationFn: pausarSistema,
+    onSuccess: (resultado) => {
+      setConfirmando(false);
+      avisar(
+        resultado.pausado ? textos.killSwitch.avisoFrenado : textos.killSwitch.avisoReanudado,
+        resultado.pausado ? "critico" : "ok",
+      );
+    },
+    onError: () => avisar(textos.killSwitch.avisoFallo, "critico"),
     onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["estado"] }),
   });
 
@@ -44,17 +63,30 @@ export function KillSwitch({ pausado }: { pausado: boolean }) {
   }
 
   return (
-    <Button
-      variant="destructive"
-      size="sm"
-      disabled={cambiar.isPending}
-      onClick={() => {
-        if (confirm(textos.killSwitch.confirmar)) cambiar.mutate(true);
-      }}
-    >
-      <Ban className="size-4" aria-hidden />
-      {textos.killSwitch.frenar}
-    </Button>
+    <>
+      <Button
+        variant="destructive"
+        size="sm"
+        disabled={cambiar.isPending}
+        onClick={() => setConfirmando(true)}
+      >
+        <Ban className="size-4" aria-hidden />
+        {textos.killSwitch.frenar}
+      </Button>
+
+      <Confirmacion
+        abierto={confirmando}
+        onCerrar={() => setConfirmando(false)}
+        onConfirmar={() => cambiar.mutate(true)}
+        titulo={textos.killSwitch.confirmarTitulo}
+        confirmar={textos.killSwitch.frenar}
+        peligrosa
+        ocupado={cambiar.isPending}
+      >
+        <p>{textos.killSwitch.confirmar}</p>
+        <p className="text-muted-foreground">{textos.killSwitch.confirmarNota}</p>
+      </Confirmacion>
+    </>
   );
 }
 
@@ -66,15 +98,8 @@ export function KillSwitch({ pausado }: { pausado: boolean }) {
  */
 export function AvisoFrenado() {
   return (
-    <div
-      role="alert"
-      className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4"
-    >
-      <Ban className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
-      <div>
-        <p className="font-semibold text-destructive">{textos.killSwitch.frenado}</p>
-        <p className="text-sm text-muted-foreground">{textos.killSwitch.frenadoDetalle}</p>
-      </div>
-    </div>
+    <Aviso nivel="critico" titulo={textos.killSwitch.frenado}>
+      {textos.killSwitch.frenadoDetalle}
+    </Aviso>
   );
 }

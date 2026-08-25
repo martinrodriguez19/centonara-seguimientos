@@ -313,6 +313,22 @@ async def cancelar_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
     return {"ok": True, "jobs_cortados": cortados}
 
 
+@router.get("/corridas")
+async def listar_corridas(_: Autenticado, limite: int = 50) -> dict[str, Any]:
+    """Las últimas corridas, para la pantalla que las lista.
+
+    Es lo único que el panel necesitaba y no existía. `GET /estado` trae la
+    última y nada más, así que "¿qué corridas hubo esta semana?" no tenía
+    respuesta — y es la primera pregunta que va a hacer el dueño cuando el
+    sistema lleve un mes andando.
+
+    El tope duro es 200: el panel las muestra en una tabla que alguien recorre
+    con la vista, y un límite que el cliente elige sin techo es una consulta que
+    algún día trae la colección entera.
+    """
+    return {"corridas": await corridas.recientes(db.obtener_base(), limite=min(limite, 200))}
+
+
 @router.get("/corridas/{corrida_id}")
 async def ver_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
     try:

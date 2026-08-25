@@ -21,16 +21,25 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
   const [maquina, setMaquina] = useState("");
   const [nombre, setNombre] = useState("");
   const [linea, setLinea] = useState("");
+  // El backend lo acepta en el alta y el formulario no lo pedía, así que toda
+  // máquina nueva nacía con el valor de fábrica y había que corregirlo después.
+  const [tope, setTope] = useState("20");
   const clienteQuery = useQueryClient();
 
   const crear = useMutation({
     mutationFn: () =>
-      altaMaquina({ maquina, nombre, telefono_linea: linea.trim() || null }),
+      altaMaquina({
+        maquina,
+        nombre,
+        telefono_linea: linea.trim() || null,
+        tope_diario: Number(tope) || 20,
+      }),
     onSuccess: (nuevo) => {
       onToken(nuevo.token, nuevo.maquina);
       setMaquina("");
       setNombre("");
       setLinea("");
+      setTope("20");
       setAbierto(false);
     },
     onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["estado"] }),
@@ -87,6 +96,13 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
             valor={linea}
             onChange={setLinea}
             placeholder="+54 11 4440-5036"
+          />
+          <Campo
+            etiqueta={textos.alta.tope}
+            ayuda={textos.alta.topeAyuda}
+            valor={tope}
+            onChange={setTope}
+            placeholder="20"
           />
 
           {problema && <p className="text-sm text-destructive">{problema}</p>}
@@ -174,16 +190,14 @@ export function TokenReciente({
   const [copiado, setCopiado] = useState(false);
 
   return (
-    <Card className="border-amber-500/50 bg-amber-500/5">
+    <Card className="border-atencion-borde bg-atencion-suave">
       <CardHeader>
         <CardTitle className="text-base">
           {textos.alta.tokenTitulo} — <span className="font-mono">{maquina}</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="font-semibold text-amber-700 dark:text-amber-400">
-          {textos.alta.tokenAviso}
-        </p>
+        <p className="font-semibold text-atencion">{textos.alta.tokenAviso}</p>
         <code className="block overflow-x-auto rounded-md border bg-muted p-3 font-mono text-sm">
           {token}
         </code>

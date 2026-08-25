@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Centonara">
+  <!--
+    El ícono de la pestaña. Reemplaza al favicon por defecto de Next, que era lo
+    primero que veía el cliente al abrir el panel.
+
+    La "c" va dibujada como un arco y no como texto: un SVG de ícono no carga
+    fuentes web, así que un `<text>` se vería con la que tenga cada máquina y en
+    una Mac no sería la misma que en el servidor.
+
+    El marrón es el único lugar de toda la interfaz donde la marca se usa como
+    fondo. Adentro del panel el marrón no viste ningún control, para que no
+    compita con los avisos: ver la regla de reparto en app/globals.css.
+  -->
+  <rect width="64" height="64" rx="14" fill="#6E4034" />
+  <path
+    d="M42.28 19.74A16 16 0 1 0 42.28 44.26"
+    fill="none"
+    stroke="#FAF8F6"
+    stroke-width="7"
+    stroke-linecap="round"
+  />
+</svg>

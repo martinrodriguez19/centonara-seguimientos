@@ -4,9 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ban, Check, Pencil } from "lucide-react";
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Aviso, Pildora } from "@/components/ui/estado";
 import {
   editarMensaje,
   ErrorDeApi,
@@ -61,20 +61,40 @@ export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: 
               {mensaje.contacto_id} · {mensaje.maquina}
             </p>
           </div>
-          {mensaje.editado_por && <Badge variant="outline">Editado</Badge>}
-          {descartado && <Badge variant="secondary">{textos.revision.vetado}</Badge>}
+          {mensaje.editado_por && (
+            <Pildora nivel="neutro" conIcono={false}>
+              Editado
+            </Pildora>
+          )}
+          {descartado && <Pildora nivel="critico">{textos.revision.vetado}</Pildora>}
         </div>
 
         {/* ⚠️ Por qué se apartó. Es lo único que convierte "revisá esto" en una
             decisión que alguien puede tomar en cinco segundos. */}
         {mensaje.senales.length > 0 && (
-          <ul className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-2">
-            {mensaje.senales.map((senal) => (
-              <li key={senal} className="text-sm text-amber-800 dark:text-amber-300">
-                {textos.senales[senal] ?? senal}
-              </li>
-            ))}
-          </ul>
+          <Aviso
+            nivel={descartado ? "critico" : "atencion"}
+            titulo={descartado ? "Por qué no va a salir" : "Por qué lo apartamos"}
+            className="p-3"
+          >
+            <ul className="space-y-0.5">
+              {mensaje.senales.map((senal) => (
+                <li key={senal}>{textos.senales[senal] ?? senal}</li>
+              ))}
+            </ul>
+          </Aviso>
+        )}
+
+        {/* `motivo` llegaba del backend en cada mensaje y no se mostraba en
+            ningún lado. Es lo que distingue "lo frenaste vos" de "una regla lo
+            frenó", que para quien revisa son cosas distintas. */}
+        {mensaje.motivo && (
+          <p className="text-sm">
+            <span className="font-medium">Motivo:</span>{" "}
+            <span className="text-muted-foreground">
+              {textos.motivos[mensaje.motivo] ?? mensaje.motivo}
+            </span>
+          </p>
         )}
 
         {mensaje.resumen && (
