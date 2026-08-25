@@ -300,6 +300,19 @@ async def disparar_corrida(cuerpo: NuevaCorrida, _: Autenticado) -> dict[str, An
     return {"id": str(disparo.corrida_id), "maquinas": disparo.maquinas, "jobs": disparo.jobs}
 
 
+@router.post("/corridas/{corrida_id}/cancelar")
+async def cancelar_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
+    """Corta la corrida: lo pendiente se marca fallido y el botón se libera.
+
+    Lo ya hecho queda hecho; los borradores generados siguen en revisión.
+    """
+    try:
+        cortados = await corridas.cancelar(db.obtener_base(), _a_id(corrida_id), quien="panel")
+    except corridas.CorridaDesconocida as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    return {"ok": True, "jobs_cortados": cortados}
+
+
 @router.get("/corridas/{corrida_id}")
 async def ver_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
     try:

@@ -60,6 +60,9 @@ export const textos = {
     sinMaquinas: "No hay ninguna máquina activa y sin pausar.",
     enCurso: "Corrida en curso",
     progreso: (hechos: number, total: number) => `${hechos} de ${total} listos`,
+    cancelar: "Cancelar corrida",
+    confirmarCancelar:
+      "¿Cancelar la corrida? Lo pendiente se descarta; lo ya generado queda en revisión.",
   },
 
   maquina: {

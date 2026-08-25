@@ -40,6 +40,9 @@ class EstadoCorrida(StrEnum):
     ENVIANDO = "enviando"
     TERMINADA = "terminada"
     FRENADA = "frenada"
+    CANCELADA = "cancelada"
+    """La canceló una persona desde el panel. Distinta de `frenada`, que es el
+    sistema frenándose solo (canario, kill switch)."""
 
 
 class NoHayMaquinas(Exception):
@@ -187,6 +190,57 @@ async def ultima_corrida(base) -> dict[str, Any] | None:
     """
     ultima = await base["corridas"].find_one(sort=[("creada_en", -1)])
     return await progreso(base, ultima["_id"]) if ultima else None
+
+
+async def cancelar(
+    base, corrida_id: ObjectId, *, quien: str, ahora: datetime | None = None
+) -> int:
+    """Corta una corrida: sus jobs sin hacer se marcan fallidos y se termina.
+
+    Existe porque una corrida sin esto no tiene salida: un `REDACTAR` que
+    reintenta tarda minutos por intento, y mientras haya un job pendiente el
+    panel muestra "en curso" y no deja disparar otra. Cancelar es una decisión
+    de una persona, y queda en la auditoría como tal.
+
+    Lo que ya se hizo, se hizo: no toca los jobs terminados ni borra borradores
+    generados — esos se resuelven en la pantalla de revisión. Devuelve cuántos
+    jobs cortó.
+    """
+    momento = ahora or datetime.now(UTC)
+
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    if corrida is None:
+        raise CorridaDesconocida(corrida_id)
+
+    resultado = await base["jobs"].update_many(
+        {"corrida_id": corrida_id, "estado": {"$in": ["pendiente", "tomado"]}},
+        {
+            "$set": {
+                "estado": "fallido",
+                "codigo": "CANCELADO",
+                "terminado_en": momento,
+            }
+        },
+    )
+    await base["corridas"].update_one(
+        {"_id": corrida_id},
+        {"$set": {"estado": str(EstadoCorrida.CANCELADA), "terminada_en": momento}},
+    )
+    await auditoria.registrar(
+        base,
+        que=auditoria.Que.CORRIDA_CANCELADA,
+        quien=quien,
+        corrida_id=corrida_id,
+        detalle={"jobs_cortados": resultado.modified_count},
+        ahora=momento,
+    )
+    log.info("corrida_cancelada", corrida=str(corrida_id), jobs=resultado.modified_count)
+    return resultado.modified_count
+
+
+class CorridaDesconocida(Exception):
+    def __init__(self, corrida_id: ObjectId) -> None:
+        super().__init__(f"no existe la corrida {corrida_id}")
 
 
 # ---------------------------------------------------------------------------

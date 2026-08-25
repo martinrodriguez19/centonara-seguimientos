@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList, Loader2, Play } from "lucide-react";
+import { ClipboardList, Loader2, Play, X } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { dispararCorrida, ErrorDeApi, type Corrida } from "@/lib/panel";
+import { cancelarCorrida, dispararCorrida, ErrorDeApi, type Corrida } from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
 /**
@@ -35,17 +35,37 @@ export function BotonCorrida({
     onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["estado"] }),
   });
 
+  const cancelar = useMutation({
+    mutationFn: (id: string) => cancelarCorrida(id),
+    onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["estado"] }),
+  });
+
   if (enCurso) {
     const hechos = enCurso.jobs.total - enCurso.jobs.pendientes;
     return (
       <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3">
         <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden />
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{textos.boton.enCurso}</p>
           <p className="text-sm tabular-nums text-muted-foreground">
             {textos.boton.progreso(hechos, enCurso.jobs.total)}
           </p>
         </div>
+        {/* La salida de emergencia: sin esto, una corrida con un job trabado
+            deja el panel "en movimiento" para siempre y el botón preso. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={cancelar.isPending}
+          onClick={() => {
+            if (confirm(textos.boton.confirmarCancelar)) {
+              cancelar.mutate(enCurso.id);
+            }
+          }}
+        >
+          <X className="size-4" aria-hidden />
+          {textos.boton.cancelar}
+        </Button>
       </div>
     );
   }

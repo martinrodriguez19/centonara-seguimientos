@@ -34,6 +34,7 @@ class Que(StrEnum):
     """
 
     CORRIDA_DISPARADA = "corrida_disparada"
+    CORRIDA_CANCELADA = "corrida_cancelada"
     MENSAJE_ENVIADO = "mensaje_enviado"
     MENSAJE_VETADO = "mensaje_vetado"
     MENSAJE_EDITADO = "mensaje_editado"

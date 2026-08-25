@@ -267,6 +267,9 @@ export const dispararCorrida = (tipo: "diagnostico" | "generacion" = "diagnostic
 
 export const traerCorrida = (id: string) => pedir<Corrida>(`/corridas/${id}`);
 
+export const cancelarCorrida = (id: string) =>
+  pedir<{ ok: boolean; jobs_cortados: number }>(`/corridas/${id}/cancelar`, conCuerpo("POST"));
+
 // --- Revisión de borradores ------------------------------------------------
 
 export const validarCorrida = (id: string) =>

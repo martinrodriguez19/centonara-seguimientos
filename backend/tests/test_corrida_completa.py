@@ -258,3 +258,36 @@ async def test_el_costo_de_cada_job_queda_registrado(http, base, maquina) -> Non
     #  La vuelta al navegador cuesta ~200 veces lo que redactar. Es el motivo
     #  entero por el que `REDACTAR` no abre el navegador.
     assert sum(j["costo_usd"] for j in guardados) == pytest.approx(0.432)
+
+
+@sin_mongo
+async def test_cancelar_corta_lo_pendiente_y_libera_el_boton(http, base, maquina) -> None:
+    """Sin esto, una corrida con un job trabado deja el panel "en curso" para
+    siempre y no se puede disparar otra. Cancelar es la salida, y es de una
+    persona: queda en la auditoría.
+
+    Lo ya hecho queda hecho; sólo lo pendiente se marca fallido.
+    """
+    disparo = await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=5)
+    corrida_id = disparo.corrida_id
+
+    # El LISTAR se hace y deja dos REDACTAR pendientes, que nadie toma.
+    job = await tomar(http, maquina.token)
+    await reportar(http, maquina.token, job["id"], detalle={"chats": chats(), "leidos": 4})
+    assert (await corridas.progreso(base, corrida_id))["terminada"] is False
+
+    cortados = await corridas.cancelar(base, corrida_id, quien="panel")
+    assert cortados == 2
+
+    progreso = await corridas.progreso(base, corrida_id)
+    assert progreso["terminada"] is True
+    assert progreso["estado"] == "cancelada"
+
+    # El LISTAR reportado no se tocó; los cortados dicen por qué murieron.
+    guardados = await base["jobs"].find({"corrida_id": corrida_id}).to_list(None)
+    assert {j["estado"] for j in guardados} == {"listo", "fallido"}
+    assert all(j["codigo"] == "CANCELADO" for j in guardados if j["estado"] == "fallido")
+
+    # Y quedó escrito quién lo hizo.
+    evento = await base["auditoria"].find_one({"que": "corrida_cancelada"})
+    assert evento is not None and evento["quien"] == "panel"
