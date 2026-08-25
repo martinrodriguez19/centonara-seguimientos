@@ -384,13 +384,14 @@ async def test_cancelar_corta_lo_pendiente_y_libera_el_boton(http, base, maquina
     disparo = await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=5)
     corrida_id = disparo.corrida_id
 
-    # El LISTAR se hace y deja dos REDACTAR pendientes, que nadie toma.
+    # El LISTAR se hace y deja pendientes dos REDACTAR y el RESOLVER del chat
+    # sin teléfono. Nadie los toma.
     job = await tomar(http, maquina.token)
     await reportar(http, maquina.token, job["id"], detalle={"chats": chats(), "leidos": 4})
     assert (await corridas.progreso(base, corrida_id))["terminada"] is False
 
     cortados = await corridas.cancelar(base, corrida_id, quien="panel")
-    assert cortados == 2
+    assert cortados == 3
 
     progreso = await corridas.progreso(base, corrida_id)
     assert progreso["terminada"] is True
