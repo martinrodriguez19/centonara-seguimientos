@@ -311,7 +311,7 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
                 try:
                     await pagina.click(selectores.HEADER.css)
                     await asyncio.sleep(2)
-                except Exception:  # noqa: BLE001 — es diagnóstico, no control
+                except Exception:
                     pass
                 print()
                 print(await _radiografia_telefono(pagina))
