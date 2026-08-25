@@ -44,8 +44,8 @@ async def _radiografia(pagina) -> str:
     atributos, y con eso el selector nuevo se escribe con evidencia.
     """
     datos = await pagina.evaluate(
-        """() => {
-            const describir = (el) => {
+        """(selectorResultados) => {
+            const describir = (el, conTexto) => {
                 const attrs = {};
                 for (const a of el.attributes) {
                     attrs[a.name] = (a.value || '').slice(0, 70);
@@ -56,7 +56,11 @@ async def _radiografia(pagina) -> str:
                     ruta.unshift(n.tagName.toLowerCase() + (n.id ? '#' + n.id : ''));
                     n = n.parentElement;
                 }
-                return { ruta: ruta.slice(-6).join(' > '), attrs };
+                const salida = { ruta: ruta.slice(-6).join(' > '), attrs };
+                if (conTexto) {
+                    salida.texto = (el.innerText || '').replace(/\\s+/g, ' ').slice(0, 60);
+                }
+                return salida;
             };
             const candidatos = Array.from(document.querySelectorAll(
                 "[contenteditable='true'], input, [role='textbox'], [role='searchbox']"
@@ -65,18 +69,41 @@ async def _radiografia(pagina) -> str:
                 .map((e) => e.id)
                 .filter((id) => id && id.length < 30)
                 .slice(0, 25);
-            return { ids, candidatos: candidatos.slice(0, 12).map(describir) };
-        }"""
+            const resultados = Array.from(document.querySelectorAll(selectorResultados));
+            const headers = Array.from(document.querySelectorAll('header'));
+            return {
+                ids,
+                candidatos: candidatos.slice(0, 12).map((e) => describir(e, false)),
+                resultados: resultados.slice(0, 6).map((e) => describir(e, true)),
+                headers: headers.slice(0, 4).map((e) => describir(e, true)),
+            };
+        }""",
+        selectores.RESULTADO_DE_BUSQUEDA.css,
     )
     lineas = ["RADIOGRAFÍA — para reanclar el selector con evidencia:"]
     lineas.append(f"  ids presentes: {', '.join(datos.get('ids', [])) or '(ninguno)'}")
-    candidatos = datos.get("candidatos", [])
-    if not candidatos:
-        lineas.append("  campos de escritura: (ninguno a la vista)")
-    for c in candidatos:
+
+    lineas.append("  campos de escritura:")
+    for c in datos.get("candidatos", []) or [{"ruta": "(ninguno)", "attrs": {}}]:
         lineas.append(f"  · {c['ruta']}")
-        attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(c["attrs"].items()))
-        lineas.append(f"      {attrs}")
+        if c["attrs"]:
+            attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(c["attrs"].items()))
+            lineas.append(f"      {attrs}")
+
+    lineas.append("  lo que matchea el selector de resultados (en orden, con su texto):")
+    for r in datos.get("resultados", []) or [{"ruta": "(nada)", "attrs": {}, "texto": ""}]:
+        lineas.append(f"  · {r['ruta']}  →  {r.get('texto', '')!r}")
+        if r["attrs"]:
+            attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(r["attrs"].items()))
+            lineas.append(f"      {attrs}")
+
+    lineas.append("  <header> presentes:")
+    for h in datos.get("headers", []) or [{"ruta": "(ninguno)", "attrs": {}, "texto": ""}]:
+        lineas.append(f"  · {h['ruta']}  →  {h.get('texto', '')!r}")
+        if h["attrs"]:
+            attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(h["attrs"].items()))
+            lineas.append(f"      {attrs}")
+
     return "\n".join(lineas)
 
 
@@ -184,7 +211,14 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
         print(f"Abriendo el chat de prueba {chat}...")
         try:
             if not await whatsapp.buscar_contacto(chat):
-                marca(False, "buscador", f"no apareció ningún resultado para {chat}")
+                marca(
+                    False,
+                    "buscador",
+                    f"la búsqueda de {chat} no abrió ningún chat (¿existe esa "
+                    "conversación en esta sesión?)",
+                )
+                print()
+                print(await _radiografia(pagina))
                 return False
             marca(True, "buscador", "encontró el chat y lo abrió")
 

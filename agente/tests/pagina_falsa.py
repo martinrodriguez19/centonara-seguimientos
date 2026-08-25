@@ -108,6 +108,13 @@ $('buscador').addEventListener('input', () => {{
   const cont = $('resultados');
   cont.innerHTML = '';
   if (!q) return;
+  // La primera fila es un título de sección que no abre nada, como en la
+  // aplicación real: la grilla mete "Chats" / "Contactos" antes de los
+  // resultados, y clickearla no hace nada. El adaptador tiene que saltearla.
+  const titulo = document.createElement('div');
+  titulo.setAttribute('role', 'listitem');
+  titulo.textContent = 'Chats';
+  cont.appendChild(titulo);
   CHATS.filter(c => c.id.toLowerCase().includes(q) || c.header.toLowerCase().includes(q))
        .forEach(c => {{
     const fila = document.createElement('div');

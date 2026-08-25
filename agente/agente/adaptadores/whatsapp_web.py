@@ -140,15 +140,42 @@ class PaginaWhatsApp:
         if not resultados:
             return False
 
-        await resultados[0].click()
+        # ⚠️ La primera fila no siempre es un chat: la lista nueva es una grilla
+        # y las primeras filas pueden ser títulos de sección ("Chats",
+        # "Contactos") que no abren nada — pasó en la primera verificación real.
+        #
+        # Y "apareció un encabezado" no alcanza como señal de que abrió: en el
+        # segundo mensaje de una corrida ya hay un chat abierto de antes, y su
+        # encabezado viejo haría pasar por buena a una fila muerta. La señal es
+        # que el encabezado visible DIGA lo que decía la fila clickeada. Cuál
+        # chat es, lo sigue decidiendo la comparación de identidad (R1).
+        for resultado in resultados[:4]:
+            texto_fila = ((await resultado.inner_text()) or "").strip()
+            if not texto_fila:
+                continue
+            await resultado.click()
+            try:
+                await self._page.wait_for_function(
+                    """([css, fila]) => {
+                        const h = document.querySelector(css);
+                        if (h === null || h.offsetParent === null) return false;
+                        const lineas = (h.innerText || '')
+                            .split('\\n').map(s => s.trim()).filter(Boolean);
+                        return lineas.some(l => fila.includes(l));
+                    }""",
+                    arg=[selectores.HEADER.css, texto_fila],
+                    timeout=ESPERA_CORTA_MS,
+                )
+                return True
+            except Exception:
+                continue
 
-        try:
-            await self._page.wait_for_selector(
-                selectores.HEADER.css, timeout=self._espera, state="attached"
-            )
-        except Exception as error:
-            raise ErrorDeSelector(f"no apareció {selectores.HEADER.que_busca}") from error
-        return True
+        # Ninguna fila abrió el chat que decía ser. Es lo mismo que "no está":
+        # el motor lo reporta como CHAT_NO_ABRE y no escribe nada. Si lo que en
+        # verdad pasa es que el DOM cambió, los selectores del chat abierto lo
+        # van a decir con nombre propio en la próxima corrida que sí abra.
+        log.info("resultados_sin_chat", filas=min(len(resultados), 4))
+        return False
 
     # -- Leer quién es --------------------------------------------------------
 
