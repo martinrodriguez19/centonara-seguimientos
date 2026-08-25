@@ -11,12 +11,13 @@ sin explicación es imposible de arreglar por alguien que no lo escribió.
 
 ## ⚠️ ESTADO: SIN VERIFICAR CONTRA WHATSAPP WEB
 
-**Última verificación contra WhatsApp Web real: NUNCA.**
+**Última verificación contra WhatsApp Web real: NUNCA COMPLETA.**
 
-Estos selectores están escritos a partir de la estructura conocida de la
-aplicación y **son una hipótesis hasta que alguien corra `verificar()` contra una
-sesión real**. Lo que sí está probado es la lógica del adaptador que los usa,
-contra una página de prueba con esta misma estructura.
+Primera pasada parcial el 25/8/2026 (`--verificar-selectores`, Mac real):
+`LISTA_DE_CHATS` respondió; `BUSCADOR` con `data-tab='3'` estaba muerto y se
+reancló al panel lateral. El resto sigue siendo una hipótesis hasta que una
+pasada con `--chat` salga entera en verde. Lo que sí está probado es la lógica
+del adaptador que los usa, contra una página de prueba con esta estructura.
 
 No es un detalle menor: un selector que no matchea hace que el motor aborte con
 `SELECTOR_ROTO`, que **frena la corrida entera**. Eso es lo correcto —es
@@ -68,7 +69,9 @@ class Selector:
 # ---------------------------------------------------------------------------
 
 QR = Selector(
-    "canvas[aria-label*='scan' i], div[data-testid='qrcode']",
+    #  `div[data-ref] canvas`: el canvas del QR vive desde siempre en un div
+    #  con el token de vinculación en `data-ref`, y no depende del idioma.
+    "canvas[aria-label*='scan' i], div[data-testid='qrcode'], div[data-ref] canvas",
     "el código QR de vinculación",
     #  Que no esté es lo normal: significa que la sesión está iniciada.
     estructural=False,
@@ -83,13 +86,19 @@ LISTA_DE_CHATS = Selector(
 # Buscar y abrir un chat
 # ---------------------------------------------------------------------------
 
+# ⚠️ `data-tab='3'` murió: lo atrapó la primera verificación real (25/8/2026).
+# WhatsApp movió el buscador a un editor Lexical sin `data-tab`. El ancla nueva
+# es estructural: el ÚNICO `contenteditable` dentro del panel lateral (`#side`)
+# es el buscador — el de redactar vive en `#main`. El viejo queda de segunda
+# opción por si `#side` cambia de id antes que el resto.
 BUSCADOR = Selector(
-    "div[contenteditable='true'][data-tab='3']",
+    "div[id='side'] div[contenteditable='true'], div[contenteditable='true'][data-tab='3']",
     "el campo de búsqueda de chats",
 )
 
 RESULTADO_DE_BUSQUEDA = Selector(
-    "div[id='pane-side'] div[role='listitem']",
+    #  En las versiones nuevas la lista es una grilla y cada chat un `row`.
+    "div[id='pane-side'] div[role='listitem'], div[id='pane-side'] div[role='row']",
     "un resultado en la lista de búsqueda",
     #  Que no haya resultados es un dato del mundo: ese contacto no existe.
     estructural=False,
@@ -145,7 +154,11 @@ CAMPO_DE_TEXTO = Selector(
 )
 
 BOTON_ENVIAR = Selector(
-    "button[data-testid='send'], span[data-icon='send']",
+    #  `data-icon*='send'` cubre las variantes nuevas del ícono (por ejemplo
+    #  `wds-ic-send-filled`); los `aria-label` cubren el botón en sí, en los
+    #  dos idiomas que puede tener una Mac de un vendedor.
+    "button[data-testid='send'], span[data-icon*='send' i], "
+    "button[aria-label*='enviar' i], button[aria-label*='send' i]",
     "el botón de enviar",
 )
 
