@@ -24,7 +24,6 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from agente.adaptadores import navegador
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -190,23 +189,24 @@ def _device_id(valor: str) -> Chequeo:
     return Chequeo("device_id", Estado.OK, valor, origen)
 
 
-def _chrome_puerto(puerto: int, *, escucha: bool) -> Chequeo:
-    """¿Chrome está abierto con el puerto de depuración?
+def _navegador_envio(carpeta: Path) -> Chequeo:
+    """¿El navegador dedicado del motor de envío se vinculó alguna vez?
 
-    Es lo que necesita el motor de envío. No es lo mismo que el chequeo
-    `chrome`, que sólo verifica que el ejecutable de Claude Code responda.
+    Reemplaza al viejo chequeo del puerto de Chrome: desde D24 el motor no se
+    engancha a ningún puerto, abre su propio navegador con carpeta propia.
 
-    `n/a` y no falla cuando no escucha: el agente lo abre solo cuando llega
-    trabajo, así que que ahora esté cerrado no es un problema. Lo que sí sería
-    un problema —Chrome abierto SIN el puerto— se detecta al abrirlo, no acá.
+    Sólo mira que la carpeta exista y tenga algo adentro. Si la sesión sigue
+    viva se sabe recién al abrirla —igual que `whatsapp_sesion`— y que no
+    exista todavía no es una falla: es que falta correr `--vincular`, y el
+    primer envío lo va a decir.
     """
-    origen = "Chrome 136+: el puerto se ignora sin --user-data-dir"
-    if escucha:
-        return Chequeo("chrome_puerto", Estado.OK, f"escuchando en {puerto}", origen)
+    origen = "D24: el motor de envío usa un navegador propio"
+    if carpeta.is_dir() and any(carpeta.iterdir()):
+        return Chequeo("navegador_envio", Estado.OK, f"vinculado: {carpeta}", origen)
     return Chequeo(
-        "chrome_puerto",
+        "navegador_envio",
         Estado.NO_APLICA,
-        f"nada en el puerto {puerto}: el agente lo abre cuando haga falta",
+        "sin vincular todavía: correr --vincular antes del primer envío",
         origen,
     )
 
@@ -322,14 +322,15 @@ def ejecutar(
     carpeta_agente: Path,
     inicio: Path | None = None,
     con_navegador: bool = True,
-    chrome_puerto: int = 9222,
+    navegador_dir: str = "",
 ) -> Diagnostico:
     """Corre los diez chequeos.
 
-    `con_navegador=False` saltea los dos que salen del proceso —lanzar
-    `claude --version` y mirar el puerto de Chrome—: los usan los tests, y
-    sirven para un arranque rápido porque el primero tarda.
+    `con_navegador=False` saltea el que lanza un proceso —`claude --version`—:
+    lo usan los tests, y sirve para un arranque rápido porque tarda.
     """
+    from agente.adaptadores import conexion
+
     hogar = inicio or Path(os.path.expanduser("~"))
 
     chequeos = [
@@ -338,10 +339,7 @@ def ejecutar(
         _permiso_sitio(),
         _device_id(device_id),
         _chrome(claude_bin) if con_navegador else Chequeo("chrome", Estado.NO_APLICA, "salteado"),
-        _chrome_puerto(
-            chrome_puerto,
-            escucha=con_navegador and navegador.puerto_escucha_sync(chrome_puerto),
-        ),
+        _navegador_envio(conexion.carpeta_dedicada(navegador_dir)),
         _whatsapp_sesion(),
         _claude_md(carpeta_agente),
         _permisos_macos(),

@@ -75,7 +75,7 @@ def test_estan_los_siete_del_mvp_mas_los_tres_nuevos(hogar: Path, carpeta_agente
         "permiso_sitio",
         "device_id",
         "chrome",
-        "chrome_puerto",
+        "navegador_envio",
         "whatsapp_sesion",
         "claude_md",
         "permisos_macos",
@@ -168,13 +168,15 @@ def test_lo_que_solo_se_ve_abriendo_la_pagina_da_na(hogar: Path, carpeta_agente:
         assert chequeos[nombre].estado is Estado.NO_APLICA
 
 
-def test_el_puerto_de_chrome_cerrado_no_es_una_falla(hogar: Path, carpeta_agente: Path) -> None:
-    """El agente lo abre solo cuando llega trabajo.
+def test_el_navegador_de_envio_sin_vincular_no_es_una_falla(
+    hogar: Path, carpeta_agente: Path
+) -> None:
+    """Que la carpeta dedicada no exista es que falta `--vincular` (D24).
 
-    Que ahora esté cerrado no dice nada. Lo que sí sería un problema —Chrome
-    abierto SIN el puerto— se detecta al intentar abrirlo, no acá.
+    El primer envío lo va a pedir; hasta entonces es información, no un
+    problema.
     """
-    chequeo = por_nombre(correr(hogar, carpeta_agente))["chrome_puerto"]
+    chequeo = por_nombre(correr(hogar, carpeta_agente))["navegador_envio"]
     assert chequeo.estado in (Estado.OK, Estado.NO_APLICA)
 
 

@@ -109,11 +109,13 @@ abrir nada, correr nada ni acordarse de nada.</p>
 <li><strong>Activar</strong> — de vuelta en el panel, cuando se decida</li>
 </ol>
 </blockquote>
-<p><strong>Dos cosas que este sistema todavía no hace</strong>, para que nadie las espere:</p>
+<p><strong>Dos cosas para que nadie las espere de más:</strong></p>
 <ul>
-<li><strong>No envía mensajes.</strong> El agente lee los chats y redacta borradores; el envío
-  se rechaza con un motivo explícito hasta la fase 4. Lo que sí se prueba de
-  punta a punta es: botón → leer WhatsApp → borradores en el panel.</li>
+<li><strong>El envío arranca bloqueado</strong> y se destraba por máquina, con tres actos
+  deliberados: vincular el navegador de envío (paso 2.4), verificar los
+  selectores contra WhatsApp real (mismo paso), y registrar el consentimiento
+  del vendedor en el panel. Hasta ahí, lo que funciona de punta a punta es:
+  botón → leer WhatsApp → borradores en el panel.</li>
 <li><strong>No hay ícono en la barra de menú</strong> para que el vendedor pause su máquina
   (fase 5). Se pausa desde el panel.</li>
 </ul>
@@ -219,9 +221,6 @@ automático y arranca todo. En el camino:</p>
 <li><strong>Puede pedir, una única vez, iniciar sesión en Claude Code</strong>: correr
   <code>claude</code> en la Terminal, entrar con la cuenta de esta máquina, salir con
   <code>/exit</code>, y volver a pegar el mismo comando de arriba.</li>
-<li><strong>Puede cerrar Chrome un momento</strong> para volver a abrirlo bien (la sesión no
-  se pierde). Si macOS pregunta si la Terminal puede controlar Chrome, es que
-  <strong>sí</strong>.</li>
 </ul>
 <p>Si algo falta, el instalador <strong>lo dice en castellano y se corta</strong>. La respuesta
 es siempre la misma: hacer lo que dijo y <strong>volver a pegar el mismo comando</strong>.
@@ -263,16 +262,39 @@ permiso y que la sesión de WhatsApp esté viva. Abre WhatsApp Web una vez,
 </tbody>
 </table>
 <blockquote>
-<p><strong><code>selectores</code> va a salir en rojo, y está bien</strong>: el envío está bloqueado a
-propósito hasta la fase 4. La lectura y la redacción funcionan igual.</p>
+<p><strong><code>selectores</code> en rojo mientras no se haga el paso 2.4</strong> es lo esperado: el
+envío queda bloqueado hasta que se verifiquen. La lectura y la redacción
+funcionan igual.</p>
 </blockquote>
+<h2>2.4 — El navegador de envío (para que esta máquina pueda enviar)</h2>
+<p>El motor de envío usa <strong>su propio navegador</strong>, con su propia sesión de
+WhatsApp — el Chrome del vendedor no se toca. Son dos comandos, con el
+teléfono del vendedor a mano.</p>
+<p><strong>a. Vincular la sesión.</strong> Abre una ventana con un código QR; se escanea desde
+el teléfono (WhatsApp → Configuración → Dispositivos vinculados → Vincular un
+dispositivo). Usa uno de los cuatro dispositivos que WhatsApp permite.</p>
+<pre><code class="language-bash">cd ~/centonara-seguimientos &amp;&amp; uv run --directory agente python -m agente.main --vincular
+</code></pre>
+<p><strong>b. Verificar los selectores</strong>, contra ese WhatsApp real y abriendo el chat
+de <strong>un número de prueba</strong> (uno de los que están en destinos permitidos). Mira
+que cada pieza de la pantalla responda — encabezado, campo, botón de enviar —
+escribe un punto en el campo y lo borra. <strong>No envía nada.</strong></p>
+<pre><code class="language-bash">cd ~/centonara-seguimientos &amp;&amp; uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
+</code></pre>
+<p>Si todo sale <code>[OK]</code>, avisar a quien mantiene el sistema: el paso final —fijar
+la fecha de verificación en el código— es deliberado y lo hace una persona.
+Si algo sale <code>[MAL]</code>, mandar la salida completa: dice exactamente qué selector
+dejó de responder.</p>
 <hr />
 <h1>Parte 3 — Activar y probar</h1>
 <h2>3.1 — Activar la máquina, que es una decisión aparte</h2>
 <p>En el panel la máquina aparece <strong>inactiva</strong> y así se queda hasta que alguien
 la active. Antes de activarla: la conversación de consentimiento con el
-vendedor, registrada (F5.7). El sistema va a mandar mensajes <strong>desde su línea,
-con su nombre</strong> — eso tiene que estar dicho y aceptado, no supuesto.</p>
+vendedor (F5.7). El sistema va a mandar mensajes <strong>desde su línea, con su
+nombre</strong> — eso tiene que estar dicho y aceptado, no supuesto. Cuando la
+conversación ya pasó, se registra en el panel con el botón <strong>Registrar
+consentimiento</strong> de la tarjeta de la máquina: queda con fecha en la auditoría,
+y sin eso el backend no le encola envíos.</p>
 <h2>3.2 — La primera corrida</h2>
 <ol>
 <li>En el panel, apretar el botón.</li>
@@ -295,10 +317,13 @@ resultados que parecen fallas y no lo son:</p>
 <li><strong>Todo arranca solo.</strong> Cada vez que el vendedor prende la Mac e inicia
   sesión, Chrome y el agente se levantan sin que nadie toque nada. Si el
   agente se cae, se vuelve a levantar solo.</li>
-<li><strong>Dos cosas pueden volver a pedir atención</strong>, y las dos son sesiones que
+<li><strong>Tres cosas pueden volver a pedir atención</strong>, y las tres son sesiones que
   vencen, no fallas:</li>
-<li>La de <strong>WhatsApp Web</strong> expira cada tanto (dura días, no meses). Cuando
-    pida QR, se escanea de nuevo y listo.</li>
+<li>La de <strong>WhatsApp Web del vendedor</strong> (la que usa la lectura) expira cada
+    tanto (dura días, no meses). Cuando pida QR, se escanea de nuevo y listo.</li>
+<li>La del <strong>navegador de envío</strong> también. El síntoma es un envío que falla
+    con <code>sesion_no_iniciada</code>. Se arregla corriendo <code>--vincular</code> de nuevo
+    (paso 2.4a).</li>
 <li>La de <strong>Claude Code</strong> también caduca. El síntoma es un error que dice
     <code>la sesión de Claude Code venció</code>. Se arregla en la Terminal: correr
     <code>claude</code>, iniciar sesión, salir con <code>/exit</code>.</li>
@@ -376,15 +401,16 @@ launchctl bootout gui/$(id -u)/com.centonara.chrome
 <li><code>OPENSSL_Uplink(...): no OPENSSL_Applink</code> — un antivirus dejó
   <code>SSLKEYLOGFILE</code> en el entorno. El agente ya la descarta al arrancar; si
   aparece igual, es otro proceso.</li>
-<li>El puerto de depuración (9222) <strong>no va a estar disponible</strong> en Chrome 136 o
-  más nuevo: Chrome lo rechaza sobre el perfil normal del usuario ("DevTools
-  remote debugging requires a non-default data directory"). El instalador lo
-  intenta, lo avisa y sigue: hoy no bloquea nada — lo necesita sólo el envío
-  real (fase 4), y ahí se va a resolver con un directorio de datos dedicado.</li>
+<li><strong>El puerto de depuración (9222) ya no se usa</strong> (D24). Chrome 136+ lo
+  rechaza sobre el perfil normal del usuario, así que el motor de envío abre
+  su propio navegador — Chrome real con carpeta dedicada en
+  <code>~/Library/Application Support/Centonara/Chrome</code> — que se vincula con
+  <code>--vincular</code>. Si alguien encuentra flags de puerto en un LaunchAgent, es de
+  una instalación vieja: correr el instalador de nuevo los limpia.</li>
 </ul>
 <p class="pie">
   Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
-  Generado el 24/08/2026 desde el commit cb0f305 2026-08-24<br>
+  Generado el 24/08/2026 desde el commit 7899728 2026-08-24<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
 </p>

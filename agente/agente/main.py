@@ -75,6 +75,33 @@ def construir_parser() -> argparse.ArgumentParser:
             "pegar. Es el primer comando que hay que correr al instalar."
         ),
     )
+    parser.add_argument(
+        "--vincular",
+        action="store_true",
+        help=(
+            "Abre el navegador dedicado del motor de envío (D24) para escanear el "
+            "QR de WhatsApp con el teléfono del vendedor. Una vez por máquina, y "
+            "de nuevo cuando esa sesión expire."
+        ),
+    )
+    parser.add_argument(
+        "--verificar-selectores",
+        action="store_true",
+        dest="verificar_selectores",
+        help=(
+            "Comprueba los selectores contra WhatsApp Web real, en el navegador "
+            "dedicado. Con --chat abre ese chat y verifica también los del chat "
+            "abierto. No envía nada."
+        ),
+    )
+    parser.add_argument(
+        "--chat",
+        default="",
+        help=(
+            "Con --verificar-selectores: el número de PRUEBA cuyo chat se abre "
+            "para verificar encabezado, campo y botón. Elegirlo a propósito."
+        ),
+    )
     parser.add_argument("--version", action="version", version=f"agente {__version__}")
     return parser
 
@@ -208,6 +235,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.sonda:
         return correr_sonda(config)
+
+    if args.vincular:
+        from agente import verificacion
+
+        return SALIDA_OK if asyncio.run(verificacion.vincular(config)) else SALIDA_DIAGNOSTICO
+
+    if args.verificar_selectores:
+        from agente import verificacion
+
+        paso = asyncio.run(verificacion.verificar_selectores(config, chat=args.chat))
+        return SALIDA_OK if paso else SALIDA_DIAGNOSTICO
 
     modo = resolver_modo(config, args.simulado)
 
@@ -385,41 +423,35 @@ def _abrir_pagina(config: Configuracion):
     """Devuelve cómo conseguir la página de WhatsApp, para el motor de envío.
 
     Se arma acá y no en el despachador porque es lo único que sabe de esta
-    máquina: dónde está Chrome, qué perfil usa el vendedor, en qué puerto.
+    máquina: dónde está Chrome y dónde vive la carpeta del navegador dedicado.
 
-    Lo que hace, cada vez que hay un mensaje para escribir:
+    El motor abre **su propio navegador** (D24): el Chrome del sistema, con una
+    carpeta de datos propia y su propia sesión de WhatsApp, vinculada con
+    `--vincular`. El Chrome del vendedor no se toca, y no hay ningún puerto.
 
-    1. Se asegura de que Chrome esté abierto **con el puerto**. Si no está, lo
-       abre. El vendedor no hace nada.
-    2. Se engancha por CDP a esa misma instancia — la suya, con su sesión de
-       WhatsApp y su extensión.
-
-    Playwright se arranca una vez y queda vivo mientras viva el agente: abrirlo
-    y cerrarlo por cada mensaje costaría más que el mensaje.
+    Playwright y el navegador se arrancan una vez y quedan vivos mientras viva
+    el agente: abrir y cerrar por cada mensaje costaría más que el mensaje. Si
+    alguien cierra la ventana, el próximo envío la vuelve a abrir.
     """
     from playwright.async_api import async_playwright
 
-    from agente.adaptadores import navegador
-    from agente.adaptadores.conexion import NoHayNavegador, conectar_cdp
+    from agente.adaptadores import conexion
     from agente.adaptadores.whatsapp_web import PaginaWhatsApp
 
     estado: dict[str, object] = {}
 
     async def abrir():
-        listo = await navegador.asegurar_chrome(
-            chrome_bin=config.chrome_bin,
-            perfil=config.chrome_perfil,
-            perfil_dir=config.chrome_perfil_dir,
-            puerto=config.chrome_puerto,
-        )
-        if not listo.utilizable:
-            # No se escribe nada sin navegador, y el motivo viaja al panel.
-            raise NoHayNavegador(listo.detalle)
-
         if "playwright" not in estado:
             estado["playwright"] = await async_playwright().start()
 
-        pagina = await conectar_cdp(estado["playwright"], puerto=config.chrome_puerto)
+        pagina = estado.get("pagina")
+        if pagina is None or pagina.is_closed():
+            pagina = await conexion.conectar_perfil(
+                estado["playwright"],
+                carpeta=conexion.carpeta_dedicada(config.navegador_dir),
+                chrome_bin=config.chrome_bin,
+            )
+            estado["pagina"] = pagina
         return PaginaWhatsApp(pagina)
 
     return abrir
@@ -434,7 +466,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             claude_bin=config.claude_bin,
             device_id=config.device_id,
             carpeta_agente=CARPETA_AGENTE,
-            chrome_puerto=config.chrome_puerto,
+            navegador_dir=config.navegador_dir,
         )
 
     trabajo = Bucle(

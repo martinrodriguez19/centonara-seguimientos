@@ -1,78 +1,80 @@
-"""De dónde sale la página de Playwright. **F4.2 — decidida el 24/8/2026.**
+"""De dónde sale la página de Playwright. **F4.2 revisada: D24, 25/8/2026.**
 
-`whatsapp_web.py` recibe una `Page` y no le importa de dónde vino. La decisión de
-cómo conseguirla era: CDP sobre el Chrome del vendedor, o un perfil dedicado.
+`whatsapp_web.py` recibe una `Page` y no le importa de dónde vino. La decisión
+de cómo conseguirla era: CDP sobre el Chrome del vendedor, o un perfil dedicado.
 
-**Gana CDP sobre el Chrome del vendedor**, y con eso el sistema usa una sola
-sesión de WhatsApp y un solo dispositivo vinculado.
+**Gana el perfil dedicado** (`conectar_perfil`). El motor de envío abre su
+propio navegador —el Chrome real del sistema, con una carpeta de datos propia—
+sólo cuando tiene que escribir, y lo cierra al terminar. El Chrome del vendedor
+no se toca.
 
 ---
 
-## Lo que Chrome bloquea, y lo que no
+## Por qué no CDP, que era la decisión anterior
 
-Desde Chrome 136, `--remote-debugging-port` **se ignora cuando el perfil es el
-por defecto implícito** — o sea, cuando no se pasa `--user-data-dir`. Es una
-medida de seguridad para que un malware no lea cookies por CDP, y **falla en
-silencio**: Chrome arranca, acepta el flag, y no abre el puerto.
+F4.2 se había decidido al revés, apoyada en una medición en Chrome 151: pasar
+`--user-data-dir` explícito —aunque apuntara al directorio real— hacía que el
+puerto de depuración abriera. **Chrome 152 cerró esa puerta**, verificado en la
+primera Mac instalada (24/8/2026):
 
-Pero **basta con pasar la ruta explícita**, incluso la del mismo perfil real.
-Medido en Chrome 151 el 24 de agosto de 2026:
+    --remote-debugging-port --user-data-dir=<ruta del perfil real>
+    ->  "DevTools remote debugging requires a non-default data directory"
 
-    --remote-debugging-port                              ->  el puerto NO escucha
-    --remote-debugging-port --user-data-dir=<ruta real>  ->  el puerto ESCUCHA
+Es Google blindando las cookies del perfil real contra CDP, y va a seguir en
+esa dirección. La historia completa, con las opciones, en D24.
 
-Con eso Playwright se engancha al Chrome del vendedor, con su perfil, su sesión
-de WhatsApp y su extensión. No hace falta un segundo dispositivo vinculado.
+## Lo que implica el perfil dedicado
 
-## Cómo hay que arrancar Chrome
+- **Su propia sesión de WhatsApp**, vinculada una vez con `--vincular` (usa
+  uno de los cuatro dispositivos que WhatsApp permite). `LISTAR` no cambia:
+  sigue por la extensión, en el Chrome del vendedor, con la sesión de él.
+- **Sin puerto, sin launchctl, sin "cerrá Chrome del todo"**: es otro proceso
+  con otra carpeta, no pelea con la instancia del Dock.
+- **Con ventana** (`headless=False`): WhatsApp Web trata distinto a los
+  navegadores sin interfaz, y además lo que el sistema hace en la máquina del
+  vendedor se tiene que ver.
 
-Los tres flags, y ninguno es opcional:
+## ⚠️ Las sesiones de WhatsApp Web expiran
 
-    --remote-debugging-port=9222
-    --user-data-dir="<carpeta User Data del vendedor>"
-    --profile-directory="<el perfil que usa>"
+No es una hipótesis: la sesión que usó `LISTAR` el 21 de agosto ya no existía
+el 24. Vale para la del vendedor y para la dedicada. Cuando la dedicada se cae,
+`ENVIAR` falla cerrado con `sesion_no_iniciada` y se re-vincula con
+`--vincular`. Cuánto duran y cómo se entera alguien antes de que falle una
+corrida sigue siendo lo que hay que medir.
 
-El tercero importa más de lo que parece: sin él Chrome abre el perfil `Default`,
-que en una máquina con varios perfiles **no es el que tiene nada**.
-
-## ⚠️ Un solo perfil tiene que tener las dos cosas
-
-`LISTAR` usa la extensión Claude in Chrome. `ENVIAR` usa esta conexión. Las dos
-tienen que dar contra **el mismo perfil**, y ese perfil tiene que tener:
-
-1. La extensión instalada
-2. La sesión de WhatsApp Web iniciada
-
-En la máquina donde se probó esto **estaban en perfiles distintos** —la
-extensión en uno, la sesión en otro— y ninguna de las dos partes habría
-funcionado. Es lo primero que hay que verificar al instalar, y está en el SOP.
-
-## ⚠️ La sesión de WhatsApp Web expira
-
-No es una hipótesis: la sesión que usó `LISTAR` el 21 de agosto ya no existía el
-24. La página de vinculación tiene un `auto-logout` visible.
-
-Cuando se cae, **el sistema entero se detiene**: `LISTAR` no puede leer y
-`ENVIAR` no puede escribir. Falla cerrado, que es lo correcto, pero nadie se
-entera hasta que una corrida falla. Ese es el riesgo operativo que queda abierto,
-y es lo que hay que medir en la Mac: cuánto dura, y cómo se entera alguien.
-
-`conectar_perfil` se conserva para el caso en que haya que aislar el navegador
-del vendedor, pero **no es la opción elegida**: ese camino sí vincula un
-dispositivo más.
+`conectar_cdp` se conserva por si alguna vez hay un Chrome con puerto contra el
+que valga la pena engancharse, pero **no es la opción elegida** y nada del
+camino normal lo usa.
 """
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
 
-# El puerto por el que Chrome expone su protocolo de depuración. Es el que hay
-# que pasarle con `--remote-debugging-port` al arrancarlo.
+# El puerto por el que Chrome expone su protocolo de depuración. Sólo lo usa
+# `conectar_cdp`, que quedó fuera del camino normal (D24).
 PUERTO_CDP = 9222
+
+
+def carpeta_dedicada(configurada: str = "") -> Path:
+    """La carpeta de datos del navegador del motor de envío.
+
+    Separada del `User Data` de Chrome a propósito: es lo que hace que el
+    puerto no haga falta y que nada de acá roce el perfil del vendedor.
+    """
+    if configurada:
+        return Path(configurada)
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Application Support/Centonara/Chrome"
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Centonara/Chrome"
+    return Path.home() / ".config/centonara/chrome"
 
 
 class NoHayNavegador(Exception):
@@ -108,26 +110,44 @@ async def conectar_cdp(playwright, *, puerto: int = PUERTO_CDP):
     return pagina
 
 
-async def conectar_perfil(playwright, *, carpeta: Path, headless: bool = False):
-    """**Opción B.** Un Chrome aparte, con perfil propio.
+async def conectar_perfil(
+    playwright, *, carpeta: Path, chrome_bin: str = "", headless: bool = False
+):
+    """**La opción elegida (D24).** Un Chrome aparte, con carpeta propia.
 
-    ⚠️ La primera vez pide escanear el QR, y eso **vincula un dispositivo más** a
-    la línea del vendedor: uno de los cuatro que WhatsApp permite.
+    ⚠️ La primera vez pide escanear el QR (`--vincular`), y eso **vincula un
+    dispositivo más** a la línea del vendedor: uno de los cuatro que WhatsApp
+    permite.
 
     `headless=False` a propósito. WhatsApp Web detecta y trata distinto a los
     navegadores sin interfaz, y una sesión que se cae en headless se cae sin que
     nadie la vea.
+
+    Usa el **Chrome real del sistema** si está (y en la Mac de un vendedor
+    está): WhatsApp ve el navegador de siempre, y no hay que bajar el Chromium
+    de Playwright en cada máquina. Sin Chrome instalado cae al de Playwright,
+    que es el caso de desarrollo.
     """
+    from agente.adaptadores import navegador
+
     # Una sola vez al arrancar, y bloquea microsegundos: mandarlo a un hilo
     # sería más ruido que beneficio.
     carpeta.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
+
+    ejecutable = Path(chrome_bin) if chrome_bin else navegador.encontrar_chrome()
+    extras = {"executable_path": str(ejecutable)} if ejecutable and ejecutable.exists() else {}
     try:
         contexto = await playwright.chromium.launch_persistent_context(
-            str(carpeta), headless=headless
+            str(carpeta), headless=headless, **extras
         )
     except Exception as error:
         raise NoHayNavegador(f"no se pudo abrir el perfil en {carpeta}") from error
 
     pagina = contexto.pages[0] if contexto.pages else await contexto.new_page()
-    log.info("conectado_con_perfil_propio", carpeta=str(carpeta), headless=headless)
+    log.info(
+        "conectado_con_perfil_propio",
+        carpeta=str(carpeta),
+        chrome=str(ejecutable) if extras else "chromium de playwright",
+        headless=headless,
+    )
     return pagina

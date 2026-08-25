@@ -320,6 +320,44 @@ a ser un secreto de baja entropía y Argon2 vuelve a ser lo correcto.
 
 ---
 
+### D24 — El envío usa un navegador dedicado, no el Chrome del vendedor *(revisa F4.2)*
+
+**Contexto.** F4.2 había elegido CDP sobre el Chrome del vendedor, apoyada en una medición del
+24/8/2026 en Chrome 151: pasar `--user-data-dir` explícito —aunque apuntara al directorio de
+siempre— bastaba para que el puerto de depuración abriera. **Chrome 152 cerró esa puerta**, y se
+verificó en la primera Mac real ese mismo día: con la ruta explícita del directorio por defecto,
+Chrome rechaza el puerto con `DevTools remote debugging requires a non-default data directory`.
+No es un bug nuestro ni una configuración: es Google blindando las cookies del perfil real contra
+CDP, y va a seguir en esa dirección.
+
+**Opciones.** (a) CDP sobre el perfil del vendedor — muerta en Chrome 152. (b) Un directorio de
+datos dedicado lanzado por LaunchAgent con el puerto, y CDP contra ese. (c) Un contexto
+persistente de Playwright sobre un directorio dedicado, que el agente abre sólo cuando envía.
+(d) Enviar por la extensión, como `LISTAR` — descartada: el envío tiene que ser determinístico y
+barato, y un modelo apretando "enviar" no es ninguna de las dos cosas.
+
+**Decisión: (c).** `ENVIAR` corre sobre `launch_persistent_context` con el Chrome real del
+sistema y una carpeta propia (`~/Library/Application Support/Centonara/Chrome`). La sesión de
+WhatsApp de esa carpeta se vincula una vez, al instalar (`--vincular`), y usa uno de los cuatro
+dispositivos que WhatsApp permite. `LISTAR` no cambia: sigue por la extensión, en el Chrome del
+vendedor.
+
+**Por qué (c) y no (b).** Hacen lo mismo, pero (b) arrastra todo lo que esta semana demostró ser
+frágil: el LaunchAgent con flags, el puerto que hay que verificar, el "Chrome tiene que estar
+cerrado del todo", y la carrera con la instancia del Dock. (c) no tiene puerto, no tiene launchctl
+para el navegador del motor, y no pelea con la instancia del vendedor porque es otro proceso con
+otra carpeta. Menos piezas móviles en la máquina de un vendedor gana.
+
+**Costo asumido.** Una segunda sesión de WhatsApp que también expira y hay que re-vincular
+(escaneando el QR en la ventana que abre `--vincular`). Y una ventana de Chrome visible durante
+los envíos — que además es deseable: lo que el sistema hace en la máquina del vendedor se ve.
+
+**Qué la revertiría.** Que WhatsApp trate distinto a la sesión del dispositivo vinculado extra
+(bloqueos, verificaciones), o que el cliente no acepte el dispositivo adicional. Ahí se evalúa (d)
+con guardas determinísticas alrededor, nunca (a), que ya no existe.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

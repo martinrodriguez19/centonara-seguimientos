@@ -71,6 +71,9 @@ export const textos = {
     sinConsentimiento: "Sin consentimiento registrado",
     sinConsentimientoDetalle:
       "No se le van a encolar envíos hasta que conste que sabe que el sistema escribe en su nombre.",
+    registrarConsentimiento: "Registrar consentimiento",
+    confirmarConsentimiento: (nombre: string) =>
+      `¿${nombre} ya tuvo la conversación y aceptó que el sistema escriba desde su línea, con su nombre? Queda registrado con fecha en la auditoría.`,
     activar: "Activar",
     desactivar: "Desactivar",
     rotarToken: "Rotar token",

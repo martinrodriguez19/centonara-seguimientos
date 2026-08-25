@@ -147,23 +147,16 @@ echo "      $PLIST"
 # 4. Chrome, arrancando con el puerto al iniciar sesión
 # ---------------------------------------------------------------------------
 #
-# El motor de envío se engancha a Chrome por CDP, y para eso el navegador tiene
-# que estar abierto con tres flags. Desde Chrome 136 el puerto **se ignora en
-# silencio** si no se pasa `--user-data-dir` explícito: arranca, acepta el flag,
-# y no abre nada.
+# El único rol de este LaunchAgent es que el Chrome del vendedor esté abierto
+# al iniciar sesión, con su perfil de siempre: es donde vive la extensión que
+# usa `LISTAR`. Nada más.
 #
-# ⚠️ Y verificado en la primera Mac (Chrome 152): tampoco alcanza con pasarlo
-# apuntando al directorio de siempre — Chrome rechaza el puerto sobre el data
-# dir POR DEFECTO ("DevTools remote debugging requires a non-default data
-# directory"). O sea: con este diseño el puerto no abre en Chrome moderno. Lo
-# necesita sólo el envío real, y la salida (un data dir dedicado, con su propia
-# sesión de WhatsApp) se decide en la fase 4. Mientras tanto el LaunchAgent
-# sigue sirviendo para que Chrome esté abierto al iniciar sesión.
-#
-# Se hace con un LaunchAgent y no pidiéndole al vendedor que abra Chrome de una
-# forma especial, por el motivo de siempre: el vendedor no tiene que saber que
-# esto existe. Y como Chrome ya está abierto cuando él hace click en el Dock,
-# esa ventana se engancha a la instancia que tiene el puerto.
+# ⚠️ SIN el puerto de depuración, a propósito (D24). Chrome 136+ rechaza el
+# puerto sobre el data dir por defecto —verificado en la primera Mac, Chrome
+# 152: "DevTools remote debugging requires a non-default data directory"— así
+# que el motor de envío ya no se engancha a este Chrome: abre su PROPIO
+# navegador con carpeta dedicada (`--vincular` crea su sesión). Volver a poner
+# los flags acá sería resucitar el diseño que Chrome mató.
 
 # El permiso del modo headless. Sin esto, `claude -p` se auto-deniega las
 # acciones de navegador y el job falla con un 502 mudo (problema #3 del MVP).
@@ -195,8 +188,6 @@ cat > "$PLIST_CHROME" <<CHROME_EOF
   <key>ProgramArguments</key>
   <array>
     <string>${CHROME_APP}</string>
-    <string>--remote-debugging-port=${CHROME_PUERTO}</string>
-    <string>--user-data-dir=${CHROME_PERFIL}</string>
     <string>--profile-directory=${CHROME_PERFIL_DIR}</string>
   </array>
 
@@ -213,7 +204,7 @@ CHROME_EOF
 
 plutil -lint "$PLIST_CHROME" >/dev/null || { echo "MAL: el plist de Chrome quedó inválido" >&2; exit 1; }
 echo "      $PLIST_CHROME"
-echo "      perfil: ${CHROME_PERFIL_DIR}  ·  puerto: ${CHROME_PUERTO}"
+echo "      perfil: ${CHROME_PERFIL_DIR}  ·  sin puerto, a propósito (D24)"
 
 # ---------------------------------------------------------------------------
 # 5. Qué falta
@@ -302,14 +293,16 @@ Instalado. Lo que sigue NO lo puede hacer este script:
 
        uv run --directory agente python -m agente.main --sonda
 
-  5. Arrancar las dos cosas, Chrome primero:
+  5. Arrancar las dos cosas:
 
        launchctl bootstrap gui/\$(id -u) ${PLIST_CHROME}
        launchctl bootstrap gui/\$(id -u) ${PLIST}
 
-     Comprobar que Chrome levanto el puerto:
+  6. Preparar el navegador del motor de envio (una vez, con el telefono del
+     vendedor a mano):
 
-       curl http://localhost:${CHROME_PUERTO}/json/version
+       uv run --directory agente python -m agente.main --vincular
+       uv run --directory agente python -m agente.main --verificar-selectores
 
      Para parar:
 

@@ -295,55 +295,17 @@ CHROME_PERFIL_DIR="$PERFIL" CHROME_PUERTO="$PUERTO" RESUMEN=no \
 
 # ---------------------------------------------------------------------------
 titulo "[7/7] Arrancar ahora"
+#
+# Ya no hay puerto que verificar ni Chrome que cerrar (D24): el motor de envío
+# abre su propio navegador cuando lo necesita. Acá sólo se cargan los dos
+# LaunchAgents — el Chrome del vendedor al iniciar sesión, y el agente.
 
 uid=$(id -u)
 launchctl bootout "gui/$uid/com.centonara.agente" 2>/dev/null || true
 launchctl bootout "gui/$uid/com.centonara.chrome" 2>/dev/null || true
 
-# Chrome tiene que estar CERRADO cuando arranca el servicio: si ya hay una
-# instancia abierta, macOS ignora los argumentos y el puerto no se abre.
-if pgrep -f "Google Chrome" >/dev/null 2>&1; then
-  echo "  cerrando Chrome (se vuelve a abrir solo, con la sesión intacta)..."
-  # macOS puede preguntar si la Terminal puede controlar Chrome: es que sí.
-  osascript -e 'quit app "Google Chrome"' >/dev/null 2>&1 || true
-  intentos=0
-  while pgrep -f "Google Chrome" >/dev/null 2>&1; do
-    intentos=$((intentos + 1))
-    if [ "$intentos" -gt 15 ]; then
-      if [ "$TECLADO" = si ]; then
-        preguntar "  No se cerró solo. Cerralo vos con Cmd+Q y apretá Enter: " >/dev/null
-        intentos=0
-      else
-        echo "  Chrome no se cierra. Cerralo con Cmd+Q y volvé a correr esto." >&2
-        exit 1
-      fi
-    fi
-    sleep 1
-  done
-fi
-
 launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.chrome.plist"
-echo "  esperando a que Chrome levante el puerto..."
-puerto_ok=no
-for _ in 1 2 3 4; do
-  sleep 2
-  version=$(curl -s -m 3 "http://localhost:$PUERTO/json/version" || true)
-  case "$version" in *'"Browser"'*) puerto_ok=si; break ;; esac
-done
-if [ "$puerto_ok" = si ]; then
-  echo "  ok  Chrome corriendo con el puerto $PUERTO"
-else
-  # Chrome 136+ rechaza el puerto sobre el perfil normal del usuario
-  # ("DevTools remote debugging requires a non-default data directory").
-  # No corta la instalación: el puerto lo necesita sólo el envío real
-  # (fase 4), que hoy ya está bloqueado por otro motivo. La lectura y los
-  # borradores van por la extensión y no lo usan.
-  echo "  aviso: Chrome está corriendo, pero sin el puerto $PUERTO."
-  echo "  Los Chrome nuevos (136 en adelante) no dejan abrirlo sobre el"
-  echo "  perfil normal. Hoy no bloquea nada: lo necesita recién el envío"
-  echo "  real (fase 4), y se resuelve en esa fase. Se sigue igual."
-fi
-
+echo "  ok  Chrome al iniciar sesión"
 launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.agente.plist"
 echo "  ok  agente corriendo"
 
@@ -355,16 +317,24 @@ cat <<FIN
   Chrome y el agente arrancan solos. Si el agente se cae, se vuelve a levantar
   solo. No hay que tocar nada más en esta computadora.
 
-  Quedan dos cosas, si todavía no se hicieron:
+  Queda lo que este script no puede hacer solo, si todavía no se hizo:
 
   1. El permiso de la extensión (con el mouse, en Chrome):
      ícono de Claude → configuración → permisos de sitios → web.whatsapp.com
 
-  2. Activar la máquina desde el panel, cuando se decida.
+  2. El navegador del motor de envío, con el teléfono del vendedor a mano:
+
+       cd $REPO && uv run --directory agente python -m agente.main --vincular
+
+     y después, con un número de PRUEBA:
+
+       cd $REPO && uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
+
+  3. Activar la máquina y registrar el consentimiento desde el panel.
      Instalada no es activada: hasta activarla, no toma trabajo.
 
-  Para comprobar de punta a punta (abre WhatsApp Web una vez, tarda unos
-  minutos y cuesta ~USD 0,50):
+  Para comprobar la lectura de punta a punta (abre WhatsApp Web una vez,
+  tarda unos minutos y cuesta ~USD 0,50):
 
     cd $REPO && uv run --directory agente python -m agente.main --sonda
 

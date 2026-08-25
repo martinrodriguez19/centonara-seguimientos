@@ -93,8 +93,12 @@ class Configuracion(BaseSettings):
 
     # --- Chrome, para el motor de envío -------------------------------------
     #
-    # El agente se asegura de que Chrome esté abierto con el puerto de
-    # depuración antes de escribir. Vacío = se buscan las rutas habituales del
+    # El motor de envío usa un navegador DEDICADO (D24): una carpeta de datos
+    # propia, con su propia sesión de WhatsApp vinculada con `--vincular`. El
+    # Chrome del vendedor no se toca. Vacío = la carpeta estándar del sistema.
+    navegador_dir: str = Field("", validation_alias="AGENTE_NAVEGADOR_DIR")
+
+    # Ruta al ejecutable de Chrome. Vacío = se buscan las rutas habituales del
     # sistema, que es lo que va a pasar en casi todas las máquinas.
     chrome_bin: str = Field("", validation_alias="CHROME_BIN")
     chrome_perfil: str = Field("", validation_alias="CHROME_PERFIL")

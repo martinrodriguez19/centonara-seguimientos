@@ -67,6 +67,11 @@ export function TarjetaMaquina({
     onSettled: refrescar,
   });
 
+  const consentir = useMutation({
+    mutationFn: () => editarMaquina(maquina.maquina, { acepto_condiciones: true }),
+    onSettled: refrescar,
+  });
+
   const estado = situacion(maquina);
 
   return (
@@ -114,6 +119,22 @@ export function TarjetaMaquina({
               <p className="text-xs text-muted-foreground">
                 {textos.maquina.sinConsentimientoDetalle}
               </p>
+              {/* Registrarlo es afirmar que la conversación (F5.7) ya pasó, no
+                  destrabar un warning: por eso pide confirmación y queda en la
+                  auditoría con fecha. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                disabled={consentir.isPending}
+                onClick={() => {
+                  if (confirm(textos.maquina.confirmarConsentimiento(maquina.nombre))) {
+                    consentir.mutate();
+                  }
+                }}
+              >
+                {textos.maquina.registrarConsentimiento}
+              </Button>
             </div>
           </div>
         )}
