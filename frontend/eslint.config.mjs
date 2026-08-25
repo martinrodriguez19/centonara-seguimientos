@@ -44,6 +44,11 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Mientras las dependencias de test no estén en el lockfile, lintearlos
+      // sería quejarse de imports que todavía no se pueden instalar.
+      // Ver tests/README.md.
+      "tests/**",
+      "e2e/**",
     ],
   },
   {
