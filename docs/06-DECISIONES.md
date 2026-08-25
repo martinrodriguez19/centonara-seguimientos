@@ -358,6 +358,31 @@ con guardas determinísticas alrededor, nunca (a), que ya no existe.
 
 ---
 
+### D25 — Los chats sin teléfono se resuelven, no se descartan; y la lectura apunta a los fríos
+
+**Contexto.** Especificación del dueño (25/8/2026), y dos realidades que la primera Mac confirmó:
+los contactos reales están agendados por **nombre** —el número no está a la vista en la lista, y
+en WhatsApp Business está más escondido—, y el caso de uso del sistema son los **clientes fríos**
+del historial, no los chats de arriba de la lista.
+
+**Decisión, en dos partes.**
+
+1. **Job `RESOLVER`**: los chats que `LISTAR` trae con `contacto_telefono: null` ya no se
+   descartan. Van en lote a un job determinístico que corre en el navegador dedicado —los mismos
+   selectores verificados del motor, sin modelo y sin costo por token—, abre cada chat por nombre
+   y lee el número real del panel de contacto. Recién con el número se decide R4 y se redacta.
+   Lo que no se puede leer con certeza vuelve `null` con motivo: deducir un número sigue prohibido.
+   En identidad no se ahorra: es regla del dueño, no optimización pendiente.
+2. **Ventana de antigüedad** (`antiguedad_min_dias` / `antiguedad_max_dias`, en la configuración
+   del panel): el `LISTAR` recorre la lista hacia atrás buscando chats cuyo silencio caiga en la
+   ventana, y el backend la revalida al encolar. Fuera de la ventana no se redacta ni se resuelve.
+
+**Qué la revertiría.** Que abrir N chats por corrida en el navegador dedicado resulte demasiado
+lento o demasiado visible en la máquina del vendedor. Ahí se evalúa resolver en tandas más chicas
+o cachear números ya resueltos en `contactos`.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

@@ -55,6 +55,10 @@ ESPERA_CANARIO_S = 10 * 60
 
 class Tipo(StrEnum):
     LISTAR = "LISTAR"
+    RESOLVER = "RESOLVER"
+    """Abrir los chats que `LISTAR` trajo sin teléfono y leer el número real del
+    panel de contacto. Determinístico, en el navegador dedicado, sin modelo: los
+    contactos reales están agendados por nombre y el número no viene servido."""
     REDACTAR = "REDACTAR"
     ENVIAR = "ENVIAR"
     DIAGNOSTICO = "DIAGNOSTICO"

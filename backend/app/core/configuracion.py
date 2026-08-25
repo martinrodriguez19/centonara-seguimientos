@@ -35,6 +35,11 @@ POR_DEFECTO: dict[str, Any] = {
     # que se obtiene sin hacer nada. Abrirla es un acto deliberado.
     "destinos_permitidos": [],
     "n_chats_por_defecto": 20,
+    # La ventana de antigüedad de los chats que vale la pena seguir: el caso de
+    # uso del sistema son los clientes que quedaron fríos, no el que escribió
+    # hoy. En días desde el último mensaje; fuera de la ventana no se redacta.
+    "antiguedad_min_dias": 0,
+    "antiguedad_max_dias": 90,
     "tope_diario_maquina": 20,
     "tope_por_corrida": 25,
     "largo_maximo": 600,

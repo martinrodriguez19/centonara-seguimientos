@@ -33,6 +33,7 @@ from agente.diagnostico import Diagnostico
 from agente.jobs import enviar as enviar_job
 from agente.jobs import listar as listar_job
 from agente.jobs import redactar as redactar_job
+from agente.jobs import resolver as resolver_job
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -62,9 +63,30 @@ def construir(
             resultado = await listar_job.listar(
                 n_chats=carga.get("n_chats", 20),
                 run_id=str(carga.get("run_id", "")),
+                antiguedad_min_dias=carga.get("antiguedad_min_dias", 0),
+                antiguedad_max_dias=carga.get("antiguedad_max_dias", 3650),
                 device_id=device_id,
                 claude_bin=claude_bin,
                 carpeta=carpeta,
+            )
+            return resultado.a_reporte()
+
+        if job.tipo == "RESOLVER":
+            # Sólo lectura sobre el navegador dedicado. No pasa por el guard de
+            # selectores verificados: no escribe nada, y si el DOM cambió lo
+            # reporta con SELECTOR_ROTO, que es información y no un riesgo.
+            if modo == "simulado":
+                pagina: Any = PaginaSimulada()
+            elif abrir_pagina is None:
+                return {
+                    "ok": False,
+                    "codigo": "ERROR_INESPERADO",
+                    "detalle": {"motivo": "no se configuró cómo conectarse al navegador"},
+                }
+            else:
+                pagina = await abrir_pagina()
+            resultado = await resolver_job.resolver(
+                pagina, contactos=list(carga.get("contactos", []))
             )
             return resultado.a_reporte()
 

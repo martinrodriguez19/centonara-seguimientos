@@ -36,10 +36,26 @@ class PayloadBase(BaseModel):
 
 
 class PayloadListar(PayloadBase):
-    """Leer los N chats más recientes de WhatsApp Web."""
+    """Leer hasta N chats cuya antigüedad caiga en la ventana configurada."""
 
     n_chats: Annotated[int, Field(ge=1, le=MAX_CHATS)] = 20
     run_id: Annotated[str, Field(max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
+    antiguedad_min_dias: Annotated[int, Field(ge=0, le=3650)] = 0
+    antiguedad_max_dias: Annotated[int, Field(ge=1, le=3650)] = 3650
+
+
+class PayloadResolver(PayloadBase):
+    """Abrir chats por nombre y leer el número real del panel de contacto.
+
+    Sólo lectura, en el navegador dedicado. Los datos del chat (resumen,
+    antigüedad) NO viajan acá: quedan en el `contexto` del job, del lado del
+    backend, esperando el número para convertirse en un `REDACTAR`.
+    """
+
+    contactos: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=120)]],
+        Field(min_length=1, max_length=MAX_CHATS),
+    ]
 
 
 class PayloadRedactar(PayloadBase):
@@ -85,6 +101,7 @@ class PayloadDiagnostico(PayloadBase):
 
 POR_TIPO: dict[str, type[PayloadBase]] = {
     "LISTAR": PayloadListar,
+    "RESOLVER": PayloadResolver,
     "REDACTAR": PayloadRedactar,
     "ENVIAR": PayloadEnviar,
     "DIAGNOSTICO": PayloadDiagnostico,

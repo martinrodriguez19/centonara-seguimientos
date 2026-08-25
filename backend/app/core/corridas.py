@@ -119,7 +119,14 @@ async def disparar(
             payload: dict[str, Any] = {}
             job = cola.Tipo.DIAGNOSTICO
         else:
-            payload = {"n_chats": chats, "run_id": str(corrida_id)}
+            payload = {
+                "n_chats": chats,
+                "run_id": str(corrida_id),
+                # La ventana viaja al agente para que el LISTAR busque los
+                # chats fríos de verdad, no los N de arriba de la lista.
+                "antiguedad_min_dias": config.get("antiguedad_min_dias", 0),
+                "antiguedad_max_dias": config.get("antiguedad_max_dias", 3650),
+            }
             job = cola.Tipo.LISTAR
 
         await cola.encolar(

@@ -57,6 +57,13 @@ export type Configuracion = {
   pausa_global: boolean;
   destinos_permitidos: string[];
   n_chats_por_defecto: number;
+  /**
+   * La ventana de antigüedad: desde y hasta cuántos días de silencio vale la
+   * pena un seguimiento. El caso de uso son los clientes fríos, no el que
+   * escribió hoy.
+   */
+  antiguedad_min_dias: number;
+  antiguedad_max_dias: number;
   tope_diario_maquina: number;
   tope_por_corrida: number;
   largo_maximo: number;

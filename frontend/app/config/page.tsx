@@ -54,6 +54,31 @@ export default function Config() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Qué chats se siguen</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            El sistema busca conversaciones que quedaron frías: clientes que escribieron hace un
+            tiempo y no volvieron. La ventana dice desde y hasta cuántos días de silencio vale la
+            pena un seguimiento.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Numero
+            etiqueta="Silencio mínimo (días)"
+            ayuda="Un chat más fresco que esto no necesita seguimiento todavía."
+            valor={datos.antiguedad_min_dias ?? 0}
+            onGuardar={(antiguedad_min_dias) => guardar.mutate({ antiguedad_min_dias })}
+          />
+          <Numero
+            etiqueta="Silencio máximo (días)"
+            ayuda="Más viejo que esto, el contacto se considera perdido y no se le escribe."
+            valor={datos.antiguedad_max_dias ?? 90}
+            onGuardar={(antiguedad_max_dias) => guardar.mutate({ antiguedad_max_dias })}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Topes</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">

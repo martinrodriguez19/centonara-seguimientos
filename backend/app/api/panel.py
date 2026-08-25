@@ -523,6 +523,11 @@ async def ver_configuracion(_: Autenticado) -> dict[str, Any]:
 
 class CambioConfiguracion(Estricto):
     n_chats_por_defecto: Annotated[int | None, Field(ge=1, le=50)] = None
+    # La ventana de antigüedad: desde y hasta cuántos días de silencio vale la
+    # pena un seguimiento. Que min <= max se verifica en el endpoint, contra lo
+    # que va a quedar guardado: acá puede venir un solo extremo.
+    antiguedad_min_dias: Annotated[int | None, Field(ge=0, le=3650)] = None
+    antiguedad_max_dias: Annotated[int | None, Field(ge=1, le=3650)] = None
     tope_diario_maquina: Annotated[int | None, Field(ge=1, le=100)] = None
     tope_por_corrida: Annotated[int | None, Field(ge=1, le=200)] = None
     largo_maximo: Annotated[int | None, Field(ge=50, le=1000)] = None
@@ -579,6 +584,17 @@ async def cambiar_configuracion(cuerpo: CambioConfiguracion, _: Autenticado) -> 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no hay nada que cambiar")
 
     antes = await configuracion.obtener(base)
+
+    # La ventana se valida contra lo que va a QUEDAR, no contra lo que vino: un
+    # PATCH puede traer un solo extremo y el otro ya estar guardado.
+    minimo = cambios.get("antiguedad_min_dias", antes.get("antiguedad_min_dias", 0))
+    maximo = cambios.get("antiguedad_max_dias", antes.get("antiguedad_max_dias", 3650))
+    if minimo > maximo:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"la ventana de antigüedad quedaría al revés: mínimo {minimo} > máximo {maximo}",
+        )
+
     config = await configuracion.actualizar(base, cambios)
 
     if "destinos_permitidos" in cambios:

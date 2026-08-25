@@ -148,9 +148,28 @@ async def test_de_apretar_el_boton_a_borradores_listos(http, base, maquina) -> N
     pendientes = await base["jobs"].count_documents({"tipo": str(cola.Tipo.REDACTAR)})
     assert pendientes == 2
 
-    # 4. El agente los va tomando y reportando el texto redactado.
+    # 4. El agente los va tomando y reportando el texto redactado. En el medio
+    #    aparece el RESOLVER del chat sin teléfono: acá el panel de contacto
+    #    tampoco lo mostró, así que vuelve null y ese chat no se redacta.
     textos = {}
     while (siguiente := await tomar(http, maquina.token)) is not None:
+        if siguiente["tipo"] == "RESOLVER":
+            assert siguiente["payload"]["contactos"] == ["Pintureria Sur"]
+            await reportar(
+                http,
+                maquina.token,
+                siguiente["id"],
+                detalle={
+                    "contactos": [
+                        {
+                            "nombre": "Pintureria Sur",
+                            "telefono": None,
+                            "motivo": "numero_no_legible",
+                        }
+                    ]
+                },
+            )
+            continue
         assert siguiente["tipo"] == "REDACTAR"
         #  El payload no lleva teléfono: `REDACTAR` no envía nada.
         assert "contacto_id" not in siguiente["payload"]
@@ -258,6 +277,100 @@ async def test_el_costo_de_cada_job_queda_registrado(http, base, maquina) -> Non
     #  La vuelta al navegador cuesta ~200 veces lo que redactar. Es el motivo
     #  entero por el que `REDACTAR` no abre el navegador.
     assert sum(j["costo_usd"] for j in guardados) == pytest.approx(0.432)
+
+
+@sin_mongo
+async def test_un_numero_resuelto_desde_el_panel_se_redacta(http, base, maquina) -> None:
+    """El caso real: el contacto está agendado por nombre y el número vive en
+    el panel de contacto de ese chat. El `RESOLVER` lo trae — determinístico,
+    sin modelo — y recién con el número se decide R4 y se redacta."""
+    await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=5)
+
+    job = await tomar(http, maquina.token)
+    await reportar(
+        http,
+        maquina.token,
+        job["id"],
+        detalle={
+            "chats": [
+                {
+                    "contacto_nombre": "Corralon Oeste",
+                    "contacto_telefono": None,
+                    "ultimo_mensaje_resumen": "pidió precio de hierro del 8",
+                    "quien_hablo_ultimo": "contacto",
+                    "antiguedad_dias": 20,
+                }
+            ]
+        },
+    )
+
+    resolver = await tomar(http, maquina.token)
+    assert resolver["tipo"] == "RESOLVER"
+    assert resolver["payload"]["contactos"] == ["Corralon Oeste"]
+
+    #  El agente leyó el número del panel, tal como lo muestra la interfaz.
+    await reportar(
+        http,
+        maquina.token,
+        resolver["id"],
+        detalle={
+            "contactos": [
+                {"nombre": "Corralon Oeste", "telefono": "+54 9 11 2323-1151", "motivo": None}
+            ]
+        },
+    )
+
+    redactar = await tomar(http, maquina.token)
+    assert redactar["tipo"] == "REDACTAR"
+    assert redactar["payload"]["contacto_nombre"] == "Corralon Oeste"
+    assert "contacto_id" not in redactar["payload"]
+
+    #  El contexto guarda el número ya normalizado: es contra el que después
+    #  compara la identidad (R1) y el que hereda el borrador.
+    doc = await base["jobs"].find_one({"tipo": str(cola.Tipo.REDACTAR)})
+    assert doc["contexto"]["contacto_id"] == PERMITIDO
+
+
+@sin_mongo
+async def test_un_chat_fuera_de_la_ventana_de_antiguedad_no_se_sigue(http, base, maquina) -> None:
+    """El caso de uso son los clientes fríos: el chat de hoy no necesita
+    seguimiento y el de hace un año se considera perdido. Ni se redacta ni se
+    manda a resolver."""
+    await configuracion.actualizar(base, {"antiguedad_min_dias": 5, "antiguedad_max_dias": 30})
+    await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=5)
+
+    job = await tomar(http, maquina.token)
+    #  La ventana viaja en el payload, para que el agente busque donde hay.
+    assert job["payload"]["antiguedad_min_dias"] == 5
+    assert job["payload"]["antiguedad_max_dias"] == 30
+
+    await reportar(
+        http,
+        maquina.token,
+        job["id"],
+        detalle={
+            "chats": [
+                {
+                    "contacto_nombre": "Muy Fresco",
+                    "contacto_telefono": PERMITIDO,
+                    "ultimo_mensaje_resumen": "escribió hoy",
+                    "quien_hablo_ultimo": "contacto",
+                    "antiguedad_dias": 1,
+                },
+                {
+                    "contacto_nombre": "Muy Viejo",
+                    "contacto_telefono": None,
+                    "ultimo_mensaje_resumen": "consultó hace un año",
+                    "quien_hablo_ultimo": "contacto",
+                    "antiguedad_dias": 300,
+                },
+            ]
+        },
+    )
+
+    assert await base["jobs"].count_documents({"tipo": str(cola.Tipo.REDACTAR)}) == 0
+    assert await base["jobs"].count_documents({"tipo": str(cola.Tipo.RESOLVER)}) == 0
+    assert await tomar(http, maquina.token) is None
 
 
 @sin_mongo

@@ -12,13 +12,22 @@ Pasos:
    lista de chats. Si aparece un QR de login, no intentes resolverlo: devolve el
    JSON de error con motivo "sesion_no_iniciada".
 
-2. Lee los {{N_CHATS}} chats mas recientes de la lista, salteando los grupos.
-   Para cada uno registra:
+2. Lo que se busca son conversaciones que quedaron FRIAS: chats cuyo ultimo
+   mensaje tenga entre {{ANTIGUEDAD_MIN}} y {{ANTIGUEDAD_MAX}} dias de
+   antiguedad. Recorre la lista de chats desde arriba hacia abajo, scrolleando
+   lo que haga falta: los chats de hoy y de ayer probablemente NO califican y
+   los que buscas estan mas abajo. Saltea los grupos. Frena cuando tengas
+   {{N_CHATS}} chats dentro de la ventana, o cuando los chats que veas sean ya
+   mas viejos que {{ANTIGUEDAD_MAX}} dias.
+
+   Para cada chat dentro de la ventana registra:
    - nombre del contacto tal como figura en la lista
    - el numero de telefono del contacto, si esta visible al abrir el chat.
      Si no lo podes leer con certeza, poné null. NO lo inventes, NO lo deduzcas
      y NO lo completes con un formato probable: un numero equivocado en este
-     campo hace que el sistema le escriba a otra persona.
+     campo hace que el sistema le escriba a otra persona. (Un null aca no
+     descarta el chat: otro proceso abre el chat despues y lee el numero real
+     del panel de contacto.)
    - el ultimo mensaje visible, resumido en UNA linea. No lo copies textual.
    - quien lo mando (contacto o yo)
    - cuanto hace que fue, en dias enteros, segun lo que muestre la interfaz

@@ -124,6 +124,58 @@ async def test_un_chat_sin_telefono_no_se_encola_y_se_cuenta(base) -> None:
 
 
 @sin_mongo
+async def test_un_chat_sin_telefono_va_a_resolver_con_sus_datos_guardados(base) -> None:
+    """Ya no se descarta: el número vive en el panel de contacto de ese chat, y
+    un `RESOLVER` determinístico lo va a buscar. Los datos del chat esperan en
+    el `contexto`, del lado del backend — el agente sólo recibe nombres."""
+    from app.modelos.jobs import validar_payload
+
+    await abrir_destinos(base)
+    resultado = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat(telefono=None)]
+    )
+
+    assert resultado.resolver_job is not None
+    job = await base["jobs"].find_one({"_id": resultado.resolver_job})
+    assert job["tipo"] == str(cola.Tipo.RESOLVER)
+    assert job["payload"]["contactos"] == ["Corralón San Justo"]
+    assert job["contexto"]["chats"]["Corralón San Justo"]["antiguedad_dias"] == 6
+    validar_payload("RESOLVER", job["payload"])
+
+
+@sin_mongo
+async def test_sin_destinos_no_se_resuelve_nada(base) -> None:
+    """Lista vacía significa a nadie (R4): resolver un número que después se
+    filtraría es trabajar para un mensaje que no puede existir."""
+    await configuracion.actualizar(base, {"destinos_permitidos": []})
+    resultado = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat(telefono=None)]
+    )
+
+    assert resultado.resolver_job is None
+    assert await base["jobs"].count_documents({}) == 0
+
+
+@sin_mongo
+async def test_el_resolver_reportado_dos_veces_no_duplica_redacciones(base) -> None:
+    """La misma idempotencia que tiene el LISTAR, por contacto resuelto."""
+    await abrir_destinos(base)
+    corrida = ObjectId()
+    encoladas = await generacion.encolar_redacciones(
+        base, corrida_id=corrida, maquina="pc-1", chats=[chat(telefono=None)]
+    )
+    job = await base["jobs"].find_one({"_id": encoladas.resolver_job})
+    contactos = [{"nombre": "Corralón San Justo", "telefono": "+54 9 11 2323-1151"}]
+
+    primera = await generacion.encolar_redacciones_resueltas(base, job=job, contactos=contactos)
+    segunda = await generacion.encolar_redacciones_resueltas(base, job=job, contactos=contactos)
+
+    assert primera.total == 1
+    assert segunda.total == 0
+    assert await base["jobs"].count_documents({"tipo": str(cola.Tipo.REDACTAR)}) == 1
+
+
+@sin_mongo
 async def test_un_telefono_ilegible_se_trata_como_si_no_estuviera(base) -> None:
     await abrir_destinos(base)
     resultado = await generacion.encolar_redacciones(

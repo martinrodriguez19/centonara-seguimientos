@@ -70,9 +70,16 @@ async def listar(
     device_id: str,
     claude_bin: str,
     carpeta: Path,
+    antiguedad_min_dias: int = 0,
+    antiguedad_max_dias: int = 3650,
     invocador=invocar,
 ) -> Resultado:
-    """Lee los chats recientes y devuelve lo que se pudo leer con certeza."""
+    """Lee chats dentro de la ventana de antigüedad y devuelve lo certero.
+
+    La ventana existe porque el caso de uso son los clientes fríos: el chat de
+    hoy no necesita seguimiento, el de hace un mes sí. El modelo recorre la
+    lista hacia atrás hasta cubrirla, con `n_chats` de tope.
+    """
     if not device_id:
         # Problema #5 del MVP. Sin esto, con más de un Chrome conectado a la
         # cuenta, headless elige cualquiera — y "cualquiera" puede ser el Chrome
@@ -81,12 +88,16 @@ async def listar(
             False, "ERROR_INESPERADO", {"motivo": "sin deviceId: no se sabe a qué Chrome ir"}
         )
 
+    minimo = max(0, int(antiguedad_min_dias))
+    maximo = max(minimo, int(antiguedad_max_dias))
     prompt = rellenar(
         carpeta / "prompts" / "prompt-listar.txt",
         {
             "N_CHATS": str(max(1, min(int(n_chats), MAX_CHATS))),
             "RUN_ID": run_id[:64],
             "DEVICE_ID": device_id,
+            "ANTIGUEDAD_MIN": str(minimo),
+            "ANTIGUEDAD_MAX": str(maximo),
         },
     )
 

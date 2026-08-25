@@ -244,6 +244,9 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
     if cuerpo.ok and job["tipo"] == cola.Tipo.LISTAR:
         await _encolar_redacciones(base, job, cuerpo)
 
+    if cuerpo.ok and job["tipo"] == cola.Tipo.RESOLVER:
+        await _encolar_desde_resolver(base, job, cuerpo)
+
     if cuerpo.ok and job["tipo"] == cola.Tipo.REDACTAR:
         await generacion.guardar_borrador(base, job=job, detalle=cuerpo.detalle)
 
@@ -304,6 +307,22 @@ async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) 
             sin_telefono=encoladas.sin_telefono,
             no_permitidos=encoladas.no_permitidos,
         )
+
+
+async def _encolar_desde_resolver(base, job: dict[str, Any], cuerpo: ResultadoJob) -> None:
+    """Los números que el `RESOLVER` leyó del panel de contacto siguen el
+    circuito normal: R4 y un `REDACTAR` cada uno. Los que no se pudieron leer
+    quedan contados en el detalle del job — no se deduce ninguno."""
+    contactos = cuerpo.detalle.get("contactos") or []
+    if not isinstance(contactos, list) or not contactos:
+        log.warning(
+            "resolver_sin_contactos", corrida=str(job.get("corrida_id")), maquina=job["maquina"]
+        )
+        return
+
+    await generacion.encolar_redacciones_resueltas(
+        base, job=job, contactos=[c for c in contactos if isinstance(c, dict)]
+    )
 
 
 async def _marcar_enviando(base, job: dict[str, Any]) -> None:
