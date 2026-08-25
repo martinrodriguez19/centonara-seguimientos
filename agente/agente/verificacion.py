@@ -107,6 +107,76 @@ async def _radiografia(pagina) -> str:
     return "\n".join(lineas)
 
 
+async def _radiografia_encabezado(pagina) -> str:
+    """La anatomía del encabezado visible, cuando el título no se deja leer."""
+    datos = await pagina.evaluate(
+        """(cssHeader) => {
+            const headers = Array.from(document.querySelectorAll(cssHeader));
+            const h = headers.find((e) => e.offsetParent !== null) || headers[0];
+            if (!h) return null;
+            return Array.from(h.querySelectorAll('*')).slice(0, 30).map((el) => {
+                const attrs = {};
+                for (const a of el.attributes) attrs[a.name] = (a.value || '').slice(0, 50);
+                return {
+                    tag: el.tagName.toLowerCase(),
+                    attrs,
+                    texto: el.childElementCount === 0
+                        ? (el.innerText || '').replace(/\\s+/g, ' ').slice(0, 40)
+                        : '',
+                };
+            });
+        }""",
+        selectores.HEADER.css,
+    )
+    if not datos:
+        return "RADIOGRAFÍA del encabezado: no hay ninguno visible."
+    lineas = ["RADIOGRAFÍA del encabezado — para reanclar el título:"]
+    for el in datos:
+        attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(el["attrs"].items()))
+        texto = f"  →  {el['texto']!r}" if el["texto"] else ""
+        lineas.append(f"  · <{el['tag']}> {attrs}{texto}")
+    return "\n".join(lineas)
+
+
+async def _radiografia_telefono(pagina) -> str:
+    """Dónde vive el teléfono en el DOM: todo elemento cuyo texto parezca uno."""
+    datos = await pagina.evaluate(
+        """() => {
+            const patron = /\\+\\d[\\d\\s\\-().]{6,}\\d/;
+            const hojas = Array.from(document.querySelectorAll('span, div'))
+                .filter((el) => el.childElementCount === 0
+                    && patron.test(el.innerText || ''));
+            return hojas.slice(0, 8).map((el) => {
+                const attrs = {};
+                for (const a of el.attributes) attrs[a.name] = (a.value || '').slice(0, 50);
+                const ruta = [];
+                let n = el;
+                while (n && n.tagName && n.tagName !== 'BODY') {
+                    ruta.unshift(n.tagName.toLowerCase() + (n.id ? '#' + n.id : ''));
+                    n = n.parentElement;
+                }
+                return {
+                    ruta: ruta.slice(-7).join(' > '),
+                    attrs,
+                    texto: (el.innerText || '').replace(/\\s+/g, ' ').slice(0, 40),
+                };
+            });
+        }"""
+    )
+    if not datos:
+        return (
+            "RADIOGRAFÍA del teléfono: ningún elemento a la vista tiene un texto "
+            "con forma de número. ¿Se abrió el panel del contacto?"
+        )
+    lineas = ["RADIOGRAFÍA del teléfono — para reanclar el panel de contacto:"]
+    for el in datos:
+        attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(el["attrs"].items()))
+        lineas.append(f"  · {el['ruta']}  →  {el['texto']!r}")
+        if attrs:
+            lineas.append(f"      {attrs}")
+    return "\n".join(lineas)
+
+
 async def _abrir(config):
     """El navegador dedicado, en WhatsApp Web, con Playwright ya arrancado."""
     from playwright.async_api import async_playwright
@@ -224,6 +294,9 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
 
             titulo = await whatsapp.leer_header()
             marca(titulo is not None, "encabezado", titulo or "no se pudo leer el título")
+            if titulo is None:
+                print()
+                print(await _radiografia_encabezado(pagina))
 
             numero = await whatsapp.resolver_numero()
             marca(
@@ -231,6 +304,17 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
                 "numero",
                 numero or "no se pudo resolver el número del chat (clave para R1)",
             )
+            if numero is None:
+                # Para que la radiografía tenga algo que mirar: se intenta abrir
+                # el panel del contacto clickeando el encabezado, que es el
+                # mismo gesto que hace una persona.
+                try:
+                    await pagina.click(selectores.HEADER.css)
+                    await asyncio.sleep(2)
+                except Exception:  # noqa: BLE001 — es diagnóstico, no control
+                    pass
+                print()
+                print(await _radiografia_telefono(pagina))
 
             es_grupo = await whatsapp.es_grupo()
             marca(
