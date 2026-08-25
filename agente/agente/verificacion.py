@@ -216,6 +216,8 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
             marca(True, "campo_texto", "se pudo escribir y borrar")
         except ErrorDeSelector as error:
             marca(False, "selector", str(error))
+            print()
+            print(await _radiografia(pagina))
             return False
 
         return todo_ok

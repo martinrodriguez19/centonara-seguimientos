@@ -86,13 +86,14 @@ LISTA_DE_CHATS = Selector(
 # Buscar y abrir un chat
 # ---------------------------------------------------------------------------
 
-# ⚠️ `data-tab='3'` murió: lo atrapó la primera verificación real (25/8/2026).
-# WhatsApp movió el buscador a un editor Lexical sin `data-tab`. El ancla nueva
-# es estructural: el ÚNICO `contenteditable` dentro del panel lateral (`#side`)
-# es el buscador — el de redactar vive en `#main`. El viejo queda de segunda
-# opción por si `#side` cambia de id antes que el resto.
+# ⚠️ Ya no es un `div[contenteditable]`: la radiografía del 25/8/2026 (primera
+# verificación real) mostró que WhatsApp lo volvió un `<input type='text'>`
+# común — con el `data-tab='3'` de siempre, `role='textbox'`, y un id generado
+# que no sirve de ancla. Por eso el selector viejo, que exigía el tag, no
+# encontraba nada. El contenteditable queda de última opción por si vuelven.
 BUSCADOR = Selector(
-    "div[id='side'] div[contenteditable='true'], div[contenteditable='true'][data-tab='3']",
+    "div[id='side'] input[data-tab='3'], div[id='side'] input[role='textbox'], "
+    "div[id='side'] div[contenteditable='true']",
     "el campo de búsqueda de chats",
 )
 

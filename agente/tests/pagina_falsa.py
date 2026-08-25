@@ -68,10 +68,14 @@ def html(
 
     return f"""<!doctype html>
 <html><body>
-  <!-- La lista de chats y el buscador. -->
-  <div id="pane-side">
-    <div contenteditable="true" data-tab="3" id="buscador"></div>
-    <div id="resultados"></div>
+  <!-- El panel lateral, como lo mostró la radiografía del 25/8/2026: el
+       buscador es un <input> común (ya no un contenteditable), con el
+       data-tab="3" de siempre, arriba de la lista. -->
+  <div id="side">
+    <input type="text" role="textbox" data-tab="3" id="buscador">
+    <div id="pane-side">
+      <div id="resultados"></div>
+    </div>
   </div>
 
   <!-- El chat abierto. -->
@@ -100,7 +104,7 @@ const $ = (id) => document.getElementById(id);
 
 // Buscar filtra la lista, igual que la aplicación real.
 $('buscador').addEventListener('input', () => {{
-  const q = ($('buscador').innerText || '').trim().toLowerCase();
+  const q = ($('buscador').value || '').trim().toLowerCase();
   const cont = $('resultados');
   cont.innerHTML = '';
   if (!q) return;
