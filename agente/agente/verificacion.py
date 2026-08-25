@@ -35,6 +35,51 @@ ESPERA_VINCULACION_S = 300.0
 TEXTO_DE_PRUEBA = "."
 
 
+async def _radiografia(pagina) -> str:
+    """Qué hay de verdad en la página, cuando un selector no encuentra nada.
+
+    Existe porque pasó: el buscador se buscó dos veces con anclas distintas y
+    ninguna respondió. Adivinar una tercera es gastar una corrida de alguien;
+    esto imprime los ids reales y todos los campos de escritura con sus
+    atributos, y con eso el selector nuevo se escribe con evidencia.
+    """
+    datos = await pagina.evaluate(
+        """() => {
+            const describir = (el) => {
+                const attrs = {};
+                for (const a of el.attributes) {
+                    attrs[a.name] = (a.value || '').slice(0, 70);
+                }
+                const ruta = [];
+                let n = el;
+                while (n && n.tagName && n.tagName !== 'BODY') {
+                    ruta.unshift(n.tagName.toLowerCase() + (n.id ? '#' + n.id : ''));
+                    n = n.parentElement;
+                }
+                return { ruta: ruta.slice(-6).join(' > '), attrs };
+            };
+            const candidatos = Array.from(document.querySelectorAll(
+                "[contenteditable='true'], input, [role='textbox'], [role='searchbox']"
+            ));
+            const ids = Array.from(document.querySelectorAll('[id]'))
+                .map((e) => e.id)
+                .filter((id) => id && id.length < 30)
+                .slice(0, 25);
+            return { ids, candidatos: candidatos.slice(0, 12).map(describir) };
+        }"""
+    )
+    lineas = ["RADIOGRAFÍA — para reanclar el selector con evidencia:"]
+    lineas.append(f"  ids presentes: {', '.join(datos.get('ids', [])) or '(ninguno)'}")
+    candidatos = datos.get("candidatos", [])
+    if not candidatos:
+        lineas.append("  campos de escritura: (ninguno a la vista)")
+    for c in candidatos:
+        lineas.append(f"  · {c['ruta']}")
+        attrs = "  ".join(f"{k}={v!r}" for k, v in sorted(c["attrs"].items()))
+        lineas.append(f"      {attrs}")
+    return "\n".join(lineas)
+
+
 async def _abrir(config):
     """El navegador dedicado, en WhatsApp Web, con Playwright ya arrancado."""
     from playwright.async_api import async_playwright
@@ -122,6 +167,11 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
             marca(True, "estructural", encontrado)
         for faltante in revision.faltantes:
             marca(False, "estructural", faltante)
+
+        if revision.faltantes:
+            print()
+            print(await _radiografia(pagina))
+            return False
 
         if not chat:
             print()
