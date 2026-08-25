@@ -316,6 +316,12 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
                 print()
                 print(await _radiografia_telefono(pagina))
 
+            # El panel del contacto —lo haya abierto resolver_numero o la
+            # radiografía— tapa el campo de texto y se come los clicks. Escape
+            # lo cierra; si no había nada abierto, no hace nada.
+            await pagina.keyboard.press("Escape")
+            await asyncio.sleep(1)
+
             es_grupo = await whatsapp.es_grupo()
             marca(
                 not es_grupo,
@@ -334,6 +340,14 @@ async def verificar_selectores(config, *, chat: str = "") -> bool:
             marca(True, "campo_texto", "se pudo escribir y borrar")
         except ErrorDeSelector as error:
             marca(False, "selector", str(error))
+            print()
+            print(await _radiografia(pagina))
+            return False
+        except Exception as error:
+            # Un timeout de Playwright con traceback no le sirve a nadie: se
+            # marca, se radiografía, y el texto completo queda en el log.
+            log.error("verificacion_inesperado", error=str(error)[:500])
+            marca(False, "inesperado", f"{type(error).__name__}: {str(error)[:160]}")
             print()
             print(await _radiografia(pagina))
             return False

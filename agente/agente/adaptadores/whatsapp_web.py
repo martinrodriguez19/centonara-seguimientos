@@ -225,12 +225,20 @@ class PaginaWhatsApp:
             log.info("panel_de_contacto_no_abrio")
             return None
 
-        for elemento in await self._page.query_selector_all(selectores.TELEFONO_EN_EL_PANEL.css):
-            texto = (await elemento.inner_text() or "").strip()
-            if numero := _numero_en(texto):
-                return numero
-
-        return None
+        try:
+            for elemento in await self._page.query_selector_all(
+                selectores.TELEFONO_EN_EL_PANEL.css
+            ):
+                texto = (await elemento.inner_text() or "").strip()
+                if numero := _numero_en(texto):
+                    return numero
+            return None
+        finally:
+            # ⚠️ El panel abierto TAPA el campo de texto y se come los clicks:
+            # sin esto, el `escribir()` siguiente muere esperando un click que
+            # nunca entra. Lo encontró la verificación en la primera Mac —
+            # Playwright reintentando 30 segundos contra el drawer.
+            await self._page.keyboard.press("Escape")
 
     async def es_grupo(self) -> bool:
         """Un grupo nunca recibe un seguimiento comercial."""

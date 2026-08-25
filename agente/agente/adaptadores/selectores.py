@@ -114,19 +114,30 @@ HEADER = Selector(
     "el encabezado del chat abierto",
 )
 
+# ⚠️ El `[title]` murió: la radiografía del 25/8/2026 mostró que el nombre vive
+# en un span con data-testid propio, sin atributo title, dentro de un div
+# clickeable (`conversation-info-header`, role=button) que abre el panel del
+# contacto. El selector viejo queda de segunda opción.
 TITULO_DEL_HEADER = Selector(
+    "span[data-testid='conversation-info-header-chat-title'], "
     "div[id='main'] header span[dir='auto'][title]",
     "el nombre o número que muestra el encabezado",
 )
 
 # El panel que se abre al hacer click en el header. Es de donde sale el teléfono
-# cuando el contacto está agendado y el header muestra el nombre.
+# cuando el contacto está agendado y el header muestra el nombre. La radiografía
+# lo mostró como `drawer-right`; los demás quedan de respaldo.
 PANEL_DE_CONTACTO = Selector(
-    "div[data-testid='chat-info-drawer'], section[aria-label*='perfil' i], div[id='app'] section",
+    "div[data-testid='drawer-right'], div[data-testid='chat-info-drawer'], "
+    "section[aria-label*='perfil' i], div[id='app'] section",
     "el panel de datos del contacto",
 )
 
+# El span del número ya no lleva `dir='auto'`: se recorren los spans del panel
+# y el que tenga UN número con forma de teléfono, es. La radiografía mostró el
+# formateado ('+54 9 11 2323-1151') a la vista en el drawer.
 TELEFONO_EN_EL_PANEL = Selector(
+    "div[data-testid='drawer-right'] span, "
     "div[data-testid='chat-info-drawer'] span[dir='auto'], section span[dir='auto']",
     "el teléfono dentro del panel de contacto",
     estructural=False,

@@ -81,7 +81,8 @@ def html(
   <!-- El chat abierto. -->
   <div id="main" style="display:none">
     <header data-testid="conversation-header">
-      <span dir="auto" title="" id="titulo"></span>
+      <span dir="auto" title="" id="titulo"
+            data-testid="conversation-info-header-chat-title"></span>
       <div role="button"><span id="subtitulo" title=""></span></div>
     </header>
     <div id="hilo"></div>
