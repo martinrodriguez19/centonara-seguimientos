@@ -256,6 +256,7 @@ Para volver a arrancar: correr el instalador de nuevo, o reiniciar la sesión.
 |---|---|
 | `Claude in Chrome requires permission` | Falta el permiso de la extensión (paso 2.1, punto 4). Lo emite el navegador, por eso no aparece en ningún log del agente |
 | WhatsApp pide QR de golpe | La sesión expiró; pasa cada tanto. Escanear de nuevo |
+| El vendedor cerró Chrome con Cmd+Q | No hay que hacer nada: el agente lo abre solo antes de leer los chats. Si en el panel aparece que la extensión no está disponible, revisar que Chrome abra con el perfil de siempre |
 | `la sesión de Claude Code venció` (o un `401` de OAuth) | El token caduca cada tanto. Correr `claude`, iniciar sesión con la cuenta de esa máquina, salir con `/exit` |
 | `token_rechazado` en el log | El token no es el de esta máquina, o se rotó. Rotar en el panel, borrar la línea `AGENTE_TOKEN` del `.env` y correr el instalador de nuevo |
 | El agente no toma trabajo | La máquina está inactiva o pausada en el panel, o el kill switch está puesto |

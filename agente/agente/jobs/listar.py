@@ -40,6 +40,16 @@ MOTIVOS = {
     "browser_no_disponible": "ERROR_INESPERADO",
 }
 
+# Y qué quiere decir para quien mira el panel. Un `browser_no_disponible` a
+# secas no le dice a nadie que lo que falta es abrir Chrome.
+QUE_SIGNIFICA = {
+    "sesion_no_iniciada": "WhatsApp Web pide escanear el código QR en el Chrome de esta máquina",
+    "browser_no_disponible": (
+        "la extensión de Claude no está disponible en esta máquina: suele ser que Chrome "
+        "está cerrado, o que se abrió con otro perfil"
+    ),
+}
+
 QUIEN_HABLO = {"contacto": "contacto", "yo": "vendedor", "vendedor": "vendedor"}
 
 
@@ -160,7 +170,11 @@ def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
         return Resultado(
             False,
             codigo,
-            {"motivo": motivo, "detalle": str(datos.get("detalle", ""))[:500]},
+            {
+                "motivo": QUE_SIGNIFICA.get(motivo, motivo),
+                "codigo_del_prompt": motivo,
+                "detalle": str(datos.get("detalle", ""))[:500],
+            },
             **comunes,
         )
 

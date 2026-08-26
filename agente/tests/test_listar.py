@@ -173,12 +173,16 @@ async def test_la_sesion_caida_tiene_su_propio_codigo() -> None:
     assert resultado.codigo == "SESION_CAIDA"
 
 
-async def test_un_navegador_no_disponible_se_reporta() -> None:
+async def test_un_navegador_no_disponible_se_reporta_en_castellano() -> None:
+    """El panel lo lee una persona que no sabe qué es un `browser_no_disponible`:
+    tiene que decirle que abra Chrome. El código del prompt queda al lado, para
+    quien esté leyendo un log."""
     invocador = responde({"status": "error", "motivo": "browser_no_disponible"})
     resultado = await correr(invocador)
 
     assert not resultado.ok
-    assert resultado.detalle["motivo"] == "browser_no_disponible"
+    assert "Chrome" in resultado.detalle["motivo"]
+    assert resultado.detalle["codigo_del_prompt"] == "browser_no_disponible"
 
 
 async def test_una_respuesta_de_otra_corrida_no_se_usa() -> None:

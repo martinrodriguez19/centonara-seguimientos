@@ -23,13 +23,16 @@ def roto() -> Diagnostico:
     return Diagnostico([Chequeo("device_id", Estado.FALLA, "sin deviceId", "MVP #5")])
 
 
-def construir(*, modo: str = "simulado", diagnosticar=sano, claude_bin: str = ""):
+def construir(
+    *, modo: str = "simulado", diagnosticar=sano, claude_bin: str = "", asegurar_navegador=None
+):
     return ejecutor.construir(
         claude_bin=claude_bin,
         device_id="dev-1",
         carpeta=CARPETA,
         modo=modo,
         diagnosticar=diagnosticar,
+        asegurar_navegador=asegurar_navegador,
     )
 
 
@@ -54,6 +57,37 @@ async def test_diagnostico_degradado_reporta_fallo_con_el_detalle() -> None:
 
     assert resultado["ok"] is False
     assert resultado["detalle"] == {"device_id": "falla"}
+
+
+async def test_sin_el_chrome_del_vendedor_no_se_le_paga_a_ningun_modelo() -> None:
+    """⚠️ La extensión vive en el Chrome del vendedor: si él lo cerró con Cmd+Q,
+    no hay extensión para nadie.
+
+    Sin esto, `LISTAR` gasta la llamada al modelo para que descubra que no hay
+    navegador y vuelva con `browser_no_disponible` — y la cola lo reintenta
+    tres veces. El motivo además tiene que decir qué hacer.
+    """
+
+    class NoSePudo:
+        utilizable = False
+        detalle = "no se encontró el ejecutable de Chrome"
+
+    llamadas = {"veces": 0}
+
+    async def asegurar():
+        llamadas["veces"] += 1
+        return NoSePudo()
+
+    resultado = await construir(modo="real", asegurar_navegador=asegurar)(
+        Job("1", "LISTAR", {"n_chats": 5, "run_id": "r1"})
+    )
+
+    assert resultado["ok"] is False
+    assert "Chrome" in resultado["detalle"]["motivo"]
+    assert llamadas["veces"] == 1
+    #  Y no se llegó a invocar al modelo: `claude_bin` está vacío, así que si
+    #  hubiera seguido, el motivo sería otro.
+    assert "CLAUDE_BIN" not in str(resultado["detalle"])
 
 
 def job_enviar(destinos=None, **cambios) -> Job:

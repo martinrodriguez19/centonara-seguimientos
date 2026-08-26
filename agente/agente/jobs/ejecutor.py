@@ -47,6 +47,7 @@ def construir(
     modo: str,
     diagnosticar: Callable[[], Diagnostico],
     abrir_pagina: Callable[[], Awaitable[Any]] | None = None,
+    asegurar_navegador: Callable[[], Awaitable[Any]] | None = None,
 ) -> Callable[[Job], Awaitable[dict[str, Any]]]:
     """Devuelve el ejecutor que espera `Bucle`, ya atado a esta máquina.
 
@@ -54,12 +55,35 @@ def construir(
     `simulado` no hace falta y no se usa. Se inyecta porque cómo conseguir la
     página es una decisión aparte (D24: el navegador dedicado, ver
     `adaptadores/conexion.py`) y el despachador no tiene por qué saberla.
+
+    `asegurar_navegador` es lo que se corre antes de un `LISTAR`: la extensión
+    vive en el Chrome del vendedor, y si él lo cerró no hay extensión para
+    nadie. Se inyecta por el mismo motivo, y porque en los tests nadie quiere
+    que se abra un navegador de verdad.
     """
 
     async def ejecutar(job: Job) -> dict[str, Any]:
         carga = job.payload or {}
 
         if job.tipo == "LISTAR":
+            # ⚠️ Antes de pagarle a un modelo. Con el Chrome del vendedor
+            # cerrado, el prompt gasta la llamada para volver con
+            # `browser_no_disponible` — y la cola lo reintenta tres veces.
+            if asegurar_navegador is not None:
+                listo = await asegurar_navegador()
+                if not listo.utilizable:
+                    log.error("chrome_del_vendedor_no_disponible", detalle=listo.detalle)
+                    return {
+                        "ok": False,
+                        "codigo": "ERROR_INESPERADO",
+                        "detalle": {
+                            "motivo": (
+                                "no se pudo abrir el Chrome de esta máquina, que es donde "
+                                f"vive la extensión: {listo.detalle}"
+                            )
+                        },
+                    }
+
             resultado = await listar_job.listar(
                 n_chats=carga.get("n_chats", 20),
                 run_id=str(carga.get("run_id", "")),

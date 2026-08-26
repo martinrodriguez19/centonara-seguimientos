@@ -419,6 +419,29 @@ def correr_diagnostico(config: Configuracion) -> int:
     return SALIDA_DIAGNOSTICO
 
 
+def _asegurar_navegador(config: Configuracion):
+    """Devuelve cómo asegurarse de que el Chrome del vendedor esté abierto.
+
+    `LISTAR` lee los chats a través de la extensión Claude in Chrome, que vive
+    en el navegador de todos los días del vendedor. Si él lo cerró con Cmd+Q,
+    la extensión no existe: sin esto, la corrida le paga a un modelo para que
+    lo descubra y vuelva con `browser_no_disponible`, tres veces.
+
+    Es otra cosa que el navegador dedicado del motor de envío (D24): ese lo
+    abre Playwright con su propia carpeta y no tiene extensión.
+    """
+
+    async def asegurar():
+        from agente.adaptadores import navegador
+
+        return await navegador.asegurar_abierto(
+            chrome_bin=config.chrome_bin,
+            perfil_dir=config.chrome_perfil_dir,
+        )
+
+    return asegurar
+
+
 def _abrir_pagina(config: Configuracion):
     """Devuelve cómo conseguir la página de WhatsApp, para el motor de envío.
 
@@ -482,6 +505,9 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             modo=modo,
             diagnosticar=diagnosticar,
             abrir_pagina=None if modo == "simulado" else _abrir_pagina(config),
+            # El Chrome del vendedor, donde vive la extensión que usa `LISTAR`.
+            # En simulado no se toca ningún navegador.
+            asegurar_navegador=None if modo == "simulado" else _asegurar_navegador(config),
         ),
     )
     fin = asyncio.Event()

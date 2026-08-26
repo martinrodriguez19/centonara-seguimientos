@@ -103,6 +103,61 @@ async def test_lo_abre_con_los_tres_flags(sin_chrome, monkeypatch, tmp_path) -> 
     assert "--profile-directory=Profile 3" in lanzador.comando
 
 
+# ---------------------------------------------------------------------------
+# El Chrome del vendedor, sin puerto: el que necesita LISTAR
+# ---------------------------------------------------------------------------
+
+
+async def test_si_el_chrome_del_vendedor_ya_esta_abierto_no_se_toca(monkeypatch) -> None:
+    monkeypatch.setattr(navegador, "_chrome_corriendo", lambda: True)
+    lanzador = Lanzador()
+
+    resultado = await navegador.asegurar_abierto(lanzar=lanzador)
+
+    assert resultado.estado is Estado.YA_ESTABA
+    assert resultado.utilizable
+    assert lanzador.veces == 0
+
+
+async def test_con_chrome_cerrado_lo_abre_y_sin_flags_de_puerto(monkeypatch, tmp_path) -> None:
+    """⚠️ Sin `--remote-debugging-port` ni `--user-data-dir`: eso era del diseño
+    de CDP que Chrome mató (D24). Acá sólo hace falta la ventana abierta, con el
+    perfil que tiene la extensión."""
+    falso_chrome = tmp_path / "chrome"
+    falso_chrome.write_text("")
+    vivo = {"si": False}
+    lanzador = Lanzador()
+
+    def lanzar_y_revivir(comando):
+        lanzador(comando)
+        vivo["si"] = True
+
+    monkeypatch.setattr(navegador, "_chrome_corriendo", lambda: vivo["si"])
+    monkeypatch.setattr(navegador, "ESPERA_EXTENSION_S", 0.0)
+
+    resultado = await navegador.asegurar_abierto(
+        chrome_bin=str(falso_chrome), perfil_dir="Profile 1", lanzar=lanzar_y_revivir
+    )
+
+    assert resultado.estado is Estado.ABIERTO
+    assert resultado.utilizable
+    assert lanzador.comando == [str(falso_chrome), "--profile-directory=Profile 1"]
+    assert not any("remote-debugging-port" in argumento for argumento in lanzador.comando)
+
+
+async def test_si_el_chrome_del_vendedor_no_arranca_lo_dice(monkeypatch, tmp_path) -> None:
+    falso_chrome = tmp_path / "chrome"
+    falso_chrome.write_text("")
+    monkeypatch.setattr(navegador, "_chrome_corriendo", lambda: False)
+
+    resultado = await navegador.asegurar_abierto(
+        chrome_bin=str(falso_chrome), espera_s=0.05, lanzar=Lanzador()
+    )
+
+    assert resultado.estado is Estado.NO_SE_PUDO
+    assert not resultado.utilizable
+
+
 async def test_sin_ejecutable_lo_dice_y_no_lanza_nada(sin_chrome, monkeypatch) -> None:
     monkeypatch.setattr(navegador, "encontrar_chrome", lambda: None)
     lanzador = Lanzador()

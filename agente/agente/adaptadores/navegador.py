@@ -59,6 +59,11 @@ PUERTO_POR_DEFECTO = 9222
 # frío con muchas pestañas restauradas tarda.
 ESPERA_ARRANQUE_S = 20.0
 
+# Lo que tarda la extensión en registrarse después de que el proceso está vivo.
+# Sin esta pausa, un `select_browser` contra un Chrome recién abierto no
+# encuentra el dispositivo y el job falla por una carrera, no por un problema.
+ESPERA_EXTENSION_S = 8.0
+
 
 def rutas_probables() -> tuple[Path, ...]:
     """Dónde suele estar el ejecutable, por sistema."""
@@ -191,6 +196,57 @@ def _lanzar(comando: list[str]) -> None:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+
+
+async def asegurar_abierto(
+    *,
+    chrome_bin: str = "",
+    perfil_dir: str = "Default",
+    espera_s: float = 20.0,
+    lanzar=_lanzar,
+) -> Resultado:
+    """Que el Chrome del vendedor esté abierto. **Sin puerto** (D24).
+
+    Es lo que `LISTAR` necesita: la extensión Claude in Chrome vive en ese
+    navegador, y si el vendedor lo cerró con Cmd+Q la extensión no existe para
+    nadie. Antes de esto, una corrida con Chrome cerrado le pagaba a un modelo
+    para que descubriera que no hay navegador y volviera con
+    `browser_no_disponible` — tres veces, por los reintentos.
+
+    No lleva `--remote-debugging-port` ni `--user-data-dir`: eso era del diseño
+    viejo de CDP, que Chrome 136+ mató. Acá sólo hace falta que la ventana esté
+    abierta, con el perfil que tiene la extensión.
+
+    Después de lanzarlo se espera un poco más de lo que tarda el proceso: la
+    extensión necesita unos segundos para registrarse, y un `select_browser`
+    contra un Chrome recién abierto encuentra la lista vacía.
+    """
+    if _chrome_corriendo():
+        return Resultado(Estado.YA_ESTABA, "Chrome ya estaba abierto")
+
+    ejecutable = Path(chrome_bin) if chrome_bin else encontrar_chrome()
+    if ejecutable is None or not ejecutable.exists():
+        return Resultado(
+            Estado.NO_SE_PUDO,
+            f"no se encontró el ejecutable de Chrome{f': {chrome_bin}' if chrome_bin else ''}",
+        )
+
+    comando = [str(ejecutable), f"--profile-directory={perfil_dir}"]
+    log.info("abriendo_chrome_del_vendedor", perfil_dir=perfil_dir)
+    try:
+        lanzar(comando)
+    except (OSError, subprocess.SubprocessError) as error:
+        return Resultado(Estado.NO_SE_PUDO, f"no se pudo lanzar Chrome: {error}")
+
+    limite = asyncio.get_running_loop().time() + espera_s
+    while asyncio.get_running_loop().time() < limite:
+        if _chrome_corriendo():
+            #  El proceso está; la extensión tarda un poco más en registrarse.
+            await asyncio.sleep(ESPERA_EXTENSION_S)
+            return Resultado(Estado.ABIERTO, "Chrome abierto por el agente")
+        await asyncio.sleep(0.5)
+
+    return Resultado(Estado.NO_SE_PUDO, f"Chrome no arrancó en {espera_s:.0f}s")
 
 
 async def asegurar_chrome(
