@@ -83,7 +83,7 @@ export default function Config() {
           </div>
           {datos.modo_lectura === "barrido" ? (
             <p className="text-xs text-muted-foreground">
-              Cada corrida lee la siguiente tanda de "Chats a leer por máquina" (abajo). El avance
+              Cada corrida lee la siguiente tanda de «Chats a leer por máquina» (abajo). El avance
               se ve en la tarjeta de cada máquina. La ventana de silencio no aplica en este modo.
             </p>
           ) : (

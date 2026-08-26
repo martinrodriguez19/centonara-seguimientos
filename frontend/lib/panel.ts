@@ -21,13 +21,10 @@ export type Maquina = {
   diagnostico: Record<string, string>;
   version_agente: string | null;
   tope_diario: number;
-  /** El avance del barrido histórico (D27), si esta máquina lo arrancó. */
-  barrido?: {
-    hasta_dias?: number | null;
-    ultima_tanda?: string[];
-    completado_en?: string | null;
-    actualizado_en?: string | null;
-  } | null;
+  /** El avance del barrido histórico (D27), si esta máquina lo arrancó.
+   * En una línea a propósito: el test de contrato lee estos tipos plano. */
+  // prettier-ignore
+  barrido?: { hasta_dias?: number | null; ultima_tanda?: string[]; completado_en?: string | null; actualizado_en?: string | null } | null;
 };
 
 export type Corrida = {
