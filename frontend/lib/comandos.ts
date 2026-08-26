@@ -344,10 +344,51 @@ export const grupos: Grupo[] = [
           "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --diagnostico",
         queHace:
           "Corre los chequeos y marca en rojo lo que falta. El de permisos de macOS va a decir «no aplica»: es correcto, no es un error.",
+        aviso:
+          "Los tres que suelen quedar en rojo la primera vez —claude_bin, permiso_mcp y device_id— los resuelven los pasos 9, 10 y 11. Los que quedan en «-» no son fallas: son los que sólo se pueden verificar abriendo el navegador, y eso lo hacen los pasos 12 y 13. Después de completar el .env, volvé a correr este comando: tiene que quedar sin ningún [MAL].",
+      },
+      {
+        id: "windows-permiso-mcp",
+        titulo: "9. Poner el permiso que Claude Code necesita",
+        comando:
+          'uv run --directory $HOME\\centonara-seguimientos\\agente python -c "from agente.permiso_mcp import asegurar; print(asegurar().detalle)"',
+        queHace:
+          "Agrega «mcp__claude-in-chrome» a la lista de permitidos de ~/.claude/settings.json, conservando todo lo que el archivo ya tuviera. Sin ese permiso, Claude Code sin nadie mirando se auto-deniega las acciones del navegador y el job falla con un 502 que no explica nada.",
+        aviso:
+          "En la Mac esto lo hace el instalador solo; en Windows hay que correrlo a mano. Es idempotente: si ya estaba, lo dice y no toca el archivo. Y nunca lo pises con un echo: ese archivo suele tener otra configuración adentro.",
+      },
+      {
+        id: "windows-claude-bin",
+        titulo: "10. Averiguar la ruta completa de Claude Code",
+        comando: '"CLAUDE_BIN=$((Get-Command claude).Source)"',
+        queHace:
+          "Imprime la línea lista para pegar en el .env. Tiene que ser la ruta completa y no el atajo: el agente arranca desde un proceso cuyo PATH no es el de tu PowerShell, y ahí «claude» a secas no resuelve.",
+        aviso:
+          "Si dice que no reconoce «claude», cerrá PowerShell y abrí una ventana nueva: el instalador de Claude Code dejó el PATH pero esta sesión no lo tomó.",
+      },
+      {
+        id: "windows-device-id",
+        titulo: "11. Confirmar que la extensión ya dejó su identificador",
+        comando:
+          'uv run --directory $HOME\\centonara-seguimientos\\agente python -c "from agente import perfiles; [print(p.nombre, p.tiene_extension, p.tiene_whatsapp, p.device_id) for p in perfiles.listar()]"',
+        queHace:
+          "Lista cada perfil de Chrome con cuatro datos: nombre, si tiene la extensión, si tiene WhatsApp, y el deviceId. Si el último sale «None», la extensión está instalada pero todavía no se usó en ese perfil.",
+        aviso:
+          "El deviceId no se configura: aparece solo la primera vez que alguien usa la extensión. Abrí Chrome, apretá el ícono de Claude, pedile cualquier cosa, y volvé a correr esto. Cuando salga el identificador, pegalo en AGENTE_DEVICE_ID y corré el diagnóstico de nuevo.",
+      },
+      {
+        id: "windows-sonda",
+        titulo: "12. Probar que llega a WhatsApp Web",
+        comando:
+          "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --sonda",
+        queHace:
+          "Contesta las dos cosas que el diagnóstico deja en «-»: si la extensión tiene el permiso de sitio para web.whatsapp.com y si la sesión está iniciada. Cuenta cuántos chats ve y nada más — no abre ninguna conversación.",
+        aviso:
+          "Abre el navegador y consume saldo de Claude. Es el único chequeo que no puede hacerse sin mirar la página, por eso no viene con el diagnóstico.",
       },
       {
         id: "windows-vincular",
-        titulo: "9. Vincular el navegador de envío",
+        titulo: "13. Vincular el navegador de envío",
         comando:
           "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --vincular",
         queHace:
@@ -355,14 +396,14 @@ export const grupos: Grupo[] = [
       },
       {
         id: "windows-arrancar",
-        titulo: "10. Arrancar el agente",
+        titulo: "14. Arrancar el agente",
         comando: "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main",
         queHace:
           "Lo pone a trabajar. La ventana queda ocupada: mientras esté abierta, la máquina figura online en el panel. Se corta con Control + C.",
       },
       {
         id: "windows-inicio",
-        titulo: "11. Que arranque solo al prender la máquina",
+        titulo: "15. Que arranque solo al prender la máquina",
         comando: `Set-Content -Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\centonara.bat" -Value '@echo off', 'cd /d %USERPROFILE%\\centonara-seguimientos', ':loop', 'uv run --directory agente python -m agente.main', 'timeout /t 10 >nul', 'goto loop'`,
         queHace:
           "Crea un archivo en la carpeta de Inicio de Windows que arranca el agente cuando el vendedor inicia sesión, y lo vuelve a levantar si se cae. Es el reemplazo del arranque automático que en la Mac hace el sistema.",
