@@ -85,6 +85,10 @@ export default function Config() {
             <p className="text-xs text-muted-foreground">
               Cada corrida lee la siguiente tanda de «Chats a leer por máquina» (abajo). El avance
               se ve en la tarjeta de cada máquina. La ventana de silencio no aplica en este modo.
+              <br />
+              Si las corridas tardan demasiado, bajá ese número: el barrido abre cada chat para ver
+              de qué se hablaba, así que diez por corrida rinden más que veinte a medio terminar —
+              y la corrida siguiente continúa donde quedó.
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">

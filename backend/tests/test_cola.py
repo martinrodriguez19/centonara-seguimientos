@@ -283,6 +283,53 @@ async def test_el_raw_y_el_stderr_se_guardan_tambien_cuando_sale_bien(base) -> N
 
 
 @sin_mongo
+async def test_un_timeout_se_reintenta_una_sola_vez(base) -> None:
+    """⚠️ Un TIMEOUT no es un tropiezo: es que el trabajo no entró en el tiempo
+    que tenía. Con el barrido —que abre chat por chat— tres intentos de 25
+    minutos son tres cuartos de hora de máquina para la misma conclusión. Uno
+    cubre el caso transitorio; el segundo ya es esperar sentado.
+    """
+    job_id = await encolar(base, tipo=Tipo.LISTAR, maquina="mac-1", ahora=AHORA)
+    await tomar(base, "mac-1", ahora=AHORA)
+
+    primero = await reportar(base, job_id, ok=False, codigo=Codigo.TIMEOUT, ahora=AHORA)
+    assert primero.reintenta, "el primero sí: pudo ser una carga lenta"
+
+    despues = AHORA + timedelta(minutes=30)
+    await tomar(base, "mac-1", ahora=despues)
+    segundo = await reportar(base, job_id, ok=False, codigo=Codigo.TIMEOUT, ahora=despues)
+
+    assert not segundo.reintenta
+    assert segundo.estado is EstadoJob.FALLIDO
+
+    #  Y los otros códigos reintentables conservan sus tres intentos.
+    otro = await encolar(base, tipo=Tipo.ENVIAR, maquina="mac-1", ahora=AHORA)
+    await tomar(base, "mac-1", ahora=AHORA)
+    reporte = await reportar(base, otro, ok=False, codigo=Codigo.CHAT_NO_ABRE, ahora=AHORA)
+    assert reporte.reintenta
+
+
+@sin_mongo
+async def test_el_rescate_de_colgados_espera_mas_que_el_job_mas_largo(base) -> None:
+    """⚠️ Si el backend devolviera a la cola un job que el agente todavía está
+    haciendo, ese trabajo se pagaría dos veces. El `LISTAR` del barrido puede
+    tardar 25 minutos, así que el rescate tiene que estar por encima."""
+    from app.core.cola import SEGUNDOS_PARA_DAR_POR_COLGADO
+
+    assert SEGUNDOS_PARA_DAR_POR_COLGADO > 25 * 60
+
+    job_id = await encolar(base, tipo=Tipo.LISTAR, maquina="mac-1", ahora=AHORA)
+    await tomar(base, "mac-1", ahora=AHORA)
+
+    #  A los 20 minutos sigue siendo suyo: está trabajando.
+    assert await recuperar_colgados(base, ahora=AHORA + timedelta(minutes=20)) == 0
+    #  A los 45, no: esa Mac se murió.
+    assert await recuperar_colgados(base, ahora=AHORA + timedelta(minutes=45)) == 1
+    guardado = await base["jobs"].find_one({"_id": job_id})
+    assert guardado["estado"] == str(EstadoJob.PENDIENTE)
+
+
+@sin_mongo
 async def test_un_fallo_reintentable_vuelve_a_la_cola(base) -> None:
     job_id = await encolar(base, tipo=Tipo.ENVIAR, maquina="mac-1", ahora=AHORA)
     await tomar(base, "mac-1", ahora=AHORA)

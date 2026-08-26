@@ -295,9 +295,15 @@ async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) 
     if not isinstance(chats, list) or not chats:
         log.warning("listar_sin_chats", corrida=str(job.get("corrida_id")), maquina=job["maquina"])
         if estrategia == "barrido":
-            #  Tanda vacia = no quedan chats nuevos: el barrido llego al presente.
+            #  Tanda vacia: el barrido llego al presente solo si el agente lo
+            #  dice. Vacia por un tropiezo no cierra nada — el cursor queda
+            #  donde estaba y la proxima corrida reintenta desde ahi.
             await vendedores.registrar_barrido(
-                base, job["maquina"], hasta_dias=None, tanda=[], completado=True
+                base,
+                job["maquina"],
+                hasta_dias=None,
+                tanda=[],
+                completado=bool(cuerpo.detalle.get("fin_del_historial")),
             )
         return
 
@@ -316,7 +322,10 @@ async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) 
             job["maquina"],
             hasta_dias=min(antiguedades) if antiguedades else None,
             tanda=[str(c.get("contacto_nombre", ""))[:120] for c in chats if isinstance(c, dict)],
-            completado=len(chats) < int(payload_listar.get("n_chats", 20)),
+            # ⚠️ Lo dice el agente, no lo deduce el backend contando. Una tanda
+            # corta puede ser "no queda nada más viejo" o "corté por tiempo", y
+            # confundirlas daría el barrido por terminado a mitad del historial.
+            completado=bool(cuerpo.detalle.get("fin_del_historial")),
         )
 
     # Que no se encole nada no es lo mismo segun por que. Sin destinos

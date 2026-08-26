@@ -42,6 +42,16 @@ log = obtener_logger(__name__)
 # medio tarda minutos, no segundos.
 TIMEOUT = 600.0
 
+# `LISTAR` necesita más, y el barrido del historial (D27) mucho más: scrollear
+# hasta el fondo de un WhatsApp con años de chats y después abrir cada uno para
+# ver de qué se hablaba no entra en diez minutos. Se midió en la primera Mac:
+# tres timeouts seguidos a los 600 s, con el modelo todavía trabajando.
+#
+# ⚠️ Este número tiene un techo: `cola.SEGUNDOS_PARA_DAR_POR_COLGADO` en el
+# backend (40 min). Si lo pasara, el backend devolvería el job a la cola
+# mientras el agente sigue en eso, y el trabajo se pagaría dos veces.
+TIMEOUT_LISTAR = 25 * 60.0
+
 
 @dataclass(frozen=True)
 class Salida:

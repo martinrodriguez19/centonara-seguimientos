@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agente.jobs.claude_code import Invocacion, invocar, rellenar
+from agente.jobs.claude_code import TIMEOUT_LISTAR, Invocacion, invocar, rellenar
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -122,7 +122,15 @@ async def listar(
         },
     )
 
-    invocacion = await invocador(prompt, claude_bin=claude_bin, carpeta=carpeta, con_navegador=True)
+    invocacion = await invocador(
+        prompt,
+        claude_bin=claude_bin,
+        carpeta=carpeta,
+        con_navegador=True,
+        #  Leer chats con el navegador de por medio tarda, y el barrido tarda
+        #  mucho más: no entra en el timeout por defecto.
+        timeout=TIMEOUT_LISTAR,
+    )
     if not invocacion.ok:
         return _desde_invocacion(invocacion)
 
@@ -214,6 +222,11 @@ def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
             "leidos": len(buenos),
             "descartados": descartados,
             "sin_telefono": sum(1 for c in buenos if c["contacto_telefono"] is None),
+            # Sólo lo manda el barrido, y sólo es `True` cuando ya no quedan
+            # chats más viejos. Sin esto, una tanda corta por falta de tiempo
+            # se confundiría con "llegué al presente" y el barrido se daría por
+            # terminado sin haber recorrido el historial.
+            "fin_del_historial": bool(datos.get("fin_del_historial")),
         },
         **comunes,
     )

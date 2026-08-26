@@ -28,9 +28,18 @@ Pasos:
    - su nombre NO esta en esta lista de ya vistos de la tanda anterior:
 {{YA_VISTOS}}
 
-   Recorrelos DEL MAS VIEJO AL MAS NUEVO. Si encontras menos de {{N_CHATS}} que
-   cumplan, esta bien: devolve los que haya — significa que el barrido esta
-   llegando al presente.
+   Recorrelos DEL MAS VIEJO AL MAS NUEVO.
+
+   IMPORTANTE, sobre devolver menos de {{N_CHATS}}: esta bien y es preferible a
+   no devolver nada. Si la tanda se esta haciendo larga, cortá y devolve los que
+   ya tengas — el sistema sigue desde ahi en la proxima corrida. Lo unico que
+   tenes que hacer bien es decir POR QUE devolves menos, en el campo
+   "fin_del_historial":
+     - true  = ya no quedan chats mas viejos sin procesar: el barrido termino
+     - false = quedan, pero cortaste antes (por tiempo, o porque llegaste a
+               {{N_CHATS}})
+   Marcar true por error hace que el sistema de por terminado el barrido y no
+   vuelva a mirar el historial. Ante la duda, false.
 
 4. Para cada chat de la tanda registra:
    - nombre del contacto tal como figura en la lista
@@ -57,6 +66,7 @@ Pasos:
 {
   "run_id": "{{RUN_ID}}",
   "status": "ok",
+  "fin_del_historial": false,
   "chats": [
     {
       "contacto_nombre": "...",

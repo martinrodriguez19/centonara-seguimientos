@@ -35,13 +35,22 @@ log = obtener_logger(__name__)
 # Cuántas veces se reintenta un job que falló con un código reintentable.
 MAX_INTENTOS = 3
 
+# Salvo estos, que se reintentan menos. Un `TIMEOUT` no es un tropiezo: es que
+# el trabajo no entró en el tiempo que tenía. Reintentarlo dos veces más son
+# tres cuartos de hora de máquina para llegar a la misma conclusión — y el
+# barrido del historial (D27), que abre chat por chat, es el que los produce.
+# Un reintento cubre el caso transitorio; el segundo ya es esperar sentado.
+INTENTOS_POR_CODIGO: dict[str, int] = {"TIMEOUT": 2}
+
 # Un job que quedó TOMADO más que esto es de un agente que se murió: la Mac se
 # apagó, se cortó la red, alguien mató el proceso. Vuelve a la cola.
 #
-# Generoso a propósito: `LISTAR` abre el navegador y puede tardar minutos. Un
-# valor corto haría que un job lento se ejecute dos veces, que es peor que uno
-# que tarda en recuperarse.
-SEGUNDOS_PARA_DAR_POR_COLGADO = 15 * 60
+# ⚠️ **Tiene que ser MAYOR que el timeout más largo del agente** (hoy 25 min,
+# el `LISTAR` del barrido). Si fuera menor, el backend devolvería a la cola un
+# job que el agente todavía está haciendo, y ese trabajo se pagaría dos veces.
+# Generoso a propósito: una Mac muerta se ve igual en el panel —sin latido— y
+# la corrida se puede cancelar a mano desde ahí.
+SEGUNDOS_PARA_DAR_POR_COLGADO = 40 * 60
 
 # Espaciado entre envíos. Aleatorio, siempre (03-REGLAS §4).
 PAUSA_ENTRE_ENVIOS = (45, 180)
@@ -356,7 +365,11 @@ async def reportar(
         return Reporte(EstadoJob.LISTO, job["intentos"], reintenta=False, frena_corrida=False)
 
     reintentable = codigo is None or codigo.reintenta
-    quedan = job["intentos"] < max_intentos
+    #  Algunos códigos se reintentan menos veces que el resto: ver
+    #  `INTENTOS_POR_CODIGO`. El tope explícito de quien llama sigue mandando
+    #  cuando es más chico.
+    tope = min(max_intentos, INTENTOS_POR_CODIGO.get(str(codigo), max_intentos))
+    quedan = job["intentos"] < tope
 
     if reintentable and quedan:
         # Vuelve a la cola con un respiro, para no reintentar en bucle contra

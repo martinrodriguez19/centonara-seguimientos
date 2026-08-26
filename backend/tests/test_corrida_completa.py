@@ -440,6 +440,7 @@ async def test_el_barrido_avanza_su_cursor_por_maquina(http, base, maquina) -> N
             maquina.token,
             siguiente["id"],
             detalle={
+                "fin_del_historial": True,
                 "chats": [
                     {
                         "contacto_nombre": "El Ultimo Que Queda",
@@ -448,7 +449,7 @@ async def test_el_barrido_avanza_su_cursor_por_maquina(http, base, maquina) -> N
                         "quien_hablo_ultimo": "contacto",
                         "antiguedad_dias": 350,
                     }
-                ]
+                ],
             },
         )
         break
@@ -457,6 +458,40 @@ async def test_el_barrido_avanza_su_cursor_por_maquina(http, base, maquina) -> N
     assert vendedor["barrido"]["hasta_dias"] == 350
     assert vendedor["barrido"]["completado_en"] is not None
     assert vendedor["barrido"]["ultima_tanda"] == ["El Ultimo Que Queda"]
+
+
+@sin_mongo
+async def test_una_tanda_corta_por_tiempo_no_da_el_barrido_por_terminado(
+    http, base, maquina
+) -> None:
+    """⚠️ Contar no alcanza: el barrido abre chat por chat y a veces corta por
+    tiempo devolviendo menos de los pedidos. Si eso se leyera como "llegué al
+    presente", el historial quedaría a medio recorrer y nadie se enteraría."""
+    await configuracion.actualizar(base, {"modo_lectura": "barrido"})
+    await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=20)
+
+    job = await tomar(http, maquina.token)
+    await reportar(
+        http,
+        maquina.token,
+        job["id"],
+        detalle={
+            "fin_del_historial": False,
+            "chats": [
+                {
+                    "contacto_nombre": "Uno Solo",
+                    "contacto_telefono": PERMITIDO,
+                    "ultimo_mensaje_resumen": "pidió presupuesto y no volvió",
+                    "quien_hablo_ultimo": "contacto",
+                    "antiguedad_dias": 500,
+                }
+            ],
+        },
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "pc-1"})
+    assert vendedor["barrido"]["completado_en"] is None, "una tanda corta no cierra el barrido"
+    assert vendedor["barrido"]["hasta_dias"] == 500, "pero el cursor sí avanza con lo que trajo"
 
 
 @sin_mongo
