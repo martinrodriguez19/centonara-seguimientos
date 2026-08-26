@@ -30,7 +30,17 @@ const ESCRITURA = [
 // Sólo leer y agregar. Sin `update`, sin `remove`.
 const SOLO_AGREGAR = ["find", "insert", "createIndex", "listIndexes", "listCollections"];
 
-const CON_ESCRITURA = ["vendedores", "corridas", "mensajes", "jobs", "configuracion"];
+// `telefonos` es la memoria de números que resolvió el agente (D27): nombre del
+// contacto -> número real leído del panel. Se pisa en cada resolución nueva, así
+// que necesita escritura como el resto.
+const CON_ESCRITURA = [
+  "vendedores",
+  "corridas",
+  "mensajes",
+  "jobs",
+  "configuracion",
+  "telefonos",
+];
 
 const privilegios = CON_ESCRITURA.map((coleccion) => ({
   resource: { db: BASE, collection: coleccion },

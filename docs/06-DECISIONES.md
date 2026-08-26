@@ -432,6 +432,33 @@ recordados, o pedir al modelo la fecha del último mensaje en vez de días.
 
 ---
 
+### D28 — "Empezar de cero" borra los datos, nunca la auditoría
+
+**Contexto.** El sistema se probó durante días contra los números y los chats de quien lo
+desarrolló. Entregárselo a un cliente así lo obliga a mirar datos ajenos y —lo grave— deja
+cargados en `destinos_permitidos` los números de prueba de otra persona.
+
+**Decisión: un borrado explícito desde el panel** (Configuración → Empezar de cero, con la
+palabra `BORRAR` escrita a mano, igual que abrir los destinos a todos). Borra `corridas`,
+`jobs`, `mensajes` y `telefonos`, limpia el cursor del barrido y el último diagnóstico de cada
+máquina, y —marcado por defecto— restablece la configuración de fábrica, que es lo que devuelve
+`destinos_permitidos` a vacío. Las máquinas se conservan salvo que se pida lo contrario: darlas
+de baja revoca sus tokens y obliga a reinstalar cada Mac.
+
+**La auditoría no se borra, y no es una omisión.** El rol de Mongo del backend no tiene `remove`
+sobre esa colección (`core/permisos.py`), así que la inmutabilidad no depende de que este código
+se porte bien. Lo que queda es un evento `DATOS_BORRADOS` con los conteos: la marca de dónde
+empieza la historia del cliente.
+
+**De paso salió a la luz** que la colección `telefonos` (D27) nunca se declaró en `esquema.py` ni
+en el rol: Mongo la creaba sola al primer insert, sin índice y sin permisos. Andaba en Atlas —cuyo
+usuario tiene permisos más amplios— y habría fallado en una instalación local nueva.
+
+**Qué la revertiría.** Que alguna vez haga falta entregar el sistema conservando el historial de
+mensajes de otra empresa, que es exactamente lo que esto existe para evitar.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

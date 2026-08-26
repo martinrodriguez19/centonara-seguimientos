@@ -27,6 +27,7 @@ from app.core import (
     configuracion,
     contactos,
     corridas,
+    mantenimiento,
     mensajes,
     metricas,
     sesion,
@@ -541,6 +542,43 @@ async def kill_switch(cuerpo: Pausa, _: Autenticado) -> dict[str, Any]:
         base, que=auditoria.Que.KILL_SWITCH, quien="panel", detalle={"pausado": cuerpo.pausado}
     )
     return {"pausado": cuerpo.pausado}
+
+
+# ---------------------------------------------------------------------------
+# Entregar el sistema: vaciarlo
+# ---------------------------------------------------------------------------
+
+
+class EmpezarDeCero(Estricto):
+    """Lo que hay que escribir para vaciar el sistema.
+
+    La palabra no es un formalismo: es el mismo criterio que abrir los destinos
+    a todos (R4). Un `confirm()` se acepta sin leer; escribir BORRAR obliga a
+    haber leído qué se lleva puesto.
+    """
+
+    confirmacion: Annotated[str, Field(max_length=20)]
+    restablecer_configuracion: bool = True
+    borrar_maquinas: bool = False
+
+
+@router.post("/sistema/empezar-de-cero")
+async def empezar_de_cero(cuerpo: EmpezarDeCero, _: Autenticado) -> dict[str, Any]:
+    """Borra corridas, borradores, mensajes y la memoria de teléfonos (D28).
+
+    La auditoría **no** se borra: el rol de Mongo del backend ni siquiera lo
+    permite. Queda un evento `DATOS_BORRADOS` que marca dónde empieza la
+    historia del cliente.
+    """
+    if cuerpo.confirmacion.strip().upper() != "BORRAR":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "hay que escribir BORRAR para confirmar")
+
+    return await mantenimiento.empezar_de_cero(
+        db.obtener_base(),
+        quien="panel",
+        restablecer_configuracion=cuerpo.restablecer_configuracion,
+        borrar_maquinas=cuerpo.borrar_maquinas,
+    )
 
 
 # ---------------------------------------------------------------------------

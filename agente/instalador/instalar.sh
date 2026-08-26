@@ -62,7 +62,7 @@ preguntar() {
 }
 
 # ---------------------------------------------------------------------------
-titulo "[1/7] Las herramientas"
+titulo "[1/8] Las herramientas"
 
 if command -v uv >/dev/null 2>&1; then
   echo "  ok  uv"
@@ -93,7 +93,7 @@ fi
 echo "  claude: $CLAUDE_BIN"
 
 # ---------------------------------------------------------------------------
-titulo "[2/7] La sesión de Claude Code"
+titulo "[2/8] La sesión de Claude Code"
 #
 # El agente corre `claude` sin nadie mirando: si la sesión no sirve, todo lo
 # demás se instala bien y después nada funciona. Mejor cortarlo acá.
@@ -130,7 +130,7 @@ if [ "$sesion_ok" = no ]; then
 fi
 
 # ---------------------------------------------------------------------------
-titulo "[3/7] El proyecto"
+titulo "[3/8] El proyecto"
 
 if [ -d "$REPO/.git" ]; then
   # Un repositorio git es de alguien que desarrolla: no se le pisa nada.
@@ -163,7 +163,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-titulo "[4/7] El entorno del agente"
+titulo "[4/8] El entorno del agente"
 
 uv sync --directory "$REPO/agente"
 PYTHON="$REPO/agente/.venv/bin/python"
@@ -171,7 +171,7 @@ PYTHON="$REPO/agente/.venv/bin/python"
 echo "  ok  entorno listo"
 
 # ---------------------------------------------------------------------------
-titulo "[5/7] Los datos de esta máquina"
+titulo "[5/8] Los datos de esta máquina"
 #
 # Lo que la máquina puede saber sola, se averigua solo: qué perfil de Chrome
 # tiene la extensión Y la sesión de WhatsApp, y el deviceId de la extensión.
@@ -284,7 +284,7 @@ ENV_EOF
 echo "  ok  .env escrito: $ENV_ARCHIVO"
 
 # ---------------------------------------------------------------------------
-titulo "[6/7] El arranque automático"
+titulo "[6/8] El arranque automático"
 #
 # instalar-mac.sh escribe los dos LaunchAgents (el agente y Chrome con el
 # puerto), pone el permiso del modo headless y corre el diagnóstico. RESUMEN=no
@@ -294,7 +294,7 @@ CHROME_PERFIL_DIR="$PERFIL" CHROME_PUERTO="$PUERTO" RESUMEN=no \
   bash "$REPO/agente/instalador/instalar-mac.sh"
 
 # ---------------------------------------------------------------------------
-titulo "[7/7] Arrancar ahora"
+titulo "[7/8] Arrancar ahora"
 #
 # Ya no hay puerto que verificar ni Chrome que cerrar (D24): el motor de envío
 # abre su propio navegador cuando lo necesita. Acá sólo se cargan los dos
@@ -310,6 +310,50 @@ launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.agente.
 echo "  ok  agente corriendo"
 
 # ---------------------------------------------------------------------------
+titulo "[8/8] El navegador que escribe los mensajes"
+#
+# Se ofrece acá y no se deja para un comando suelto en la guía: es el paso
+# donde más gente se traba, necesita el teléfono a mano, y el instalador ya
+# está hablando con una persona. Se puede decir que no y hacerlo después.
+
+VINCULAR_CMD="cd $REPO && uv run --directory agente python -m agente.main --vincular"
+
+if "$PYTHON" - <<'PY' >/dev/null 2>&1
+import sys
+from pathlib import Path
+
+from agente.adaptadores import conexion
+
+carpeta = conexion.carpeta_dedicada("")
+sys.exit(0 if carpeta.is_dir() and any(carpeta.iterdir()) else 1)
+PY
+then
+  echo "  ok  ya estaba vinculado, no hace falta escanear de nuevo"
+elif [ "$TECLADO" = si ]; then
+  echo "  Este navegador es aparte del de todos los días: tiene su propia"
+  echo "  sesión de WhatsApp y es el que va a escribir los mensajes."
+  echo "  Para vincularlo hay que escanear un QR con el teléfono del vendedor."
+  echo
+  respuesta=$(preguntar "  ¿Lo vinculamos ahora? Necesitás el teléfono a mano [S/n]: ")
+  case "$respuesta" in
+    [nN]*)
+      echo "  Listo, después. El comando es:"
+      echo "    $VINCULAR_CMD"
+      ;;
+    *)
+      (cd "$REPO/agente" && "$PYTHON" -m agente.main --vincular) || {
+        echo
+        echo "  No quedó vinculado. Se puede reintentar cuando quieras:"
+        echo "    $VINCULAR_CMD"
+      }
+      ;;
+  esac
+else
+  echo "  Sin teclado para preguntar. Cuando puedas, corré:"
+  echo "    $VINCULAR_CMD"
+fi
+
+# ---------------------------------------------------------------------------
 titulo "INSTALACIÓN COMPLETA"
 
 cat <<FIN
@@ -317,26 +361,18 @@ cat <<FIN
   Chrome y el agente arrancan solos. Si el agente se cae, se vuelve a levantar
   solo. No hay que tocar nada más en esta computadora.
 
-  Queda lo que este script no puede hacer solo, si todavía no se hizo:
+  Lo que queda, y NO se hace desde acá:
 
-  1. El permiso de la extensión (con el mouse, en Chrome):
+  1. En Chrome, con el mouse (una sola vez):
      ícono de Claude → configuración → permisos de sitios → web.whatsapp.com
 
-  2. El navegador del motor de envío, con el teléfono del vendedor a mano:
+  2. En el panel: registrar el consentimiento del vendedor y activar la
+     máquina. Instalada no es activada: hasta activarla, no toma trabajo.
 
-       cd $REPO && uv run --directory agente python -m agente.main --vincular
+  Cuando WhatsApp cambie por dentro y los mensajes dejen de salir, esto dice
+  qué selector se rompió (con un número de PRUEBA, no envía nada):
 
-     y después, con un número de PRUEBA:
-
-       cd $REPO && uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
-
-  3. Activar la máquina y registrar el consentimiento desde el panel.
-     Instalada no es activada: hasta activarla, no toma trabajo.
-
-  Para comprobar la lectura de punta a punta (abre WhatsApp Web una vez,
-  tarda unos minutos y cuesta ~USD 0,50):
-
-    cd $REPO && uv run --directory agente python -m agente.main --sonda
+    cd $REPO && uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
 
   Los logs quedan en ~/Library/Logs/centonara/
 FIN

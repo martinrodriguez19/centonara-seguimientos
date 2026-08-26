@@ -41,7 +41,7 @@ ESCRITURA = (
 # la base aplica sola.
 SOLO_AGREGAR = ("find", "insert", "createIndex", "listIndexes", "listCollections")
 
-CON_ESCRITURA = ("vendedores", "corridas", "mensajes", "jobs", "configuracion")
+CON_ESCRITURA = ("vendedores", "corridas", "mensajes", "jobs", "configuracion", "telefonos")
 
 SOLO_AGREGADO = ("auditoria",)
 

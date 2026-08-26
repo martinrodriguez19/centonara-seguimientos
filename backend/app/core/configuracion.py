@@ -140,6 +140,22 @@ async def actualizar(base, cambios: dict[str, Any]) -> dict[str, Any]:
     return await obtener(base)
 
 
+async def restablecer(base) -> dict[str, Any]:
+    """Vuelve la configuración a los valores de fábrica (D28).
+
+    Es parte de entregar el sistema: lo que importa acá es que
+    `destinos_permitidos` vuelva a estar **vacío** —que significa a nadie—, para
+    que el cliente no herede los números de prueba de quien lo configuró.
+
+    Reemplaza el documento entero en vez de hacer `$set` campo por campo: un
+    campo que alguien agregó a mano y ya no existe en `POR_DEFECTO` tiene que
+    desaparecer, no sobrevivir al borrado.
+    """
+    await base["configuracion"].replace_one({"_id": ID}, dict(POR_DEFECTO), upsert=True)
+    log.warning("configuracion_restablecida")
+    return await obtener(base)
+
+
 def destino_permitido(configuracion: dict[str, Any], contacto_id: str) -> bool:
     """¿El sistema puede escribirle a este número? (regla R4)
 

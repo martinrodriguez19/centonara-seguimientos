@@ -1,106 +1,132 @@
-# Instalar el agente en la Mac de un vendedor
+# Sistema de Seguimiento Comercial — puesta en marcha
 
-> **Se hace una sola vez por Mac, en unos 20 minutos.** Después de esto, cada
-> vez que se prenda la computadora todo arranca solo: el vendedor no tiene que
-> abrir nada, correr nada ni acordarse de nada.
+> **Qué hace este sistema.** Lee los chats de WhatsApp de cada vendedor, busca
+> los clientes que quedaron sin respuesta, redacta un mensaje de seguimiento
+> para cada uno, y los manda **después de que una persona los revise y apriete
+> enviar**. Nada sale solo.
 >
-> La instalación tiene tres partes:
+> **Cuánto lleva ponerlo a andar:** unos 20 minutos en el panel y otros 20 en
+> cada Mac. Se hace una sola vez por computadora.
 >
-> 1. **En el panel** — 5 minutos, desde cualquier computadora
-> 2. **En la Mac** — un rato con el mouse en Chrome, y **un solo comando** en la Terminal
-> 3. **Activar** — de vuelta en el panel, cuando se decida
-
-**Dos cosas para que nadie las espere de más:**
-
-- **El envío arranca bloqueado** y se destraba por máquina, con tres actos
-  deliberados: vincular el navegador de envío (paso 2.4), verificar los
-  selectores contra WhatsApp real (mismo paso), y registrar el consentimiento
-  del vendedor en el panel. Hasta ahí, lo que funciona de punta a punta es:
-  botón → leer WhatsApp → borradores en el panel.
-- **No hay ícono en la barra de menú** para que el vendedor pause su máquina
-  (fase 5). Se pausa desde el panel.
+> **No hace falta saber de computación, ni instalar Python, ni nada técnico.**
+> Todo lo que la Mac necesita lo trae un solo comando que se copia y se pega.
 
 ---
 
-## Qué hay que tener a mano antes de empezar
+## Lo que hay que tener a mano
 
 | | |
 |---|---|
-| Una cuenta de Claude | **Una por máquina**, del Enterprise del cliente. Una API key **no sirve**: desactiva la integración con Chrome |
-| Chrome instalado | El que usa el vendedor todos los días |
-| El teléfono del vendedor | Para escanear el QR de WhatsApp |
-| La contraseña del panel | Para la parte 1 |
-| Internet | Para bajar el programa |
+| La Mac del vendedor | Con **Google Chrome** instalado |
+| Una cuenta de Claude | **Una por máquina.** Del Enterprise de la empresa. Una API key *no sirve* |
+| El teléfono del vendedor | Para escanear dos códigos QR |
+| La contraseña del panel | La que se usa para entrar a la pantalla de control |
+| Un rato con el vendedor | Para explicarle qué hace el sistema y que lo acepte |
 
-Y confirmar con el administrador de la organización que la extensión **Claude
-in Chrome** esté habilitada por política. Si está restringida, no funciona en
-ninguna máquina y no se arregla desde el código.
+Y una cosa que conviene confirmar antes: que la extensión **Claude in Chrome**
+esté permitida por la organización. Si está bloqueada por política, no funciona
+en ninguna máquina y no hay forma de arreglarlo desde el sistema.
 
 ---
 
 # Parte 1 — En el panel
 
-Se hace desde cualquier navegador, sin la Mac delante. Conviene tenerla lista
-antes de sentarse a la máquina.
+Se hace desde cualquier computadora, sin la Mac delante.
 
-## 1.1 — Entrar
+**El panel:** https://frontend-produccion.onrender.com
 
-**https://frontend-produccion.onrender.com**, con la contraseña del panel.
+## 1.1 — Contarle al sistema sobre la empresa
 
-## 1.2 — Decir a quién puede escribirle ⚠️
+**Configuración → Sobre la empresa.**
 
-**Configuración → destinos permitidos.** Cargar los números de prueba, **y sólo
-esos**. En la misma pantalla, **tope por corrida = 3** mientras se prueba.
+Acá va todo lo que el redactor necesita saber para escribir mensajes que sirvan:
+qué vende la empresa, qué productos y servicios ofrece, promociones vigentes,
+cómo le habla a sus clientes, con qué conviene recuperar a alguien que se
+enfrió.
 
-En una base nueva esta lista arranca vacía, y vacía significa **a nadie**. No
-es un error: es lo que hace imposible que un cliente real reciba algo por
-accidente. Pero tiene una consecuencia que confunde la primera vez: si se
-saltea este paso, la corrida lee los chats y **no redacta ninguno**. Parece que
-no funcionó, y funcionó exactamente como debía.
+Cuanto más concreto, mejores salen los mensajes. Es la diferencia entre *"¿cómo
+andás? ¿seguimos en contacto?"* y un mensaje que retoma lo que esa persona
+había pedido y le ofrece algo real.
 
-## 1.3 — Dar de alta la máquina
+Se puede cambiar cuando se quiera: cada mensaje que se redacta usa la versión
+del momento.
 
-Panel → **Dar de alta una máquina**:
+## 1.2 — Decir a quién se le puede escribir ⚠️
 
-- **Identificador** — minúsculas, números y guiones: `mac-rocio`, no
-  `Mac de Rocío`.
+**Configuración → Destinos permitidos.**
+
+Esta lista es el freno de mano del sistema: **sólo se le escribe a los números
+que estén ahí**. Arranca vacía, y vacía significa **a nadie**.
+
+Para las pruebas, cargar dos o tres números propios y nada más. Cuando el
+sistema ya demostró que escribe bien, se abre a todos los contactos escribiendo
+la palabra `ABRIR` — es un acto deliberado y queda registrado.
+
+> **La confusión más común:** con la lista en números de prueba, una corrida lee
+> los chats y **no genera casi nada**. No está roto: está haciendo lo que se le
+> pidió.
+
+## 1.3 — Elegir qué chats se siguen
+
+**Configuración → Qué chats se siguen.** Dos formas:
+
+- **Los más recientes** — mira los chats de arriba de la lista, dentro de la
+  ventana de silencio que se configure (por ejemplo, entre 5 y 90 días sin
+  hablar). Sirve para el día a día.
+- **Barrido del historial** — va al fondo del WhatsApp y avanza **del chat más
+  viejo hacia hoy**, de a tandas. Es el modo para recuperar clientes viejos que
+  quedaron sin recontactar. Cada corrida sigue donde terminó la anterior, y
+  nunca le escribe dos veces a la misma persona.
+
+En "Topes" se elige cuántos chats se leen por corrida. **Para el barrido,
+empezar con 10**: tandas chicas que terminan rinden más que tandas grandes que
+se cortan por la mitad.
+
+## 1.4 — El horario en que pueden salir mensajes
+
+**Configuración → Cuándo y a qué ritmo sale.** Por defecto es de 9 a 19, de
+lunes a viernes, hora de Argentina. Se cambia, o se saca del medio con el botón
+**Sin restricción (24/7)**.
+
+## 1.5 — Dar de alta la máquina
+
+**Panel → Dar de alta una máquina:**
+
+- **Identificador** — minúsculas, números y guiones: `mac-rocio`, no `Mac de Rocío`.
 - **Nombre del vendedor** — acá sí, con mayúsculas y acentos.
-- **Línea de WhatsApp** — opcional.
 
 ⚠️ **El token se muestra una sola vez.** Anotá en una nota, juntos, el
 **identificador** y el **token** (empieza con `sgc_`): son las dos únicas cosas
-que el instalador va a preguntar en la parte 2. Si el token se pierde, en el
-panel se rota y sale uno nuevo.
+que la Mac va a preguntar. Si se pierde, se rota desde el panel y sale otro.
 
-La máquina **nace inactiva**. Instalar no es activar.
+La máquina nace **inactiva**. Instalar no es activar.
 
 ---
 
-# Parte 2 — En la Mac
+# Parte 2 — En la Mac del vendedor
 
-## 2.1 — Preparar Chrome (con el mouse, 5 minutos)
+## 2.1 — Preparar Chrome (con el mouse)
 
-En el Chrome del vendedor —el de todos los días—, en orden:
+En el Chrome que el vendedor usa todos los días, en este orden:
 
-1. **Instalar la extensión Claude in Chrome** e iniciar sesión con la cuenta
-   de Claude de **esta** máquina.
-2. **Usar la extensión una vez**: apretar el ícono de Claude y pedirle
-   cualquier cosa. Con eso la extensión queda registrada en esta máquina.
+1. **Instalar la extensión Claude in Chrome** e iniciar sesión con la cuenta de
+   Claude de **esta** máquina.
+2. **Usarla una vez**: apretar el ícono de Claude y pedirle cualquier cosa. Con
+   eso queda registrada en la computadora.
 3. **Abrir `web.whatsapp.com`** y escanear el QR con el teléfono del vendedor.
-4. **Dar el permiso de sitio**: ícono de Claude en la barra → **configuración →
-   permisos de sitios → habilitar `web.whatsapp.com`**.
+4. **Dar el permiso de sitio**: ícono de Claude → **configuración → permisos de
+   sitios → habilitar `web.whatsapp.com`**.
 
-Sobre el punto 4, dos aclaraciones que ahorran una hora:
+Sobre el punto 4, dos cosas que ahorran una hora:
 
 - **No es el menú de Chrome.** Si entrás por la configuración de Chrome vas a
-  ver "Acceso al sitio: todos los sitios", y eso ya está bien: **no es el que
-  falta**. El que hay que dar es el de adentro de la extensión.
-- Es el **único paso de toda la guía que no se puede automatizar**, a
+  ver "Acceso al sitio: todos los sitios", y eso ya está bien: **no es ese**. El
+  que falta es el de adentro de la extensión.
+- Es el **único paso de toda la instalación que no se puede automatizar**, a
   propósito: es la extensión pidiendo que una persona autorice que un programa
-  opere sobre WhatsApp. Forzarlo por archivo sería saltear un control de
-  seguridad.
+  opere sobre WhatsApp.
 
-## 2.2 — Un solo comando en la Terminal
+## 2.2 — Un comando, y listo
 
 Abrir la **Terminal** (Cmd + barra espaciadora, escribir `Terminal`, Enter) y
 pegar esto:
@@ -109,187 +135,153 @@ pegar esto:
 curl -fsSL https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash
 ```
 
-Es **una sola línea**, tal cual, de `curl` a `bash`. Si se está tipeando desde
-el papel y se ve partida, va todo seguido y sin espacios agregados. Un error de
-tipeo se delata rápido: `curl` contesta `404` y no instala nada.
+Es **una sola línea**, tal cual, de `curl` a `bash`.
 
-Ese comando hace **todo lo demás**: instala las herramientas, baja el
-programa, averigua solo los datos de la máquina, deja configurado el arranque
-automático y arranca todo. En el camino:
+Ese comando instala todo lo que hace falta (no hay que tener nada preparado),
+baja el programa, averigua solo los datos de la máquina, deja configurado el
+arranque automático y lo enciende. En el camino:
 
-- **Pregunta dos cosas**: el identificador y el token — los de la nota de la
-  parte 1.
-- **Puede pedir, una única vez, iniciar sesión en Claude Code**: correr
-  `claude` en la Terminal, entrar con la cuenta de esta máquina, salir con
+- **Pregunta el identificador y el token** — los de la nota de la parte 1.
+- **Puede pedir iniciar sesión en Claude Code**, una única vez: correr `claude`
+  en la Terminal, entrar con la cuenta de esta máquina, salir escribiendo
   `/exit`, y volver a pegar el mismo comando de arriba.
+- **Al final ofrece vincular el navegador de envío** (paso 2.3). Conviene decir
+  que sí ahí mismo, con el teléfono a mano.
 
-Si algo falta, el instalador **lo dice en castellano y se corta**. La respuesta
-es siempre la misma: hacer lo que dijo y **volver a pegar el mismo comando**.
-Es seguro correrlo las veces que haga falta — lo que ya está hecho lo saltea, y
-correrlo de nuevo es además la forma de **actualizar** el programa más
-adelante.
+Si algo falta, el instalador **lo dice en castellano y se detiene**. La
+respuesta es siempre la misma: hacer lo que dice y **volver a pegar el mismo
+comando**. Es seguro correrlo las veces que haga falta — y correrlo de nuevo es
+además la forma de **actualizar** el programa más adelante.
 
 Cuando termina dice **INSTALACIÓN COMPLETA**.
 
-## 2.3 — La comprobación final (recomendada)
+## 2.3 — Vincular el navegador que escribe los mensajes
 
-Verifica lo único que el instalador no puede: que la extensión tenga el
-permiso y que la sesión de WhatsApp esté viva. Abre WhatsApp Web una vez,
-**no lee ningún chat**, tarda unos minutos y cuesta alrededor de USD 0,50:
+Para escribir, el sistema usa **un navegador aparte** del que el vendedor usa
+todos los días, con su propia sesión de WhatsApp. Eso hace que el sistema nunca
+le toque las pestañas ni la sesión al vendedor.
 
-```bash
-cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main --sonda
-```
+Se vincula escaneando un QR, igual que WhatsApp Web en una computadora nueva:
+**WhatsApp del teléfono → Configuración → Dispositivos vinculados → Vincular un
+dispositivo.**
 
-Tiene que decir:
-
-```
-[OK ] permiso_sitio    la extensión puede entrar a web.whatsapp.com
-[OK ] whatsapp_sesion  sesión iniciada, N chats a la vista
-```
-
-Si algo sale mal:
-
-| Dice | Qué hacer |
-|---|---|
-| `sin_permiso` | Falta el punto 4 del paso 2.1: el permiso de la extensión |
-| `sesion_no_iniciada` | WhatsApp Web pide QR: escanearlo de nuevo |
-| `browser_no_disponible` | Volver a correr el instalador (paso 2.2) |
-
-> **`selectores` en rojo mientras no se haga el paso 2.4** es lo esperado: el
-> envío queda bloqueado hasta que se verifiquen. La lectura y la redacción
-> funcionan igual.
-
-## 2.4 — El navegador de envío (para que esta máquina pueda enviar)
-
-El motor de envío usa **su propio navegador**, con su propia sesión de
-WhatsApp — el Chrome del vendedor no se toca. Son dos comandos, con el
-teléfono del vendedor a mano.
-
-**a. Vincular la sesión.** Abre una ventana con un código QR; se escanea desde
-el teléfono (WhatsApp → Configuración → Dispositivos vinculados → Vincular un
-dispositivo). Usa uno de los cuatro dispositivos que WhatsApp permite.
+El instalador lo ofrece solo al final. Si en su momento se dijo que no, o si
+esa sesión vence más adelante, se hace con:
 
 ```bash
 cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main --vincular
 ```
 
-**b. Verificar los selectores**, contra ese WhatsApp real y abriendo el chat
-de **un número de prueba** (uno de los que están en destinos permitidos). Mira
-que cada pieza de la pantalla responda — encabezado, campo, botón de enviar —
-escribe un punto en el campo y lo borra. **No envía nada.**
+---
 
-```bash
-cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
-```
+# Parte 3 — Encender el sistema
 
-Si todo sale `[OK]`, avisar a quien mantiene el sistema: el paso final —fijar
-la fecha de verificación en el código— es deliberado y lo hace una persona.
-Si algo sale `[MAL]`, mandar la salida completa: dice exactamente qué selector
-dejó de responder.
+## 3.1 — La conversación con el vendedor, y registrarla
+
+El sistema manda mensajes **desde la línea del vendedor, con su nombre**. Eso
+tiene que estar hablado y aceptado, no supuesto.
+
+Cuando la conversación ya pasó: en el panel, en la tarjeta de la máquina, botón
+**Registrar consentimiento**. Queda con fecha en el historial, y sin eso el
+sistema no le encola ningún envío.
+
+## 3.2 — Activar la máquina
+
+En la misma tarjeta, **Activar**. Recién ahí empieza a tomar trabajo.
+
+## 3.3 — La primera corrida, sin enviar nada
+
+En el panel, **Generar seguimientos**. Lo que va a pasar:
+
+1. El sistema lee los chats (unos minutos; se ve trabajar a Chrome solo).
+2. Para los contactos que están agendados con nombre, abre el chat y busca el
+   número real — sin eso no se le puede escribir a nadie con seguridad.
+3. Redacta un mensaje por cada chat que valga la pena, y los deja en
+   **Revisar borradores**.
+
+Ahí se leen uno por uno. Se pueden editar, aprobar o descartar.
+
+Dos resultados que **parecen fallas y no lo son**:
+
+- **Pocos borradores o ninguno**: casi todos los chats son de números que no
+  están en destinos permitidos (paso 1.2), o el sistema ya les escribió hace
+  poco.
+- **Borradores apartados con un motivo**: el redactor no encontró de qué
+  hablar —una conversación que fue sólo "ok, gracias"— y se negó a inventar.
+  Se pueden escribir a mano ahí mismo, o descartar.
+
+## 3.4 — Enviar de verdad
+
+Cuando los borradores se ven bien, el botón de enviar los manda **de a uno, con
+pausas al azar**, sólo a los números permitidos, y frenando todo si los tres
+primeros fallan.
 
 ---
 
-# Parte 3 — Activar y probar
+# El día a día, una vez andando
 
-## 3.1 — Activar la máquina, que es una decisión aparte
+- **El vendedor no hace nada.** Prende la Mac y todo arranca solo. Si el agente
+  se cae, se vuelve a levantar solo.
+- **El responsable** entra al panel, aprieta *Generar seguimientos*, revisa los
+  borradores y manda los que le gustan.
+- **Tres cosas vencen cada tanto** y hay que rehacerlas. No son fallas:
 
-En el panel la máquina aparece **inactiva** y así se queda hasta que alguien
-la active. Antes de activarla: la conversación de consentimiento con el
-vendedor (F5.7). El sistema va a mandar mensajes **desde su línea, con su
-nombre** — eso tiene que estar dicho y aceptado, no supuesto. Cuando la
-conversación ya pasó, se registra en el panel con el botón **Registrar
-consentimiento** de la tarjeta de la máquina: queda con fecha en la auditoría,
-y sin eso el backend no le encola envíos.
-
-## 3.2 — La primera corrida
-
-1. En el panel, apretar el botón.
-2. El agente lee los chats recientes. Tarda unos minutos.
-3. Los borradores aparecen en la pantalla de revisión — **sólo** de los chats
-   cuyo número esté en destinos permitidos.
-
-Lo que **no** va a pasar todavía: que salga un mensaje (fase 4). Y dos
-resultados que parecen fallas y no lo son:
-
-- **Ningún borrador** — ninguno de los chats recientes es de los números
-  autorizados. Es el sistema cuidando la lista, no una falla.
-- **Borradores retenidos y vacíos**, con la señal `SIN_CONTEXTO` — el modelo no
-  encontró con qué escribir y se negó a inventar. Se escriben a mano desde el
-  panel, o se descartan.
-
----
-
-# Después de instalar
-
-- **Todo arranca solo.** Cada vez que el vendedor prende la Mac e inicia
-  sesión, Chrome y el agente se levantan sin que nadie toque nada. Si el
-  agente se cae, se vuelve a levantar solo.
-- **Tres cosas pueden volver a pedir atención**, y las tres son sesiones que
-  vencen, no fallas:
-  - La de **WhatsApp Web del vendedor** (la que usa la lectura) expira cada
-    tanto (dura días, no meses). Cuando pida QR, se escanea de nuevo y listo.
-  - La del **navegador de envío** también. El síntoma es un envío que falla
-    con `sesion_no_iniciada`. Se arregla corriendo `--vincular` de nuevo
-    (paso 2.4a).
-  - La de **Claude Code** también caduca. El síntoma es un error que dice
-    `la sesión de Claude Code venció`. Se arregla en la Terminal: correr
-    `claude`, iniciar sesión, salir con `/exit`.
-- **Actualizar el programa** = volver a pegar el comando del paso 2.2. No
-  vuelve a preguntar nada.
-- **Los logs** quedan en `~/Library/Logs/centonara/`.
-
-Para **frenar todo** en una máquina (para un técnico):
-
-```bash
-launchctl bootout gui/$(id -u)/com.centonara.agente
-launchctl bootout gui/$(id -u)/com.centonara.chrome
-```
-
-Para volver a arrancar: correr el instalador de nuevo, o reiniciar la sesión.
+| Qué vence | Cómo se ve | Cómo se arregla |
+|---|---|---|
+| La sesión de WhatsApp del vendedor | Chrome pide el QR | Escanearlo de nuevo |
+| La sesión del navegador de envío | Un envío falla diciendo que no hay sesión | Correr el comando del paso 2.3 |
+| La sesión de Claude Code | Un error que dice *"la sesión de Claude Code venció"* | En la Terminal: `claude`, iniciar sesión, `/exit` |
 
 ---
 
 # Si algo no anda
 
-| Síntoma | Causa y qué hacer |
+| Lo que se ve | Qué es |
 |---|---|
-| `Claude in Chrome requires permission` | Falta el permiso de la extensión (paso 2.1, punto 4). Lo emite el navegador, por eso no aparece en ningún log del agente |
-| WhatsApp pide QR de golpe | La sesión expiró; pasa cada tanto. Escanear de nuevo |
-| El vendedor cerró Chrome con Cmd+Q | No hay que hacer nada: el agente lo abre solo antes de leer los chats. Si en el panel aparece que la extensión no está disponible, revisar que Chrome abra con el perfil de siempre |
-| `la sesión de Claude Code venció` (o un `401` de OAuth) | El token caduca cada tanto. Correr `claude`, iniciar sesión con la cuenta de esa máquina, salir con `/exit` |
-| `token_rechazado` en el log | El token no es el de esta máquina, o se rotó. Rotar en el panel, borrar la línea `AGENTE_TOKEN` del `.env` y correr el instalador de nuevo |
-| El agente no toma trabajo | La máquina está inactiva o pausada en el panel, o el kill switch está puesto |
-| `browser_no_disponible` | El Chrome registrado no es este. Correr el instalador de nuevo |
-| El instalador dice que el servidor no contesta | Sin internet, o el servidor estaba dormido y tardó. Esperar un minuto y correrlo de nuevo |
-| El panel muestra un error crudo | Reportarlo: los mensajes del panel se escriben para quien lo usa |
+| `Claude in Chrome requires permission` | Falta el permiso de la extensión (paso 2.1, punto 4). Lo dice el navegador, por eso no aparece en ningún log |
+| La máquina figura "sin conexión" | La Mac está apagada, sin internet, o el agente se detuvo. Volver a correr el comando del paso 2.2 lo revive |
+| Una corrida queda "en curso" para siempre | Botón **Cancelar corrida** en el panel. Lo pendiente se descarta y lo ya generado queda en revisión |
+| La corrida falla por tiempo | La tanda era muy grande. Bajar "Chats a leer por máquina" a 10 y volver a disparar |
+| El vendedor cerró Chrome | No hay que hacer nada: el sistema lo abre solo cuando necesita leer |
+| El panel muestra un error raro | Reportarlo. Los mensajes del panel están escritos para quien lo usa, no para quien lo programó |
 
-### Para técnicos
+---
 
-- Lo instalado son **dos LaunchAgents** (`com.centonara.agente` y
-  `com.centonara.chrome`, en `~/Library/LaunchAgents/`), el proyecto en
-  `~/centonara-seguimientos` con su `.env`, y las herramientas `uv` y
-  `claude` en `~/.local/bin`. Son LaunchAgents y **no** LaunchDaemons a
-  propósito (D16): Chrome y la extensión viven en la sesión del usuario.
-- `Bootstrap failed: 5: Input/output error` al correr `launchctl bootstrap` a
-  mano quiere decir **"ya está cargado"**, no que algo falló.
-- El backend es `https://backend-produccion-7yqr.onrender.com` — **con
-  sufijo**. `backend-produccion.onrender.com` a secas es la aplicación de otra
-  persona: ese subdominio global ya estaba tomado. El instalador trae la URL
-  correcta; si se toca a mano, comprobarla:
+# Apéndice para quien mantiene el sistema
+
+**Qué quedó instalado en la Mac:** el proyecto en `~/centonara-seguimientos`,
+dos servicios de arranque automático (`com.centonara.agente` y
+`com.centonara.chrome`, en `~/Library/LaunchAgents/`), y las herramientas `uv` y
+`claude` en `~/.local/bin`. Los logs, en `~/Library/Logs/centonara/`.
+
+**Los tres modos del agente**, en el archivo `~/centonara-seguimientos/.env`,
+línea `AGENTE_MODO`:
+
+| Modo | Qué hace |
+|---|---|
+| `simulado` | No toca ningún navegador. Para verificar que la máquina está viva |
+| `prueba` | Abre el chat, verifica la identidad, escribe el mensaje **y lo borra sin enviarlo** |
+| `real` | Lo mismo, y aprieta enviar |
+
+Después de cambiarlo:
 
 ```bash
-curl https://backend-produccion-7yqr.onrender.com/health
+launchctl kickstart -k gui/$(id -u)/com.centonara.agente
 ```
 
-  Tiene que devolver `{"ok":true,"mongo":true,"entorno":"produccion"}`.
+**Cuando WhatsApp cambie por dentro** y los mensajes dejen de salir, esto dice
+exactamente qué se rompió, abriendo el chat de un número de prueba y sin enviar
+nada:
 
-- `OPENSSL_Uplink(...): no OPENSSL_Applink` — un antivirus dejó
-  `SSLKEYLOGFILE` en el entorno. El agente ya la descarta al arrancar; si
-  aparece igual, es otro proceso.
-- **El puerto de depuración (9222) ya no se usa** (D24). Chrome 136+ lo
-  rechaza sobre el perfil normal del usuario, así que el motor de envío abre
-  su propio navegador — Chrome real con carpeta dedicada en
-  `~/Library/Application Support/Centonara/Chrome` — que se vincula con
-  `--vincular`. Si alguien encuentra flags de puerto en un LaunchAgent, es de
-  una instalación vieja: correr el instalador de nuevo los limpia.
+```bash
+cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
+```
+
+**Para entregar el sistema a otra empresa** (o para limpiar las pruebas):
+Configuración → **Empezar de cero**. Borra corridas, borradores, mensajes y los
+números que el sistema había averiguado, y deja la lista de destinos vacía otra
+vez. No borra el historial de auditoría — ese registro es inmutable a propósito,
+ni siquiera el sistema puede borrarlo — ni toca los chats de WhatsApp de nadie.
+
+**Actualizar el programa:** volver a correr el comando del paso 2.2. No vuelve a
+preguntar nada.

@@ -760,6 +760,98 @@ async def test_un_contexto_de_empresa_desmedido_se_rechaza(adentro, base) -> Non
     assert respuesta.status_code == 422
 
 
+# ---------------------------------------------------------------------------
+# Entregar el sistema: vaciarlo (D28)
+# ---------------------------------------------------------------------------
+
+
+async def _con_datos_de_prueba(base, adentro) -> None:
+    """Deja el sistema como después de unos días de prueba."""
+    await configuracion.actualizar(
+        base,
+        {"destinos_permitidos": ["+5491123231151"], "contexto_empresa": "Vendemos entradas."},
+    )
+    await cola.encolar(base, tipo=cola.Tipo.LISTAR, maquina="mac-rocio")
+    await base["corridas"].insert_one({"tipo": "generacion", "creada_en": datetime.now(UTC)})
+    await base["telefonos"].insert_one(
+        {"maquina": "mac-rocio", "nombre": "Corralón", "contacto_id": "+5491123231151"}
+    )
+    await vendedores.registrar_barrido(
+        base, "mac-rocio", hasta_dias=300, tanda=["Corralón"], completado=False
+    )
+
+
+@sin_mongo
+async def test_empezar_de_cero_borra_las_pruebas_y_cierra_los_destinos(
+    adentro, base, maquina_lista
+) -> None:
+    """Lo peligroso de entregar no es perder las corridas de prueba: es dejar
+    cargados los destinos con los que probó otra persona."""
+    await _con_datos_de_prueba(base, adentro)
+
+    respuesta = await adentro.post("/api/sistema/empezar-de-cero", json={"confirmacion": "BORRAR"})
+    assert respuesta.status_code == 200
+
+    assert await base["corridas"].count_documents({}) == 0
+    assert await base["jobs"].count_documents({}) == 0
+    assert await base["telefonos"].count_documents({}) == 0
+
+    config = await configuracion.obtener(base)
+    assert config["destinos_permitidos"] == [], "vacía significa a nadie"
+    assert config["contexto_empresa"] == ""
+
+    #  La máquina sigue instalada, pero sin el rastro del uso anterior.
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedor is not None
+    assert "barrido" not in vendedor
+
+
+@sin_mongo
+async def test_la_auditoria_sobrevive_y_registra_el_borrado(adentro, base, maquina_lista) -> None:
+    """⚠️ El registro no se borra: el rol de Mongo ni siquiera lo permite. Lo
+    que queda es la marca de dónde empieza la historia del cliente."""
+    await _con_datos_de_prueba(base, adentro)
+    antes = await base["auditoria"].count_documents({})
+
+    await adentro.post("/api/sistema/empezar-de-cero", json={"confirmacion": "BORRAR"})
+
+    assert await base["auditoria"].count_documents({}) > antes
+    evento = await base["auditoria"].find_one({"que": "datos_borrados"})
+    assert evento is not None
+    assert evento["quien"] == "panel"
+    assert evento["detalle"]["borrados"]["telefonos"] == 1
+
+
+@sin_mongo
+async def test_sin_escribir_la_palabra_no_se_borra_nada(adentro, base, maquina_lista) -> None:
+    await _con_datos_de_prueba(base, adentro)
+
+    for cuerpo in ({"confirmacion": ""}, {"confirmacion": "borrar todo"}, {"confirmacion": "si"}):
+        respuesta = await adentro.post("/api/sistema/empezar-de-cero", json=cuerpo)
+        assert respuesta.status_code == 400, cuerpo
+
+    assert await base["corridas"].count_documents({}) == 1
+
+
+@sin_mongo
+async def test_las_maquinas_se_conservan_salvo_que_se_pida(adentro, base, maquina_lista) -> None:
+    """Borrarlas revoca sus tokens y obliga a reinstalar cada Mac."""
+    await adentro.post("/api/sistema/empezar-de-cero", json={"confirmacion": "BORRAR"})
+    assert await base["vendedores"].count_documents({}) == 1
+
+    await adentro.post(
+        "/api/sistema/empezar-de-cero",
+        json={"confirmacion": "BORRAR", "borrar_maquinas": True},
+    )
+    assert await base["vendedores"].count_documents({}) == 0
+
+
+@sin_mongo
+async def test_vaciar_sin_sesion_no_se_puede(http, base) -> None:
+    respuesta = await http.post("/api/sistema/empezar-de-cero", json={"confirmacion": "BORRAR"})
+    assert respuesta.status_code == 401
+
+
 @sin_mongo
 async def test_reiniciar_el_barrido_borra_el_cursor(adentro, base, maquina_lista) -> None:
     """Un barrido que arrancó torcido (leyó los de arriba y dejó el cursor en

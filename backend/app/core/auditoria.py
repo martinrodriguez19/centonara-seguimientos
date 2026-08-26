@@ -35,6 +35,10 @@ class Que(StrEnum):
 
     CORRIDA_DISPARADA = "corrida_disparada"
     CORRIDA_CANCELADA = "corrida_cancelada"
+    DATOS_BORRADOS = "datos_borrados"
+    """Alguien vació el sistema para entregarlo (D28). El registro de auditoría
+    NO se borra —el rol de Mongo ni siquiera lo permite—, así que este evento es
+    la marca de dónde empieza la historia del cliente."""
     MENSAJE_ENVIADO = "mensaje_enviado"
     MENSAJE_VETADO = "mensaje_vetado"
     MENSAJE_EDITADO = "mensaje_editado"

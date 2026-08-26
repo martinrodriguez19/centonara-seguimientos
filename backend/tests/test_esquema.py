@@ -40,7 +40,7 @@ def indices_de(coleccion: str) -> dict[str, Indice]:
 # ---------------------------------------------------------------------------
 
 
-def test_estan_las_seis_colecciones() -> None:
+def test_estan_las_siete_colecciones() -> None:
     assert set(POR_NOMBRE) == {
         "vendedores",
         "corridas",
@@ -48,6 +48,11 @@ def test_estan_las_seis_colecciones() -> None:
         "jobs",
         "auditoria",
         "configuracion",
+        # La memoria de números resueltos (D27). Entró con el barrido y estuvo
+        # sin declarar: Mongo la creaba sola al primer insert, sin índice y sin
+        # permisos en el rol — o sea, andaba en Atlas y habría fallado en una
+        # instalación local nueva.
+        "telefonos",
     }
 
 

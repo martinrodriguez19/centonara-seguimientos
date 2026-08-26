@@ -149,6 +149,20 @@ COLECCIONES: tuple[Coleccion, ...] = (
         nombre="configuracion",
         porque="Un solo documento, con _id 'unica'. Topes, palabras y destinos permitidos.",
     ),
+    Coleccion(
+        nombre="telefonos",
+        porque=(
+            "La memoria de lo que resolvió el agente (D27): el nombre con el que un contacto "
+            "figura en WhatsApp y el número real que se leyó de su panel. Evita volver a abrir "
+            "el chat en cada corrida del barrido."
+        ),
+        indices=(
+            # Es la clave del upsert y la de la consulta: un contacto por
+            # máquina. Único, porque dos filas para el mismo nombre serían dos
+            # números distintos para la misma persona y no habría cómo elegir.
+            Indice(claves=(("maquina", ASCENDING), ("nombre", ASCENDING)), unico=True),
+        ),
+    ),
 )
 
 

@@ -312,6 +312,23 @@ export const editarMaquina = (
   },
 ) => pedir<{ ok: boolean }>(`/vendedores/${maquina}`, conCuerpo("PATCH", cambios));
 
+/**
+ * Vaciar el sistema para entregarlo (D28).
+ *
+ * `confirmacion` tiene que ser exactamente "BORRAR": el backend lo verifica,
+ * así que la pantalla no puede aflojarlo por su cuenta.
+ */
+export const empezarDeCero = (opciones: {
+  confirmacion: string;
+  restablecer_configuracion?: boolean;
+  borrar_maquinas?: boolean;
+}) =>
+  pedir<{
+    borrados: Record<string, number>;
+    configuracion_restablecida: boolean;
+    maquinas_borradas: boolean;
+  }>("/sistema/empezar-de-cero", conCuerpo("POST", opciones));
+
 export const bajaMaquina = (maquina: string) =>
   pedir<{ ok: boolean }>(`/vendedores/${maquina}`, { method: "DELETE" });
 
