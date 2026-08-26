@@ -39,7 +39,11 @@ export type Grupo = {
   titulo: string;
   /** Para quién es este grupo y desde dónde se corre. */
   descripcion: string;
+  /** Lo que hay que leer ANTES de correr nada del grupo. Se muestra destacado. */
+  aviso?: string;
   comandos: Comando[];
+  /** Cómo sigue, o qué se está aceptando. Va al final del grupo. */
+  pie?: string;
 };
 
 /** Dónde queda el proyecto en la Mac del vendedor. Lo fija el instalador. */
@@ -186,6 +190,76 @@ export const grupos: Grupo[] = [
         queHace: "Deshace el comando anterior sin tener que reiniciar la Mac.",
       },
     ],
+  },
+
+  {
+    id: "macos-viejo",
+    titulo: "Si la Mac tiene macOS anterior a 13",
+    descripcion:
+      "El instalador falla con «error 134» o «Abort trap: 6». No es la descarga: Claude Code pide macOS 13.0 y en una versión más vieja el binario no puede cargarse y se aborta. Homebrew y npm bajan exactamente el mismo binario, así que ninguno lo resuelve. Lo que sigue es el rodeo que sí funciona, y es un puente, no una solución.",
+    aviso:
+      "PRIMERO probá la extensión: instalá Claude in Chrome en el Chrome de esa Mac, iniciá sesión y pedile cualquier cosa. Chrome dejó de actualizarse en esos macOS hace más de un año, y si la extensión no anda ahí, nada de lo que sigue sirve — el agente necesita el navegador para leer los chats. Son cinco minutos y ahorran la tarde entera.",
+    comandos: [
+      {
+        id: "catalina-version",
+        titulo: "1. Confirmar qué macOS tiene esta Mac",
+        comando: "sw_vers -productVersion",
+        queHace:
+          "Si devuelve 13 o más, el problema es otro y este apartado no aplica. 10.15 es Catalina, 11 es Big Sur, 12 es Monterey: las tres están por debajo del mínimo.",
+      },
+      {
+        id: "catalina-modelo",
+        titulo: "2. Ver si conviene actualizar el sistema en vez de esto",
+        comando: 'system_profiler SPHardwareDataType | grep -E "Model Name|Model Identifier"',
+        queHace:
+          "El modelo y el año. macOS 13 acepta MacBook Pro desde 2017, MacBook Air desde 2018, iMac desde 2017, Mac mini desde 2018 y Mac Pro desde 2019. Si la máquina entra en esa lista, actualizar el sistema es mejor camino que todo lo que sigue.",
+        aviso:
+          "Antes de una actualización mayor: copia de seguridad con Time Machine, 40 GB libres, enchufada, y entre una y dos horas en las que el vendedor no va a poder usarla.",
+      },
+      {
+        id: "catalina-node",
+        titulo: "3. Bajar Node 18",
+        comando: "curl -fsSLO https://nodejs.org/dist/v18.20.8/node-v18.20.8.pkg",
+        queHace:
+          "Node 18 es la última rama que corre en macOS 10.15; las siguientes piden 13.5 o más. Es la pieza que hace posible todo lo demás.",
+      },
+      {
+        id: "catalina-node-instalar",
+        titulo: "4. Instalar Node",
+        comando: "sudo installer -pkg node-v18.20.8.pkg -target /",
+        queHace: "Instala Node y npm en el sistema.",
+        aviso: "Pide la contraseña de administrador de esa Mac.",
+      },
+      {
+        id: "catalina-claude",
+        titulo: "5. Instalar la última versión de Claude Code que no es binario nativo",
+        comando: "npm install -g @anthropic-ai/claude-code@2.1.100",
+        queHace:
+          "Hasta la 2.1.110, Claude Code era un paquete JavaScript que corría sobre Node; el binario nativo —el que aborta— aparece a partir de la 2.1.120. Esta versión tiene «--chrome» y la extensión, que es lo que el agente necesita.",
+      },
+      {
+        id: "catalina-sin-updates",
+        titulo: "6. Frenar la actualización automática",
+        comando: `mkdir -p ~/.claude && echo '{"env":{"DISABLE_AUTOUPDATER":"1"}}' > ~/.claude/settings.json`,
+        queHace:
+          "Deja escrito que no se actualice sola. Sin esto, Claude Code se reemplaza por una versión nativa en cuestión de horas y vuelve el error 134.",
+        aviso:
+          "Si esa Mac ya tiene un ~/.claude/settings.json, este comando lo pisa. En ese caso abrilo y agregale la clave «env» a mano.",
+      },
+      {
+        id: "catalina-verificar",
+        titulo: "7. Comprobar que quedó la versión correcta",
+        comando: "claude --version",
+        queHace: "Tiene que decir 2.1.100. Si dice otra cosa, la actualización automática ya corrió.",
+      },
+      {
+        id: "catalina-sesion",
+        titulo: "8. Iniciar sesión",
+        comando: "claude",
+        queHace: "Se entra con la cuenta de esta máquina y se sale escribiendo /exit.",
+      },
+    ],
+    pie: "Después de esto se corre el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. Lo que se está aceptando: Node 18 dejó de recibir parches en abril de 2025, esta versión de Claude Code queda congelada, y Anthropic puede dejar de aceptar versiones viejas cuando quiera — el día que pase, esa máquina deja de funcionar sin aviso. Sirve para desbloquear ahora; el reemplazo de la máquina va en la lista de cosas a pedir.",
   },
 
   {

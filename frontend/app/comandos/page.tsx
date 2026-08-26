@@ -57,9 +57,22 @@ export default function Comandos() {
             <CardDescription>{grupo.descripcion}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {/* El aviso va ANTES de los comandos, no después: en el apartado de
+                macOS viejo lo que dice es que hay algo para probar primero, y
+                leerlo al final es haber perdido la tarde. */}
+            {grupo.aviso && (
+              <p className="rounded-md border border-atencion-borde bg-atencion-suave px-3 py-2 text-sm text-atencion">
+                {grupo.aviso}
+              </p>
+            )}
+
             {grupo.comandos.map((comando) => (
               <Comando key={comando.id} datos={comando} />
             ))}
+
+            {grupo.pie && (
+              <p className="border-t pt-5 text-sm text-muted-foreground">{grupo.pie}</p>
+            )}
           </CardContent>
         </Card>
       ))}
