@@ -231,15 +231,27 @@ export const grupos: Grupo[] = [
         aviso: "Pide la contraseña de administrador de esa Mac.",
       },
       {
+        id: "catalina-npm-prefijo",
+        titulo: "5. Preparar npm para instalar sin sudo",
+        comando:
+          "npm config set prefix ~/.npm-global && echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.zshrc && source ~/.zshrc",
+        queHace:
+          "Mueve los paquetes globales de npm a tu carpeta personal. Sin esto, el paso siguiente falla con «EACCES: permission denied» sobre /usr/local/lib/node_modules: ese directorio es de root y el instalador de Node no lo cede.",
+        aviso:
+          "No lo arregles con «sudo npm install -g»: deja archivos de root en tu carpeta y rompe las actualizaciones después. Si esa Mac usa bash en vez de zsh, cambiá ~/.zshrc por ~/.bash_profile. Y si corrés este comando dos veces, sacá la línea repetida del ~/.zshrc.",
+      },
+      {
         id: "catalina-claude",
-        titulo: "5. Instalar la última versión de Claude Code que no es binario nativo",
+        titulo: "6. Instalar la última versión de Claude Code que no es binario nativo",
         comando: "npm install -g @anthropic-ai/claude-code@2.1.100",
         queHace:
           "Hasta la 2.1.110, Claude Code era un paquete JavaScript que corría sobre Node; el binario nativo —el que aborta— aparece a partir de la 2.1.120. Esta versión tiene «--chrome» y la extensión, que es lo que el agente necesita.",
+        aviso:
+          "npm va a avisar que hay una versión nueva de sí mismo. NO le hagas caso: npm 12 exige Node 22 o superior, y esta máquina no puede pasar de Node 18. Actualizarlo deja la máquina sin npm que funcione.",
       },
       {
         id: "catalina-sin-updates",
-        titulo: "6. Frenar la actualización automática",
+        titulo: "7. Frenar la actualización automática",
         comando: `mkdir -p ~/.claude && echo '{"env":{"DISABLE_AUTOUPDATER":"1"}}' > ~/.claude/settings.json`,
         queHace:
           "Deja escrito que no se actualice sola. Sin esto, Claude Code se reemplaza por una versión nativa en cuestión de horas y vuelve el error 134.",
@@ -248,18 +260,117 @@ export const grupos: Grupo[] = [
       },
       {
         id: "catalina-verificar",
-        titulo: "7. Comprobar que quedó la versión correcta",
+        titulo: "8. Comprobar que quedó la versión correcta",
         comando: "claude --version",
         queHace: "Tiene que decir 2.1.100. Si dice otra cosa, la actualización automática ya corrió.",
       },
       {
         id: "catalina-sesion",
-        titulo: "8. Iniciar sesión",
+        titulo: "9. Iniciar sesión",
         comando: "claude",
         queHace: "Se entra con la cuenta de esta máquina y se sale escribiendo /exit.",
       },
     ],
-    pie: "Después de esto se corre el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. Lo que se está aceptando: Node 18 dejó de recibir parches en abril de 2025, esta versión de Claude Code queda congelada, y Anthropic puede dejar de aceptar versiones viejas cuando quiera — el día que pase, esa máquina deja de funcionar sin aviso. Sirve para desbloquear ahora; el reemplazo de la máquina va en la lista de cosas a pedir.",
+    pie: "Después de esto, cerrá la Terminal y abrí una nueva —si no, el instalador no ve el PATH que dejó el paso 5— y corré el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. Lo que se está aceptando: Node 18 dejó de recibir parches en abril de 2025, esta versión de Claude Code queda congelada, y Anthropic puede dejar de aceptar versiones viejas cuando quiera — el día que pase, esa máquina deja de funcionar sin aviso. Sirve para desbloquear ahora; el reemplazo de la máquina va en la lista de cosas a pedir.",
+  },
+
+  {
+    id: "windows",
+    titulo: "Conectar una máquina Windows",
+    descripcion:
+      "El instalador automático es sólo para Mac, pero el agente en sí ya sabe funcionar en Windows: dónde vive el perfil de Chrome, cómo lanzar el navegador y cómo conectarse tienen su versión para este sistema. Lo que sigue hace a mano lo que en la Mac hace el instalador, sin cambiar nada del sistema actual. Se pega todo en PowerShell.",
+    aviso:
+      "Este camino todavía no se probó de punta a punta. El agente tiene el código, y el MVP funcionó en Windows, pero ninguna máquina Windows corrió esta versión. Dejala en modo «simulado» y después en «prueba» hasta verla trabajar completa; recién ahí pasala a «real».",
+    comandos: [
+      {
+        id: "windows-git",
+        titulo: "1. Instalar Git",
+        comando: "winget install Git.Git",
+        queHace: "Hace falta para bajar el proyecto. Si ya está instalado, winget lo dice y sigue.",
+      },
+      {
+        id: "windows-uv",
+        titulo: "2. Instalar uv",
+        comando: 'powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"',
+        queHace:
+          "uv se encarga de Python y de las dependencias del agente. No hace falta instalar Python aparte: uv lo baja solo.",
+      },
+      {
+        id: "windows-claude",
+        titulo: "3. Instalar Claude Code",
+        comando: "irm https://claude.ai/install.ps1 | iex",
+        queHace: "El instalador nativo para Windows. En esta máquina sí funciona: el problema de macOS 13 no aplica acá.",
+        aviso:
+          "Si te dice que «irm» no se reconoce, estás en CMD y no en PowerShell. El prompt de PowerShell empieza con «PS».",
+      },
+      {
+        id: "windows-sesion",
+        titulo: "4. Iniciar sesión en Claude Code",
+        comando: "claude",
+        queHace: "Se entra con la cuenta de esta máquina y se sale escribiendo /exit. Sin esto, el agente no puede leer ningún chat.",
+        aviso: "Cerrá y volvé a abrir PowerShell antes de seguir, para que tome el PATH que dejaron los pasos 2 y 3.",
+      },
+      {
+        id: "windows-clonar",
+        titulo: "5. Bajar el proyecto",
+        comando:
+          "git clone https://github.com/martinrodriguez19/centonara-seguimientos.git $HOME\\centonara-seguimientos",
+        queHace: "Deja el proyecto en la carpeta del usuario, igual que en la Mac.",
+      },
+      {
+        id: "windows-datos",
+        titulo: "6. Averiguar los datos de esta máquina",
+        comando:
+          "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --datos",
+        queHace:
+          "Lista los perfiles de Chrome, marca cuál tiene la extensión y WhatsApp, y escribe las líneas del .env ya resueltas: el perfil, el deviceId y la ruta de Claude Code.",
+        aviso:
+          "Antes de correrlo hay que dejar Chrome listo, igual que en la Mac: extensión Claude in Chrome instalada y usada una vez, WhatsApp Web con el QR escaneado, y el permiso de sitio para web.whatsapp.com dado DENTRO de la extensión. Si falta algo, este comando lo dice y se detiene.",
+      },
+      {
+        id: "windows-env",
+        titulo: "7. Crear el archivo de configuración",
+        comando:
+          "Copy-Item $HOME\\centonara-seguimientos\\.env.example $HOME\\centonara-seguimientos\\.env; notepad $HOME\\centonara-seguimientos\\.env",
+        queHace:
+          "Copia la plantilla y la abre. Hay que pegar lo que imprimió el paso 6, y completar AGENTE_BACKEND_URL con la dirección del backend, más AGENTE_MACHINE_ID y AGENTE_TOKEN con lo que dio el panel al dar de alta la máquina.",
+        aviso:
+          "Dejá AGENTE_MODO en «simulado» por ahora. En Windows se usa punto y coma para encadenar, no «&&»: ahí «&&» es un error de sintaxis.",
+      },
+      {
+        id: "windows-diagnostico",
+        titulo: "8. Ver qué le falta a esta máquina",
+        comando:
+          "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --diagnostico",
+        queHace:
+          "Corre los chequeos y marca en rojo lo que falta. El de permisos de macOS va a decir «no aplica»: es correcto, no es un error.",
+      },
+      {
+        id: "windows-vincular",
+        titulo: "9. Vincular el navegador de envío",
+        comando:
+          "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --vincular",
+        queHace:
+          "Abre el navegador aparte que usa el motor de envío, para escanear el QR con el teléfono del vendedor. Es el mismo navegador dedicado que en la Mac: nunca toca la sesión ni las pestañas del vendedor.",
+      },
+      {
+        id: "windows-arrancar",
+        titulo: "10. Arrancar el agente",
+        comando: "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main",
+        queHace:
+          "Lo pone a trabajar. La ventana queda ocupada: mientras esté abierta, la máquina figura online en el panel. Se corta con Control + C.",
+      },
+      {
+        id: "windows-inicio",
+        titulo: "11. Que arranque solo al prender la máquina",
+        comando: `Set-Content -Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\centonara.bat" -Value '@echo off', 'cd /d %USERPROFILE%\\centonara-seguimientos', ':loop', 'uv run --directory agente python -m agente.main', 'timeout /t 10 >nul', 'goto loop'`,
+        queHace:
+          "Crea un archivo en la carpeta de Inicio de Windows que arranca el agente cuando el vendedor inicia sesión, y lo vuelve a levantar si se cae. Es el reemplazo del arranque automático que en la Mac hace el sistema.",
+        aviso:
+          "Más rudimentario que en la Mac: abre una ventana de consola que el vendedor puede cerrar sin querer, y el reintento es cada diez segundos sin importar el motivo de la caída. Sirve, pero si esta máquina se queda, conviene pasarlo al Programador de tareas.",
+      },
+    ],
+    pie: "Nada de esto modifica el sistema actual: no toca el instalador de Mac, ni el código del agente, ni la configuración de las otras máquinas. Es el mismo agente corriendo, con los pasos hechos a mano. En el panel, esta máquina se da de alta y se activa igual que cualquier otra — y el consentimiento del vendedor se registra igual, porque los mensajes también salen de su línea.",
   },
 
   {
