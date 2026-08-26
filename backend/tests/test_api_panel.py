@@ -758,3 +758,18 @@ async def test_un_contexto_de_empresa_desmedido_se_rechaza(adentro, base) -> Non
     desmedido = "x" * 6001
     respuesta = await adentro.patch("/api/configuracion", json={"contexto_empresa": desmedido})
     assert respuesta.status_code == 422
+
+
+@sin_mongo
+async def test_reiniciar_el_barrido_borra_el_cursor(adentro, base, maquina_lista) -> None:
+    """Un barrido que arrancó torcido (leyó los de arriba y dejó el cursor en
+    cero) necesita una salida: la próxima corrida tiene que volver al fondo."""
+    await vendedores.registrar_barrido(
+        base, "mac-rocio", hasta_dias=2, tanda=["Alguien"], completado=False
+    )
+
+    respuesta = await adentro.patch("/api/vendedores/mac-rocio", json={"reiniciar_barrido": True})
+    assert respuesta.status_code == 200
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert "barrido" not in vendedor

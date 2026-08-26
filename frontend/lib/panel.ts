@@ -307,6 +307,8 @@ export const editarMaquina = (
     tope_diario?: number;
     pausado_hasta?: string | null;
     acepto_condiciones?: boolean;
+    /** Borra el cursor del barrido: la próxima corrida vuelve al fondo. */
+    reiniciar_barrido?: boolean;
   },
 ) => pedir<{ ok: boolean }>(`/vendedores/${maquina}`, conCuerpo("PATCH", cambios));
 

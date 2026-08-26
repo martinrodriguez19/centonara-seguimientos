@@ -108,6 +108,15 @@ export function TarjetaMaquina({
     onSettled: refrescar,
   });
 
+  // Borra el cursor del barrido (D27): la próxima corrida en modo barrido
+  // vuelve al fondo del historial. El anti-duplicado sigue protegiendo a los
+  // ya contactados, así que reiniciar no re-escribe a nadie.
+  const reiniciarBarrido = useMutation({
+    mutationFn: () => editarMaquina(maquina.maquina, { reiniciar_barrido: true }),
+    onError: () => avisar(textos.maquina.avisoFallo, "critico"),
+    onSettled: refrescar,
+  });
+
   const baja = useMutation({
     mutationFn: () => bajaMaquina(maquina.maquina),
     onSuccess: () => {
@@ -158,6 +167,24 @@ export function TarjetaMaquina({
                   : maquina.barrido.hasta_dias != null
                     ? `va por ~${maquina.barrido.hasta_dias} días atrás`
                     : "arrancando"}
+                {" · "}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+                  disabled={reiniciarBarrido.isPending}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "¿Reiniciar el barrido? La próxima corrida vuelve al fondo del " +
+                          "historial. No se re-escribe a nadie ya contactado.",
+                      )
+                    ) {
+                      reiniciarBarrido.mutate();
+                    }
+                  }}
+                >
+                  reiniciar
+                </button>
               </dd>
             </>
           )}

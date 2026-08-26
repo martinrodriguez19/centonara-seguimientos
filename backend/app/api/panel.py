@@ -188,6 +188,10 @@ class CambioMaquina(Estricto):
     tope_diario: Annotated[int | None, Field(ge=1, le=100)] = None
     pausado_hasta: datetime | None = None
     acepto_condiciones: bool | None = None
+    # Borra el cursor del barrido (D27): la próxima corrida en modo barrido
+    # arranca del fondo del historial otra vez. No toca el anti-duplicado, así
+    # que los ya contactados siguen sin recontactarse.
+    reiniciar_barrido: bool | None = None
 
 
 @router.post("/vendedores", status_code=status.HTTP_201_CREATED)
@@ -244,12 +248,24 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
         # cuándo sabe?", la respuesta tiene que ser una fecha.
         cambios["acepto_condiciones_en"] = datetime.now(UTC) if cuerpo.acepto_condiciones else None
 
-    if not cambios:
+    if not cambios and not cuerpo.reiniciar_barrido:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no hay nada que cambiar")
 
-    resultado = await base["vendedores"].update_one({"maquina": maquina}, {"$set": cambios})
+    operacion: dict[str, Any] = {}
+    if cambios:
+        operacion["$set"] = cambios
+    if cuerpo.reiniciar_barrido:
+        # Sin cursor, la próxima corrida en modo barrido vuelve al fondo del
+        # historial. Los ya contactados siguen protegidos por el anti-duplicado.
+        operacion["$unset"] = {"barrido": ""}
+        cambios["reiniciar_barrido"] = True
+
+    resultado = await base["vendedores"].update_one({"maquina": maquina}, operacion)
     if resultado.matched_count == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no existe la máquina '{maquina}'")
+
+    if cuerpo.reiniciar_barrido:
+        log.info("barrido_reiniciado", maquina=maquina)
 
     if cuerpo.acepto_condiciones:
         await auditoria.registrar(
