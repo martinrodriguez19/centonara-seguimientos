@@ -101,6 +101,9 @@ export default function Panel() {
             <Button variant="ghost" size="sm" asChild>
               <Link href="/historial">{textos.panel.historial}</Link>
             </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/comandos">{textos.panel.comandos}</Link>
+            </Button>
             {/* El freno, siempre visible. Un freno al que hay que ir a buscar
                 no es un freno. */}
             <KillSwitch pausado={datos.pausa_global} />

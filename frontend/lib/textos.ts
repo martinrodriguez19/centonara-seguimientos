@@ -63,6 +63,7 @@ export const textos = {
     corridas: "Corridas",
     configuracion: "Configuración",
     historial: "Historial",
+    comandos: "Comandos",
   },
 
   // La banda de modo. Es lo primero que se lee y tiene que dejar claro en dos
@@ -464,5 +465,21 @@ export const textos = {
     naceInactiva: "La máquina nace inactiva. Instalar no es activar.",
   },
 
+  // La página de comandos. El catálogo en sí —cada comando con su explicación—
+  // vive en `lib/comandos.ts`, y ahí está escrito por qué.
+  comandos: {
+    titulo: "Comandos",
+    intro:
+      "Los comandos que hacen falta para instalar, revisar y arreglar el sistema. Se copian de acá y se pegan tal cual: tipearlos a mano es donde aparecen los errores que después no se encuentran.",
+    aviso:
+      "Ninguno de estos comandos envía mensajes. Para frenar el sistema está el botón rojo del panel, que es inmediato y queda registrado.",
+    indice: "Ir a",
+    copiar: "Copiar",
+    copiado: "Copiado",
+    noSePudoCopiar: "No se pudo copiar solo. Seleccioná el texto y copialo con el mouse.",
+    reemplazar: "Reemplazar",
+    cuando: "Cuándo",
+    pie: "Instalación paso a paso en la guía de puesta en marcha.",
+  },
 
 } as const;
