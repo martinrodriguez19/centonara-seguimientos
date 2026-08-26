@@ -61,9 +61,15 @@ async def redactar(
     largo_maximo: int,
     claude_bin: str,
     carpeta: Path,
+    contexto_empresa: str = "",
     invocador=invocar,
 ) -> Resultado:
-    """Redacta un borrador para un chat, o explica por qué no hay contexto."""
+    """Redacta un borrador para un chat, o explica por qué no hay contexto.
+
+    `contexto_empresa` es el texto que el dueño escribió en su panel: qué vende,
+    qué ofrece, cómo habla. Viaja como dato acotado y el prompt lo enmarca como
+    referencia — no como instrucciones. Vacío es válido: el prompt lo dice.
+    """
     prompt = rellenar(
         carpeta / "prompts" / "prompt-redactar.txt",
         {
@@ -72,6 +78,8 @@ async def redactar(
             "ULTIMO_LO_MANDO": COMO_LO_DICE_EL_PROMPT.get(quien_hablo_ultimo, "contacto"),
             "ANTIGUEDAD_DIAS": str(max(0, int(antiguedad_dias))),
             "LARGO_MAXIMO": str(largo_maximo),
+            "CONTEXTO_EMPRESA": contexto_empresa[:6000].strip()
+            or "(el dueño no cargó información adicional)",
         },
     )
 

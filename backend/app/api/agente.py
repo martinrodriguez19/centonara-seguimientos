@@ -283,10 +283,22 @@ async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) 
 
     Los chats vienen en `detalle`, ya revisados por el agente: los mal formados
     se descartaron alla y estan contados en `detalle["descartados"]`.
+
+    Si la corrida era un barrido (D27), aca ademas avanza el cursor de la
+    maquina: la antiguedad del chat mas nuevo de la tanda es el "hasta" de la
+    proxima, y los nombres recien vistos desempatan la frontera.
     """
+    payload_listar = job.get("payload") or {}
+    estrategia = str(payload_listar.get("estrategia", "recientes"))
+
     chats = cuerpo.detalle.get("chats") or []
     if not isinstance(chats, list) or not chats:
         log.warning("listar_sin_chats", corrida=str(job.get("corrida_id")), maquina=job["maquina"])
+        if estrategia == "barrido":
+            #  Tanda vacia = no quedan chats nuevos: el barrido llego al presente.
+            await vendedores.registrar_barrido(
+                base, job["maquina"], hasta_dias=None, tanda=[], completado=True
+            )
         return
 
     encoladas = await generacion.encolar_redacciones(
@@ -294,7 +306,18 @@ async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) 
         corrida_id=job["corrida_id"],
         maquina=job["maquina"],
         chats=chats,
+        estrategia=estrategia,
     )
+
+    if estrategia == "barrido" and not encoladas.repetido:
+        antiguedades = [int(c.get("antiguedad_dias", 0)) for c in chats if isinstance(c, dict)]
+        await vendedores.registrar_barrido(
+            base,
+            job["maquina"],
+            hasta_dias=min(antiguedades) if antiguedades else None,
+            tanda=[str(c.get("contacto_nombre", ""))[:120] for c in chats if isinstance(c, dict)],
+            completado=len(chats) < int(payload_listar.get("n_chats", 20)),
+        )
 
     # Que no se encole nada no es lo mismo segun por que. Sin destinos
     # permitidos es el sistema haciendo lo que le pidieron (R4); sin telefono es
@@ -305,6 +328,7 @@ async def _encolar_redacciones(base, job: dict[str, Any], cuerpo: ResultadoJob) 
             corrida=str(job.get("corrida_id")),
             leidos=len(chats),
             sin_telefono=encoladas.sin_telefono,
+            ya_contactados=encoladas.ya_contactados,
             no_permitidos=encoladas.no_permitidos,
         )
 

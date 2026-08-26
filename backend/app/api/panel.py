@@ -131,6 +131,8 @@ def _resumir_maquina(vendedor: dict[str, Any], ahora: datetime) -> dict[str, Any
         "diagnostico": diagnostico,
         "version_agente": vendedor.get("version_agente"),
         "tope_diario": vendedor.get("tope_diario", 20),
+        # El avance del barrido histórico de esta máquina (D27), si arrancó.
+        "barrido": vendedor.get("barrido"),
     }
 
 
@@ -570,6 +572,12 @@ class CambioConfiguracion(Estricto):
     n_chats_por_defecto: Annotated[int | None, Field(ge=1, le=50)] = None
     # El horario de envío. Era fijo en el código; lo maneja el responsable.
     ventana: VentanaCambio | None = None
+    # Cómo elige chats la generación (D27): los recientes de la ventana, o el
+    # barrido del historial del más viejo a hoy.
+    modo_lectura: Literal["recientes", "barrido"] | None = None
+    # Lo que el redactor tiene que saber de la empresa. Dato acotado que viaja
+    # al REDACTAR; el prompt fijo de la máquina lo enmarca como referencia.
+    contexto_empresa: Annotated[str | None, Field(max_length=6000)] = None
     # La ventana de antigüedad: desde y hasta cuántos días de silencio vale la
     # pena un seguimiento. Que min <= max se verifica en el endpoint, contra lo
     # que va a quedar guardado: acá puede venir un solo extremo.

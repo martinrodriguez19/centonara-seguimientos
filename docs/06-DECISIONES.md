@@ -400,6 +400,38 @@ Ahí la conversación es sobre el valor configurado, no sobre el mecanismo — q
 
 ---
 
+### D27 — Contexto de empresa en cada redacción, y barrido del historial con cursor
+
+**Contexto.** Dos pedidos del dueño para cerrar el producto (25/8/2026). Uno: su cliente tiene
+toda la información de la empresa —productos, promociones, tono— y quiere que el redactor escriba
+con eso, no a ciegas. Dos: el caso de negocio real es recuperar a los clientes viejos: recorrer el
+historial de WhatsApp del más antiguo hacia hoy, de a tandas diarias, sin recontactar a nadie.
+
+**Decisión, en tres partes.**
+
+1. **`contexto_empresa`**: un texto libre del dueño en Configuración (tope 6000 caracteres) que
+   viaja en el payload de cada `REDACTAR`. No viola la regla "el prompt no viaja por la red": lo
+   que viaja es una **variable acotada** —como ya lo eran los resúmenes— que el prompt fijo de la
+   máquina interpola entre marcas explícitas y enmarca como dato de referencia, no instrucciones.
+   Reusar el sistema para otro rubro es cambiar ese texto, sin deploy.
+2. **Barrido del historial** (`modo_lectura: "barrido"`): la posición en la lista de WhatsApp no
+   sirve de cursor —se reordena con cada mensaje—, así que el cursor es **la antigüedad**: cada
+   máquina guarda en su documento hasta qué antigüedad llegó (`barrido.hasta_dias`) y los nombres
+   de la última tanda para desempatar la frontera. La primera corrida va al fondo; cada una pide
+   "los N más viejos con antigüedad ≤ cursor, salteando los ya vistos". Una tanda corta = llegó al
+   presente, y queda marcado. La ventana de antigüedad del modo "recientes" no aplica: el barrido
+   es su propia estrategia.
+3. **No repetir ni pagar de más**: el anti-duplicado corre **antes** de redactar (un mensaje no
+   descartado en los últimos `dias_anti_duplicado` bloquea la redacción — antes se pagaba y el
+   triage lo tiraba después), y los números que el `RESOLVER` averigua quedan en la colección
+   `telefonos` (máquina + nombre → número), así el barrido no reabre chats ya resueltos.
+
+**Qué la revertiría.** Que la antigüedad que reporta el modelo sea demasiado imprecisa como cursor
+(tandas que se pisan o se saltean chats). Ahí se evalúa un cursor híbrido con más nombres
+recordados, o pedir al modelo la fecha del último mensaje en vez de días.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

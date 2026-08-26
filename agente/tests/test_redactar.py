@@ -88,7 +88,7 @@ async def test_vendedor_se_dice_yo_en_el_prompt() -> None:
     invocador = responde({"status": "ok", "texto": "Hola"})
     await correr(invocador, quien_hablo_ultimo="vendedor")
 
-    assert "lo mando:            yo" in invocador.visto["prompt"]
+    assert "ultimo lo mando:     yo" in invocador.visto["prompt"]
 
 
 # ---------------------------------------------------------------------------
@@ -158,3 +158,31 @@ async def test_un_fallo_de_la_invocacion_se_propaga() -> None:
 
     assert not resultado.ok
     assert resultado.raw == "crudo"
+
+
+# ---------------------------------------------------------------------------
+# La información de la empresa (D27)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_contexto_de_empresa_llega_al_prompt() -> None:
+    """Lo que el dueño escribió en su panel entra al prompt, enmarcado como
+    dato entre las marcas — no como instrucciones sueltas."""
+    invocador = responde({"status": "ok", "texto": "Hola"})
+    await correr(
+        invocador,
+        contexto_empresa="Vendemos entradas para eventos. Promo: 20% primera fecha.",
+    )
+
+    prompt = invocador.visto["prompt"]
+    assert "Vendemos entradas para eventos" in prompt
+    assert "<<INFO EMPRESA>>" in prompt
+    assert "<<FIN INFO EMPRESA>>" in prompt
+
+
+async def test_sin_contexto_de_empresa_el_prompt_lo_dice() -> None:
+    """Vacío es válido y el prompt no queda con un hueco mudo."""
+    invocador = responde({"status": "ok", "texto": "Hola"})
+    await correr(invocador)
+
+    assert "no cargó información adicional" in invocador.visto["prompt"]

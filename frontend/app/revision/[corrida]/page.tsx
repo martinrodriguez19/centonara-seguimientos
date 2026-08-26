@@ -105,7 +105,9 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
       {sinValidar.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-4">
           <p className="flex-1 text-sm">
-            Hay {sinValidar.length} borradores sin revisar por el sistema.
+            {sinValidar.length === 1
+              ? "Hay 1 borrador sin revisar por el sistema."
+              : `Hay ${sinValidar.length} borradores sin revisar por el sistema.`}
           </p>
           <Button size="sm" disabled={validar.isPending} onClick={() => validar.mutate()}>
             {validar.isPending ? textos.revision.validando : "Revisar ahora"}

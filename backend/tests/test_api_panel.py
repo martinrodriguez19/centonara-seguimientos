@@ -734,3 +734,27 @@ async def test_una_ventana_al_reves_o_sin_dias_se_rechaza(adentro, base) -> None
     ):
         respuesta = await adentro.patch("/api/configuracion", json=cuerpo)
         assert respuesta.status_code == 422, cuerpo
+
+
+# ---------------------------------------------------------------------------
+# v1.2: modo de lectura y contexto de empresa (D27)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_modo_de_lectura_y_contexto_de_empresa_se_guardan(adentro, base) -> None:
+    respuesta = await adentro.patch(
+        "/api/configuracion",
+        json={"modo_lectura": "barrido", "contexto_empresa": "Vendemos entradas de eventos."},
+    )
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["modo_lectura"] == "barrido"
+    assert cuerpo["contexto_empresa"] == "Vendemos entradas de eventos."
+
+
+@sin_mongo
+async def test_un_contexto_de_empresa_desmedido_se_rechaza(adentro, base) -> None:
+    desmedido = "x" * 6001
+    respuesta = await adentro.patch("/api/configuracion", json={"contexto_empresa": desmedido})
+    assert respuesta.status_code == 422

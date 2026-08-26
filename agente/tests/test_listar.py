@@ -209,3 +209,34 @@ async def test_un_fallo_de_la_invocacion_se_propaga_con_su_codigo() -> None:
     assert not resultado.ok
     assert resultado.codigo == "TIMEOUT"
     assert resultado.raw == "a medias"
+
+
+# ---------------------------------------------------------------------------
+# El barrido del historial (D27)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_barrido_usa_su_propio_prompt_con_cursor_y_ya_vistos() -> None:
+    """La estrategia barrido cambia de plantilla: fondo del historial, cursor
+    de antigüedad, y los nombres de la tanda anterior para no repetir."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": [chat()]})
+    await correr(
+        invocador,
+        estrategia="barrido",
+        barrido_hasta_dias=310,
+        ya_vistos=["Corralón Oeste", "Pinturería Sur"],
+    )
+
+    prompt = invocador.visto["prompt"]
+    assert "BARRIDO DEL HISTORIAL" in prompt
+    assert "310 dias o menos" in prompt
+    assert "- Corralón Oeste" in prompt
+    assert "- Pinturería Sur" in prompt
+
+
+async def test_recientes_sigue_usando_el_prompt_de_siempre() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": [chat()]})
+    await correr(invocador)
+
+    assert "BARRIDO DEL HISTORIAL" not in invocador.visto["prompt"]
+    assert "conversaciones que quedaron FRIAS" in invocador.visto["prompt"]

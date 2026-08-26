@@ -21,6 +21,13 @@ export type Maquina = {
   diagnostico: Record<string, string>;
   version_agente: string | null;
   tope_diario: number;
+  /** El avance del barrido histórico (D27), si esta máquina lo arrancó. */
+  barrido?: {
+    hasta_dias?: number | null;
+    ultima_tanda?: string[];
+    completado_en?: string | null;
+    actualizado_en?: string | null;
+  } | null;
 };
 
 export type Corrida = {
@@ -64,6 +71,17 @@ export type Configuracion = {
    */
   antiguedad_min_dias: number;
   antiguedad_max_dias: number;
+  /**
+   * Cómo elige chats la generación (D27): "recientes" mira los de arriba de la
+   * lista dentro de la ventana; "barrido" recorre el historial del más viejo a
+   * hoy, con cursor por máquina y sin repetir contactados.
+   */
+  modo_lectura: "recientes" | "barrido";
+  /**
+   * Lo que el redactor sabe de la empresa: qué vende, qué ofrece, tono. Lo
+   * escribe el dueño y viaja a cada redacción como referencia.
+   */
+  contexto_empresa: string;
   tope_diario_maquina: number;
   tope_por_corrida: number;
   largo_maximo: number;

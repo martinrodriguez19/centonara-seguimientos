@@ -367,3 +367,94 @@ async def test_el_mismo_redactar_reportado_dos_veces_deja_un_solo_mensaje(base) 
     assert primero is not None
     assert segundo is None
     assert await base["mensajes"].count_documents({"corrida_id": corrida}) == 1
+
+
+# ---------------------------------------------------------------------------
+# v1.2: contexto de empresa, anti-duplicado previo, memoria y barrido (D27)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_el_contexto_de_empresa_viaja_en_el_payload(base) -> None:
+    """Lo que el dueño escribió llega a cada redacción, y el esquema lo admite."""
+    from app.modelos.jobs import validar_payload
+
+    await abrir_destinos(base)
+    await configuracion.actualizar(base, {"contexto_empresa": "Vendemos entradas de eventos."})
+
+    resultado = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat()]
+    )
+
+    job = await base["jobs"].find_one({"_id": resultado.jobs[0]})
+    assert job["payload"]["contexto_empresa"] == "Vendemos entradas de eventos."
+    validar_payload("REDACTAR", job["payload"])
+
+
+@sin_mongo
+async def test_un_contacto_con_mensaje_reciente_no_se_vuelve_a_redactar(base) -> None:
+    """El anti-duplicado corre ANTES de pagar la redacción: un borrador de la
+    corrida de la mañana bloquea al de la tarde — y en el barrido es lo que
+    garantiza no recontactar dos veces al mismo cliente."""
+    await abrir_destinos(base)
+    await mensajes.crear_borrador(
+        base,
+        corrida_id=ObjectId(),
+        maquina="pc-1",
+        contacto_id="+5491123231151",
+        contacto_nombre="Corralón San Justo",
+        texto="Hola, ¿seguimos?",
+        resumen_ultimo="preguntó por hierro del 8",
+        quien_hablo_ultimo="contacto",
+        antiguedad_dias=6,
+    )
+
+    resultado = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat()]
+    )
+
+    assert resultado.total == 0
+    assert resultado.ya_contactados == 1
+
+
+@sin_mongo
+async def test_la_memoria_de_telefonos_evita_volver_al_navegador(base) -> None:
+    """Lo que un RESOLVER averiguó una vez queda guardado: la próxima corrida
+    que vea ese nombre sin número redacta directo, sin encolar otro RESOLVER."""
+    await abrir_destinos(base)
+    primera = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat(telefono=None)]
+    )
+    job = await base["jobs"].find_one({"_id": primera.resolver_job})
+    await generacion.encolar_redacciones_resueltas(
+        base,
+        job=job,
+        contactos=[{"nombre": "Corralón San Justo", "telefono": "+54 9 11 2323-1151"}],
+    )
+
+    segunda = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat(telefono=None)]
+    )
+
+    assert segunda.desde_cache == 1
+    assert segunda.resolver_job is None
+    assert segunda.total == 1
+
+
+@sin_mongo
+async def test_el_barrido_ignora_la_ventana_de_antiguedad(base) -> None:
+    """El barrido ES su propia estrategia: un chat de hace un año entra aunque
+    la ventana del modo recientes diga 30 días."""
+    await abrir_destinos(base)
+    await configuracion.actualizar(base, {"antiguedad_min_dias": 0, "antiguedad_max_dias": 30})
+    viejo = chat(antiguedad_dias=300)
+
+    recientes = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[viejo]
+    )
+    assert recientes.fuera_de_antiguedad == 1
+
+    barrido = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[viejo], estrategia="barrido"
+    )
+    assert barrido.total == 1

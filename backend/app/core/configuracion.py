@@ -38,8 +38,20 @@ POR_DEFECTO: dict[str, Any] = {
     # La ventana de antigüedad de los chats que vale la pena seguir: el caso de
     # uso del sistema son los clientes que quedaron fríos, no el que escribió
     # hoy. En días desde el último mensaje; fuera de la ventana no se redacta.
+    # ⚠️ Sólo aplica al modo "recientes": el barrido es su propia estrategia.
     "antiguedad_min_dias": 0,
     "antiguedad_max_dias": 90,
+    # Cómo elige chats una corrida de generación (D27):
+    #   recientes — los de arriba de la lista, dentro de la ventana de arriba.
+    #   barrido   — desde el fondo del historial hacia hoy, N por corrida, con
+    #               cursor por máquina y sin repetir contactados. Es el modo
+    #               para recuperar a los clientes viejos que quedaron sin
+    #               recontactar.
+    "modo_lectura": "recientes",
+    # Lo que el dueño quiere que el redactor sepa de su empresa: qué vende, qué
+    # ofrece, promociones, tono. Viaja al REDACTAR como dato acotado y el prompt
+    # lo enmarca como referencia — no como instrucciones. Vacío = no se usa.
+    "contexto_empresa": "",
     "tope_diario_maquina": 20,
     "tope_por_corrida": 25,
     "largo_maximo": 600,

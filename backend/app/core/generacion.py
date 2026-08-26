@@ -22,7 +22,7 @@ para revisar identidad y anti-duplicado. Por eso el número viaja en el
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bson import ObjectId
@@ -48,6 +48,11 @@ class Encoladas:
     no_permitidos: int = 0
     #  Fuera de la ventana de antigüedad: demasiado fresco o demasiado viejo.
     fuera_de_antiguedad: int = 0
+    #  El sistema ya le generó un mensaje hace poco: no se paga dos veces, y en
+    #  el barrido es lo que garantiza no recontactar (D27).
+    ya_contactados: int = 0
+    #  El número salió de la memoria de resoluciones anteriores, sin navegador.
+    desde_cache: int = 0
     #  El job RESOLVER que quedó encolado con los sin-teléfono, si hubo.
     resolver_job: ObjectId | None = None
     #  Ya se habían encolado: el agente reportó dos veces el mismo `LISTAR`.
@@ -56,6 +61,58 @@ class Encoladas:
     @property
     def total(self) -> int:
         return len(self.jobs)
+
+
+async def _ya_contactado(base, contacto_id: str, *, dias: int, momento: datetime) -> bool:
+    """¿Ya hay un mensaje del sistema para este contacto, reciente?
+
+    Más amplio que `mensajes.le_escribimos_hace_poco` (G5), a propósito: acá
+    cuenta también un BORRADOR o un RETENIDO — si la corrida de la mañana ya le
+    generó algo que está esperando revisión, la de la tarde no tiene que pagar
+    por generarle otro. Sólo un DESCARTADO libera el cupo: alguien decidió que
+    ese mensaje no iba, y eso no debería vetar al contacto para siempre.
+    """
+    corte = momento - timedelta(days=max(1, int(dias)))
+    return (
+        await base["mensajes"].count_documents(
+            {
+                "contacto_id": contacto_id,
+                "creado_en": {"$gte": corte},
+                "estado": {"$ne": str(Estado.DESCARTADO)},
+            },
+            limit=1,
+        )
+        > 0
+    )
+
+
+# ---------------------------------------------------------------------------
+# La memoria de números resueltos
+# ---------------------------------------------------------------------------
+#
+# Lo que el RESOLVER averiguó una vez —"Corralón San Justo" es +54911...— no
+# cambia de un día para otro, y volver a abrir el chat para releerlo cuesta
+# tiempo de navegador en la máquina del vendedor. Colección `telefonos`, una
+# entrada por (máquina, nombre), pisada en cada resolución nueva.
+
+
+async def _telefonos_conocidos(base, maquina: str, nombres: list[str]) -> dict[str, str]:
+    if not nombres:
+        return {}
+    documentos = (
+        await base["telefonos"].find({"maquina": maquina, "nombre": {"$in": nombres}}).to_list(None)
+    )
+    return {d["nombre"]: d["contacto_id"] for d in documentos if d.get("contacto_id")}
+
+
+async def _recordar_telefono(
+    base, maquina: str, nombre: str, contacto_id: str, momento: datetime
+) -> None:
+    await base["telefonos"].update_one(
+        {"maquina": maquina, "nombre": nombre},
+        {"$set": {"contacto_id": contacto_id, "actualizado_en": momento}},
+        upsert=True,
+    )
 
 
 def _en_ventana(config: dict[str, Any], chat: dict[str, Any]) -> bool:
@@ -77,7 +134,7 @@ async def _encolar_redaccion(
     maquina: str,
     chat: dict[str, Any],
     contacto_id: str,
-    largo_maximo: int,
+    config: dict[str, Any],
     momento: datetime,
 ) -> ObjectId:
     """Un `REDACTAR`, con el teléfono en el `contexto` y nunca en el payload."""
@@ -91,7 +148,11 @@ async def _encolar_redaccion(
             "resumen": chat["ultimo_mensaje_resumen"],
             "quien_hablo_ultimo": chat.get("quien_hablo_ultimo", "contacto"),
             "antiguedad_dias": chat.get("antiguedad_dias", 0),
-            "largo_maximo": largo_maximo,
+            "largo_maximo": config.get("largo_maximo", 600),
+            # Lo que el dueño escribió sobre su empresa, para redactar con
+            # conocimiento real de la oferta. Dato acotado; el prompt fijo de
+            # la máquina lo enmarca como referencia.
+            "contexto_empresa": str(config.get("contexto_empresa", ""))[:6000],
         },
         contexto={
             "contacto_id": contacto_id,
@@ -104,19 +165,63 @@ async def _encolar_redaccion(
     )
 
 
+async def _redactar_si_corresponde(
+    base,
+    *,
+    corrida_id: ObjectId,
+    maquina: str,
+    chat: dict[str, Any],
+    contacto_id: str,
+    config: dict[str, Any],
+    momento: datetime,
+    resultado: Encoladas,
+) -> None:
+    """Las dos puertas antes de pagar una redacción, y recién ahí el encolado.
+
+    R4 primero (¿se le puede escribir?) y anti-duplicado después (¿ya le
+    generamos algo hace poco?). Las dos ANTES de redactar: un borrador para
+    alguien que no puede recibirlo, o repetido, es plata tirada — y en el
+    barrido (D27), la segunda es lo que garantiza no recontactar dos veces.
+    """
+    if not configuracion.destino_permitido(config, contacto_id):
+        resultado.no_permitidos += 1
+        return
+
+    dias = int(config.get("dias_anti_duplicado", 7))
+    if await _ya_contactado(base, contacto_id, dias=dias, momento=momento):
+        resultado.ya_contactados += 1
+        return
+
+    encolado = await _encolar_redaccion(
+        base,
+        corrida_id=corrida_id,
+        maquina=maquina,
+        chat=chat,
+        contacto_id=contacto_id,
+        config=config,
+        momento=momento,
+    )
+    resultado.jobs.append(encolado)
+
+
 async def encolar_redacciones(
     base,
     *,
     corrida_id: ObjectId,
     maquina: str,
     chats: list[dict[str, Any]],
+    estrategia: str = "recientes",
     ahora: datetime | None = None,
 ) -> Encoladas:
     """Un `REDACTAR` por cada chat al que efectivamente se le podría escribir.
 
-    Los chats sin teléfono no se descartan: se juntan en un único `RESOLVER`
-    (una sola sesión de navegador para todos) que va a leer los números reales,
-    y recién con el número se decide R4 y se redacta.
+    Los chats sin teléfono no se descartan: primero se busca el número en la
+    memoria de resoluciones anteriores, y los que sigan sin número se juntan en
+    un único `RESOLVER` (una sola sesión de navegador para todos). Recién con
+    el número se decide R4, el anti-duplicado, y se redacta.
+
+    `estrategia="barrido"` (D27) saltea el filtro de ventana de antigüedad: el
+    barrido ES su propia estrategia de selección y va del fondo hacia hoy.
     """
     momento = ahora or datetime.now(UTC)
     resultado = Encoladas()
@@ -139,11 +244,10 @@ async def encolar_redacciones(
         return resultado
 
     config = await configuracion.obtener(base)
-    largo_maximo = config.get("largo_maximo", 600)
     sin_numero: dict[str, dict[str, Any]] = {}
 
     for chat in chats:
-        if not _en_ventana(config, chat):
+        if estrategia != "barrido" and not _en_ventana(config, chat):
             resultado.fuera_de_antiguedad += 1
             continue
 
@@ -157,28 +261,34 @@ async def encolar_redacciones(
             sin_numero[chat["contacto_nombre"]] = chat
             continue
 
-        # ⚠️ R4, y acá es además una decisión de plata. Redactar para un número
-        # al que el sistema no puede escribirle cuesta una llamada al modelo y
-        # produce un borrador que nunca va a poder salir. Con la lista en los
-        # tres números de prueba, saltearlos es la diferencia entre pagar tres
-        # redacciones y pagar veinte.
-        #
-        # Lista vacía significa a nadie, así que una corrida sin destinos
-        # configurados no encola nada — y el conteo lo deja dicho.
-        if not configuracion.destino_permitido(config, contacto_id):
-            resultado.no_permitidos += 1
-            continue
-
-        job = await _encolar_redaccion(
+        await _redactar_si_corresponde(
             base,
             corrida_id=corrida_id,
             maquina=maquina,
             chat=chat,
             contacto_id=contacto_id,
-            largo_maximo=largo_maximo,
+            config=config,
             momento=momento,
+            resultado=resultado,
         )
-        resultado.jobs.append(job)
+
+    # Antes de abrir ningún navegador: la memoria. Lo que un RESOLVER anterior
+    # ya averiguó de esta máquina se usa directo, sin pagar tiempo de ventana.
+    if sin_numero:
+        conocidos = await _telefonos_conocidos(base, maquina, sorted(sin_numero))
+        for nombre, contacto_id in conocidos.items():
+            chat = sin_numero.pop(nombre)
+            resultado.desde_cache += 1
+            await _redactar_si_corresponde(
+                base,
+                corrida_id=corrida_id,
+                maquina=maquina,
+                chat=chat,
+                contacto_id=contacto_id,
+                config=config,
+                momento=momento,
+                resultado=resultado,
+            )
 
     # Con la lista de destinos VACÍA no se resuelve nada: vacía significa a
     # nadie (R4), así que cualquier número que volviera se filtraría igual.
@@ -201,9 +311,12 @@ async def encolar_redacciones(
         "redacciones_encoladas",
         corrida=str(corrida_id),
         maquina=maquina,
+        estrategia=estrategia,
         encolados=resultado.total,
         sin_telefono=resultado.sin_telefono,
         a_resolver=len(sin_numero),
+        desde_cache=resultado.desde_cache,
+        ya_contactados=resultado.ya_contactados,
         no_permitidos=resultado.no_permitidos,
         fuera_de_antiguedad=resultado.fuera_de_antiguedad,
     )
@@ -233,7 +346,6 @@ async def encolar_redacciones_resueltas(
     chats: dict[str, Any] = (job.get("contexto") or {}).get("chats") or {}
 
     config = await configuracion.obtener(base)
-    largo_maximo = config.get("largo_maximo", 600)
 
     for contacto in contactos:
         nombre = str(contacto.get("nombre") or "")
@@ -249,9 +361,9 @@ async def encolar_redacciones_resueltas(
             resultado.sin_telefono += 1
             continue
 
-        if not configuracion.destino_permitido(config, contacto_id):
-            resultado.no_permitidos += 1
-            continue
+        # A la memoria: la próxima corrida que vea este nombre no vuelve a
+        # abrir el chat para releer el mismo número.
+        await _recordar_telefono(base, maquina, nombre, contacto_id, momento)
 
         repetido = await base["jobs"].find_one(
             {
@@ -264,16 +376,16 @@ async def encolar_redacciones_resueltas(
         if repetido is not None:
             continue
 
-        encolado = await _encolar_redaccion(
+        await _redactar_si_corresponde(
             base,
             corrida_id=corrida_id,
             maquina=maquina,
             chat=chat,
             contacto_id=contacto_id,
-            largo_maximo=largo_maximo,
+            config=config,
             momento=momento,
+            resultado=resultado,
         )
-        resultado.jobs.append(encolado)
 
     log.info(
         "redacciones_resueltas_encoladas",
@@ -281,6 +393,7 @@ async def encolar_redacciones_resueltas(
         maquina=maquina,
         encolados=resultado.total,
         sin_telefono=resultado.sin_telefono,
+        ya_contactados=resultado.ya_contactados,
         no_permitidos=resultado.no_permitidos,
     )
     return resultado

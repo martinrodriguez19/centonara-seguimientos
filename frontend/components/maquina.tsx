@@ -148,6 +148,19 @@ export function TarjetaMaquina({
           <dd className="text-right tabular-nums">{haceCuanto(maquina.ultimo_latido)}</dd>
           <dt>{textos.maquina.version}</dt>
           <dd className="text-right font-mono">{maquina.version_agente ?? "—"}</dd>
+          {/* El avance del barrido histórico (D27), cuando esta máquina lo usa. */}
+          {maquina.barrido && (
+            <>
+              <dt>Barrido del historial</dt>
+              <dd className="text-right tabular-nums">
+                {maquina.barrido.completado_en
+                  ? "al día ✓"
+                  : maquina.barrido.hasta_dias != null
+                    ? `va por ~${maquina.barrido.hasta_dias} días atrás`
+                    : "arrancando"}
+              </dd>
+            </>
+          )}
         </dl>
 
         {/* ⚠️ Lo que separa esto del HTTP 502 mudo del MVP: el panel dice QUÉ

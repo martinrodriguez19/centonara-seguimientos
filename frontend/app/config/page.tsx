@@ -56,23 +56,70 @@ export default function Config() {
         <CardHeader>
           <CardTitle className="text-base">Qué chats se siguen</CardTitle>
           <p className="text-sm text-muted-foreground">
-            El sistema busca conversaciones que quedaron frías: clientes que escribieron hace un
-            tiempo y no volvieron. La ventana dice desde y hasta cuántos días de silencio vale la
-            pena un seguimiento.
+            Dos formas de elegir. <strong>Los más recientes</strong>: los de arriba de la lista,
+            dentro de la ventana de silencio de abajo. <strong>Barrido del historial</strong>: va
+            al fondo del WhatsApp y avanza del chat más viejo hacia hoy, de a tandas, recuperando
+            a los clientes que quedaron sin recontactar — sin repetir a nadie que ya recibió algo.
           </p>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Numero
-            etiqueta="Silencio mínimo (días)"
-            ayuda="Un chat más fresco que esto no necesita seguimiento todavía."
-            valor={datos.antiguedad_min_dias ?? 0}
-            onGuardar={(antiguedad_min_dias) => guardar.mutate({ antiguedad_min_dias })}
-          />
-          <Numero
-            etiqueta="Silencio máximo (días)"
-            ayuda="Más viejo que esto, el contacto se considera perdido y no se le escribe."
-            valor={datos.antiguedad_max_dias ?? 90}
-            onGuardar={(antiguedad_max_dias) => guardar.mutate({ antiguedad_max_dias })}
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={(datos.modo_lectura ?? "recientes") === "recientes" ? "default" : "outline"}
+              disabled={guardar.isPending}
+              onClick={() => guardar.mutate({ modo_lectura: "recientes" })}
+            >
+              Los más recientes
+            </Button>
+            <Button
+              size="sm"
+              variant={datos.modo_lectura === "barrido" ? "default" : "outline"}
+              disabled={guardar.isPending}
+              onClick={() => guardar.mutate({ modo_lectura: "barrido" })}
+            >
+              Barrido del historial
+            </Button>
+          </div>
+          {datos.modo_lectura === "barrido" ? (
+            <p className="text-xs text-muted-foreground">
+              Cada corrida lee la siguiente tanda de "Chats a leer por máquina" (abajo). El avance
+              se ve en la tarjeta de cada máquina. La ventana de silencio no aplica en este modo.
+            </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Numero
+                etiqueta="Silencio mínimo (días)"
+                ayuda="Un chat más fresco que esto no necesita seguimiento todavía."
+                valor={datos.antiguedad_min_dias ?? 0}
+                onGuardar={(antiguedad_min_dias) => guardar.mutate({ antiguedad_min_dias })}
+              />
+              <Numero
+                etiqueta="Silencio máximo (días)"
+                ayuda="Más viejo que esto, el contacto se considera perdido y no se le escribe."
+                valor={datos.antiguedad_max_dias ?? 90}
+                onGuardar={(antiguedad_max_dias) => guardar.mutate({ antiguedad_max_dias })}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Sobre la empresa</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Todo lo que el redactor tiene que saber para escribir con conocimiento real: qué vende
+            la empresa, productos y servicios, promociones vigentes, cómo le habla a sus clientes,
+            con qué conviene recaptar. Cuanto más concreto, más fuertes salen los mensajes. Se
+            puede cambiar cuando quieras — cada redacción usa la versión del momento.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <ContextoEmpresa
+            valor={datos.contexto_empresa ?? ""}
+            guardando={guardar.isPending}
+            onGuardar={(contexto_empresa) => guardar.mutate({ contexto_empresa })}
           />
         </CardContent>
       </Card>
@@ -349,6 +396,49 @@ function Palabras({
  * nada a nadie, y el caso normal —de lunes a viernes— merece decirse así y no
  * como una enumeración de cinco días.
  */
+/**
+ * El texto libre del dueño sobre su empresa (D27). Viaja a cada redacción como
+ * referencia; el prompt de la máquina lo enmarca como dato, no instrucciones.
+ */
+function ContextoEmpresa({
+  valor,
+  guardando,
+  onGuardar,
+}: {
+  valor: string;
+  guardando: boolean;
+  onGuardar: (texto: string) => void;
+}) {
+  const [borrador, setBorrador] = useState(valor);
+  const LIMITE = 6000;
+
+  return (
+    <>
+      <textarea
+        rows={10}
+        maxLength={LIMITE}
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        placeholder={
+          "Ejemplo:\nSomos E-Ticketpro, vendemos entradas y gestión de eventos.\n" +
+          "Productos: ticketera online, control de accesos, cashless.\n" +
+          "Promo vigente: 20% de descuento en la primera fecha.\n" +
+          "Tono: cercano y profesional, tuteo rioplatense."
+        }
+        value={borrador}
+        onChange={(evento) => setBorrador(evento.target.value)}
+      />
+      <div className="flex items-center justify-between">
+        <Button size="sm" disabled={guardando || borrador === valor} onClick={() => onGuardar(borrador)}>
+          Guardar información
+        </Button>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {borrador.length} / {LIMITE}
+        </span>
+      </div>
+    </>
+  );
+}
+
 /**
  * El horario de envío, editable (D26): lo maneja el responsable del panel.
  *

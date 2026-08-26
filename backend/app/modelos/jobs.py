@@ -36,12 +36,21 @@ class PayloadBase(BaseModel):
 
 
 class PayloadListar(PayloadBase):
-    """Leer hasta N chats cuya antigüedad caiga en la ventana configurada."""
+    """Leer hasta N chats: los recientes de la ventana, o el barrido histórico."""
 
     n_chats: Annotated[int, Field(ge=1, le=MAX_CHATS)] = 20
     run_id: Annotated[str, Field(max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
     antiguedad_min_dias: Annotated[int, Field(ge=0, le=3650)] = 0
     antiguedad_max_dias: Annotated[int, Field(ge=1, le=3650)] = 3650
+    # El barrido (D27): desde el fondo del historial hacia hoy. `barrido_hasta_dias`
+    # es el cursor — sólo interesan chats con antigüedad MENOR O IGUAL a eso — y
+    # `ya_vistos` son los nombres de la tanda anterior, para no repetir en la
+    # frontera cuando varios chats comparten antigüedad.
+    estrategia: Literal["recientes", "barrido"] = "recientes"
+    barrido_hasta_dias: Annotated[int, Field(ge=0, le=3650)] = 3650
+    ya_vistos: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=20)
+    ] = []
 
 
 class PayloadResolver(PayloadBase):
@@ -66,6 +75,9 @@ class PayloadRedactar(PayloadBase):
     quien_hablo_ultimo: Literal["contacto", "vendedor"]
     antiguedad_dias: Annotated[int, Field(ge=0, le=3650)]
     largo_maximo: Annotated[int, Field(ge=50, le=1000)] = 600
+    # Lo que el dueño escribió en el panel sobre su empresa. Es DATO acotado que
+    # el prompt fijo de la máquina enmarca como referencia, no instrucciones.
+    contexto_empresa: Annotated[str, Field(max_length=6000)] = ""
 
 
 class PayloadEnviar(PayloadBase):

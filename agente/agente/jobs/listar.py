@@ -72,13 +72,20 @@ async def listar(
     carpeta: Path,
     antiguedad_min_dias: int = 0,
     antiguedad_max_dias: int = 3650,
+    estrategia: str = "recientes",
+    barrido_hasta_dias: int = 3650,
+    ya_vistos: list[str] | None = None,
     invocador=invocar,
 ) -> Resultado:
-    """Lee chats dentro de la ventana de antigüedad y devuelve lo certero.
+    """Lee chats según la estrategia y devuelve lo que se pudo leer con certeza.
 
-    La ventana existe porque el caso de uso son los clientes fríos: el chat de
-    hoy no necesita seguimiento, el de hace un mes sí. El modelo recorre la
-    lista hacia atrás hasta cubrirla, con `n_chats` de tope.
+    Dos estrategias, cada una con su prompt en disco:
+
+    - `recientes` — los de la ventana de antigüedad, de arriba hacia abajo.
+    - `barrido` (D27) — desde el fondo del historial hacia hoy: los `n_chats`
+      MÁS VIEJOS con antigüedad menor o igual al cursor `barrido_hasta_dias`,
+      salteando los `ya_vistos` de la tanda anterior. El cursor lo lleva el
+      backend, por máquina.
     """
     if not device_id:
         # Problema #5 del MVP. Sin esto, con más de un Chrome conectado a la
@@ -90,14 +97,18 @@ async def listar(
 
     minimo = max(0, int(antiguedad_min_dias))
     maximo = max(minimo, int(antiguedad_max_dias))
+    nombres_vistos = [str(n).strip() for n in (ya_vistos or []) if str(n).strip()][:20]
+    plantilla = "prompt-barrido.txt" if estrategia == "barrido" else "prompt-listar.txt"
     prompt = rellenar(
-        carpeta / "prompts" / "prompt-listar.txt",
+        carpeta / "prompts" / plantilla,
         {
             "N_CHATS": str(max(1, min(int(n_chats), MAX_CHATS))),
             "RUN_ID": run_id[:64],
             "DEVICE_ID": device_id,
             "ANTIGUEDAD_MIN": str(minimo),
             "ANTIGUEDAD_MAX": str(maximo),
+            "HASTA_DIAS": str(max(0, int(barrido_hasta_dias))),
+            "YA_VISTOS": ("\n".join(f"  - {nombre}" for nombre in nombres_vistos) or "  (ninguno)"),
         },
     )
 

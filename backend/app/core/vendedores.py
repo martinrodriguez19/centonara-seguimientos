@@ -175,6 +175,43 @@ async def registrar_latido(
     await base["vendedores"].update_one({"maquina": maquina}, {"$set": cambios})
 
 
+async def registrar_barrido(
+    base,
+    maquina: str,
+    *,
+    hasta_dias: int | None,
+    tanda: list[str],
+    completado: bool,
+    ahora: datetime | None = None,
+) -> None:
+    """El cursor del barrido histórico de esta máquina (D27).
+
+    `hasta_dias` es la antigüedad del chat MÁS NUEVO de la tanda que se acaba
+    de procesar: la próxima corrida pide "los más viejos con hasta esos días",
+    y así el barrido avanza del fondo del historial hacia hoy sin volver a
+    empezar. `tanda` son los nombres recién vistos, para desempatar en la
+    frontera. `completado` = la tanda vino incompleta: el barrido llegó al
+    presente, y el panel lo puede decir.
+    """
+    momento = ahora or datetime.now(UTC)
+    cambios: dict[str, Any] = {
+        "barrido.ultima_tanda": [str(n)[:120] for n in tanda][:20],
+        "barrido.actualizado_en": momento,
+        "barrido.completado_en": momento if completado else None,
+    }
+    if hasta_dias is not None:
+        cambios["barrido.hasta_dias"] = max(0, int(hasta_dias))
+
+    await base["vendedores"].update_one({"maquina": maquina}, {"$set": cambios})
+    log.info(
+        "barrido_registrado",
+        maquina=maquina,
+        hasta_dias=hasta_dias,
+        tanda=len(tanda),
+        completado=completado,
+    )
+
+
 def esta_pausada(vendedor: dict[str, Any], *, ahora: datetime | None = None) -> bool:
     """¿Esta máquina está pausada ahora mismo?
 

@@ -114,19 +114,31 @@ async def disparar(
     corrida_id = resultado.inserted_id
 
     encolados = 0
-    for maquina in maquinas:
+    for vendedor in disponibles:
+        maquina = vendedor["maquina"]
         if tipo is TipoCorrida.DIAGNOSTICO:
             payload: dict[str, Any] = {}
             job = cola.Tipo.DIAGNOSTICO
         else:
+            estrategia = str(config.get("modo_lectura", "recientes"))
             payload = {
                 "n_chats": chats,
                 "run_id": str(corrida_id),
+                "estrategia": estrategia,
                 # La ventana viaja al agente para que el LISTAR busque los
                 # chats fríos de verdad, no los N de arriba de la lista.
                 "antiguedad_min_dias": config.get("antiguedad_min_dias", 0),
                 "antiguedad_max_dias": config.get("antiguedad_max_dias", 3650),
             }
+            if estrategia == "barrido":
+                # El cursor de ESTA máquina (D27): hasta dónde llegó el barrido
+                # la última vez, y los nombres de esa tanda para no repetir en
+                # la frontera. Cada Mac avanza a su ritmo.
+                barrido = vendedor.get("barrido") or {}
+                payload["barrido_hasta_dias"] = int(barrido.get("hasta_dias") or 3650)
+                payload["ya_vistos"] = [
+                    str(n)[:120] for n in (barrido.get("ultima_tanda") or []) if str(n).strip()
+                ][:20]
             job = cola.Tipo.LISTAR
 
         await cola.encolar(

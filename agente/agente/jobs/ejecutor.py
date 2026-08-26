@@ -65,6 +65,9 @@ def construir(
                 run_id=str(carga.get("run_id", "")),
                 antiguedad_min_dias=carga.get("antiguedad_min_dias", 0),
                 antiguedad_max_dias=carga.get("antiguedad_max_dias", 3650),
+                estrategia=str(carga.get("estrategia", "recientes")),
+                barrido_hasta_dias=carga.get("barrido_hasta_dias", 3650),
+                ya_vistos=list(carga.get("ya_vistos", [])),
                 device_id=device_id,
                 claude_bin=claude_bin,
                 carpeta=carpeta,
@@ -97,6 +100,7 @@ def construir(
                 quien_hablo_ultimo=str(carga.get("quien_hablo_ultimo", "contacto")),
                 antiguedad_dias=carga.get("antiguedad_dias", 0),
                 largo_maximo=carga.get("largo_maximo", 600),
+                contexto_empresa=str(carga.get("contexto_empresa", "")),
                 claude_bin=claude_bin,
                 carpeta=carpeta,
             )

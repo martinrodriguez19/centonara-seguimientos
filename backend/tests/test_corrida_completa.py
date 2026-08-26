@@ -374,6 +374,92 @@ async def test_un_chat_fuera_de_la_ventana_de_antiguedad_no_se_sigue(http, base,
 
 
 @sin_mongo
+async def test_el_barrido_avanza_su_cursor_por_maquina(http, base, maquina) -> None:
+    """D27 de punta a punta: la primera tanda va al fondo del historial, el
+    cursor queda en la antigüedad del chat más nuevo de la tanda, la corrida
+    siguiente lo lleva en el payload junto con los nombres para no repetir, y
+    una tanda corta marca el barrido como completado."""
+    await configuracion.actualizar(base, {"modo_lectura": "barrido"})
+    await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=2)
+
+    job = await tomar(http, maquina.token)
+    assert job["tipo"] == "LISTAR"
+    assert job["payload"]["estrategia"] == "barrido"
+    assert job["payload"]["barrido_hasta_dias"] == 3650
+    assert job["payload"]["ya_vistos"] == []
+
+    await reportar(
+        http,
+        maquina.token,
+        job["id"],
+        detalle={
+            "chats": [
+                {
+                    "contacto_nombre": "El Mas Viejo",
+                    "contacto_telefono": PERMITIDO,
+                    "ultimo_mensaje_resumen": "cotizó hierro para una obra y no volvió",
+                    "quien_hablo_ultimo": "contacto",
+                    "antiguedad_dias": 400,
+                },
+                {
+                    "contacto_nombre": "El Siguiente",
+                    "contacto_telefono": OTRO_PERMITIDO,
+                    "ultimo_mensaje_resumen": "pidió precio de cemento",
+                    "quien_hablo_ultimo": "contacto",
+                    "antiguedad_dias": 380,
+                },
+            ]
+        },
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "pc-1"})
+    assert vendedor["barrido"]["hasta_dias"] == 380
+    assert vendedor["barrido"]["ultima_tanda"] == ["El Mas Viejo", "El Siguiente"]
+    assert vendedor["barrido"]["completado_en"] is None
+
+    # La corrida siguiente arranca donde terminó la anterior.
+    await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=2)
+    listar2 = await base["jobs"].find_one({"tipo": "LISTAR", "estado": "pendiente"})
+    assert listar2["payload"]["barrido_hasta_dias"] == 380
+    assert listar2["payload"]["ya_vistos"] == ["El Mas Viejo", "El Siguiente"]
+
+    # El agente va recibiendo lo pendiente (los REDACTAR de la tanda uno
+    # primero); cuando llega el segundo LISTAR, una tanda corta = llegó a hoy.
+    while (siguiente := await tomar(http, maquina.token)) is not None:
+        if siguiente["tipo"] == "REDACTAR":
+            await reportar(
+                http,
+                maquina.token,
+                siguiente["id"],
+                detalle={"status": "ok", "texto": "Hola, ¿retomamos?"},
+            )
+            continue
+        assert siguiente["tipo"] == "LISTAR"
+        await reportar(
+            http,
+            maquina.token,
+            siguiente["id"],
+            detalle={
+                "chats": [
+                    {
+                        "contacto_nombre": "El Ultimo Que Queda",
+                        "contacto_telefono": None,
+                        "ultimo_mensaje_resumen": "consultó por perfiles y quedó en avisar",
+                        "quien_hablo_ultimo": "contacto",
+                        "antiguedad_dias": 350,
+                    }
+                ]
+            },
+        )
+        break
+
+    vendedor = await base["vendedores"].find_one({"maquina": "pc-1"})
+    assert vendedor["barrido"]["hasta_dias"] == 350
+    assert vendedor["barrido"]["completado_en"] is not None
+    assert vendedor["barrido"]["ultima_tanda"] == ["El Ultimo Que Queda"]
+
+
+@sin_mongo
 async def test_cancelar_corta_lo_pendiente_y_libera_el_boton(http, base, maquina) -> None:
     """Sin esto, una corrida con un job trabado deja el panel "en curso" para
     siempre y no se puede disparar otra. Cancelar es la salida, y es de una
