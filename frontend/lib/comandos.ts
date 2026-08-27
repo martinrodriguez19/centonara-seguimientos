@@ -410,7 +410,7 @@ export const grupos: Grupo[] = [
       },
       {
         id: "windows-inicio",
-        titulo: "15. Que arranque solo al prender la máquina",
+        titulo: "16. Que arranque solo al prender la máquina",
         comando: `Set-Content -Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\centonara.bat" -Value '@echo off', 'cd /d %USERPROFILE%\\centonara-seguimientos', ':loop', 'uv run --directory agente python -m agente.main', 'timeout /t 10 >nul', 'goto loop'`,
         queHace:
           "Crea un archivo en la carpeta de Inicio de Windows que arranca el agente cuando el vendedor inicia sesión, y lo vuelve a levantar si se cae. Es el reemplazo del arranque automático que en la Mac hace el sistema.",
