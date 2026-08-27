@@ -141,6 +141,19 @@ async def conectar_perfil(
             str(carpeta), headless=headless, **extras
         )
     except Exception as error:
+        # ⚠️ Con `CHROME_BIN` puesto, lo más probable no es que el perfil esté
+        # roto: es que esa ruta no sea un navegador. `CLAUDE_BIN` y `CHROME_BIN`
+        # se parecen, están a tres líneas en el `.env`, y `--datos` imprime la
+        # primera — pegarla en la segunda deja a Playwright lanzando Claude Code
+        # con cuarenta banderas de Chrome, y el error que sale de ahí no nombra
+        # ni al `.env` ni a la variable. Pasó en la primera instalación Windows.
+        if chrome_bin:
+            raise NoHayNavegador(
+                f"CHROME_BIN apunta a {chrome_bin!r} y con eso no se pudo abrir un "
+                "navegador. Si esa ruta no es un Chrome, corregila o dejala vacía "
+                "en el .env —vacía busca el Chrome del sistema—. Ojo que CLAUDE_BIN "
+                "y CHROME_BIN son dos variables distintas."
+            ) from error
         raise NoHayNavegador(f"no se pudo abrir el perfil en {carpeta}") from error
 
     pagina = contexto.pages[0] if contexto.pages else await contexto.new_page()

@@ -213,3 +213,57 @@ def test_el_puerto_sincronico_y_el_async_contestan_lo_mismo() -> None:
     puerto = 59_237
     assert navegador.puerto_escucha_sync(puerto, timeout=0.3) is False
     assert asyncio.run(navegador.puerto_escucha(puerto, timeout=0.3)) is False
+
+
+# ---------------------------------------------------------------------------
+# Cuando CHROME_BIN apunta a cualquier otra cosa
+# ---------------------------------------------------------------------------
+
+
+class _PlaywrightQueNoLanza:
+    """Playwright cuando el ejecutable que le dieron no es un navegador."""
+
+    class chromium:
+        @staticmethod
+        async def launch_persistent_context(*args, **kwargs):
+            raise RuntimeError("unknown option '--disable-field-trial-config'")
+
+
+async def test_un_chrome_bin_que_no_es_un_navegador_lo_dice(tmp_path) -> None:
+    """⚠️ El error que salía antes no nombraba ni al `.env` ni a la variable.
+
+    `CLAUDE_BIN` y `CHROME_BIN` están a tres líneas en el archivo y `--datos`
+    imprime la primera: pegarla en la segunda deja a Playwright lanzando Claude
+    Code con cuarenta banderas de Chrome. Pasó en la primera instalación
+    Windows y costó una hora de dar vueltas por el navegador equivocado.
+    """
+    import pytest
+
+    from agente.adaptadores import conexion
+
+    falso = tmp_path / "claude.exe"
+    falso.write_text("")
+
+    with pytest.raises(conexion.NoHayNavegador) as detalle:
+        await conexion.conectar_perfil(
+            _PlaywrightQueNoLanza(), carpeta=tmp_path / "perfil", chrome_bin=str(falso)
+        )
+
+    mensaje = str(detalle.value)
+    assert "CHROME_BIN" in mensaje
+    assert "CLAUDE_BIN" in mensaje, "tiene que decir que son variables distintas"
+    assert str(falso) in mensaje, "y cuál es la ruta que no sirvió"
+
+
+async def test_sin_chrome_bin_el_error_habla_del_perfil(tmp_path, monkeypatch) -> None:
+    """Sin nada configurado, el problema no es una variable mal puesta."""
+    import pytest
+
+    from agente.adaptadores import conexion, navegador
+
+    monkeypatch.setattr(navegador, "encontrar_chrome", lambda: None)
+
+    with pytest.raises(conexion.NoHayNavegador) as detalle:
+        await conexion.conectar_perfil(_PlaywrightQueNoLanza(), carpeta=tmp_path / "perfil")
+
+    assert "CHROME_BIN" not in str(detalle.value)
