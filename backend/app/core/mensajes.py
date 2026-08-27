@@ -158,6 +158,16 @@ async def mover(
             detalle={"contacto_id": mensaje["contacto_id"], "maquina": mensaje["maquina"]},
             ahora=momento,
         )
+    elif nuevo is Estado.BORRADOR_DEJADO:
+        # Evento propio, no MENSAJE_ENVIADO: nada salió de esta línea (D30).
+        await auditoria.registrar(
+            base,
+            que=auditoria.Que.BORRADOR_DEJADO,
+            quien=quien,
+            mensaje_id=mensaje_id,
+            detalle={"contacto_id": mensaje["contacto_id"], "maquina": mensaje["maquina"]},
+            ahora=momento,
+        )
 
     return nuevo
 
@@ -238,6 +248,10 @@ async def le_escribimos_hace_poco(
     Cuenta los que **salieron** y los que están por salir. Uno encolado todavía
     no llegó, pero va a llegar: si no contara, una corrida disparada dos veces
     seguidas le mandaría dos mensajes a la misma persona.
+
+    Un borrador dejado también cuenta (D30): lo haya mandado el vendedor o no,
+    ese contacto ya tiene un seguimiento esperándolo en el chat — generarle
+    otro sería duplicarlo.
     """
     corte = (ahora or datetime.now(UTC)) - timedelta(days=dias)
     return (
@@ -246,7 +260,12 @@ async def le_escribimos_hace_poco(
                 "contacto_id": contacto_id,
                 "creado_en": {"$gte": corte},
                 "estado": {
-                    "$in": [str(Estado.EN_ESPERA), str(Estado.ENVIANDO), str(Estado.ENVIADO)]
+                    "$in": [
+                        str(Estado.EN_ESPERA),
+                        str(Estado.ENVIANDO),
+                        str(Estado.ENVIADO),
+                        str(Estado.BORRADOR_DEJADO),
+                    ]
                 },
             },
             limit=1,

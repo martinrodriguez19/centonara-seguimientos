@@ -52,7 +52,8 @@ class Senal(StrEnum):
     inventado por el modelo se convierte en una promesa comercial."""
 
     CHAT_NO_COMERCIAL = "CHAT_NO_COMERCIAL"
-    """No parece una conversación de trabajo. Las líneas mezclan lo personal."""
+    """Ya no se enciende (D29: todos los chats son comerciales). El miembro se
+    conserva porque hay mensajes históricos con esta señal guardada."""
 
     SIN_CONTEXTO = "SIN_CONTEXTO"
     """El modelo no encontró con qué escribir y se negó a inventar.
@@ -180,13 +181,6 @@ def evaluar(
     compromiso = busca_compromiso(texto)
     if compromiso:
         hallazgos.append(Hallazgo(Senal.COMPROMISO_CONCRETO, f"el borrador dice {compromiso!r}"))
-
-    # 5. No parece una conversación de trabajo.
-    comerciales = config.get("palabras_comerciales", [])
-    if comerciales and not contiene_alguna(resumen, comerciales):
-        hallazgos.append(
-            Hallazgo(Senal.CHAT_NO_COMERCIAL, "el chat no tiene señales de intención comercial")
-        )
 
     return hallazgos
 

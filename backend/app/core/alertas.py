@@ -18,9 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any
 
-from app.core import cola, configuracion, vendedores
+from app.core import cola, vendedores
 from app.core.estados import Estado, Motivo
 from app.logging import obtener_logger
 
@@ -45,27 +44,33 @@ class Alerta:
     detalle: str
     #  Qué hacer. Una alerta sin acción es una queja.
     accion: str = ""
+    #  La corrida involucrada, cuando la acción es sobre una en particular:
+    #  el panel puede ofrecer el botón que la resuelve (D31).
+    corrida_id: str | None = None
 
-    def a_dict(self) -> dict[str, str]:
+    def a_dict(self) -> dict[str, str | None]:
         return {
             "nivel": str(self.nivel),
             "codigo": self.codigo,
             "titulo": self.titulo,
             "detalle": self.detalle,
             "accion": self.accion,
+            "corrida_id": self.corrida_id,
         }
 
 
 async def revisar(base, *, ahora: datetime | None = None) -> list[Alerta]:
-    """Todo lo que está mal ahora mismo, de lo más urgente a lo menos."""
+    """Todo lo que está mal ahora mismo, de lo más urgente a lo menos.
+
+    La pausa global ya no genera alerta: el kill switch del panel muestra su
+    propio cartel, y con los dos a la vez el freno aparecía duplicado (D31).
+    """
     momento = ahora or datetime.now(UTC)
-    config = await configuracion.obtener(base)
 
     alertas: list[Alerta] = []
     alertas += await _selector_roto(base, momento)
     alertas += await _sin_confirmar(base, momento)
     alertas += await _canario(base)
-    alertas += _pausa(config)
     alertas += await _maquinas(base, momento)
 
     urgentes = sum(1 for a in alertas if a.nivel is Nivel.URGENTE)
@@ -137,10 +142,13 @@ async def _sin_confirmar(base, ahora: datetime) -> list[Alerta]:
 
 
 async def _canario(base) -> list[Alerta]:
-    """Los tres primeros fallaron y el sistema se frenó solo."""
-    frenadas = await base["corridas"].count_documents({"estado": "frenada"})
-    if not frenadas:
-        return []
+    """Los tres primeros fallaron y el sistema se frenó solo.
+
+    Lleva la corrida (D31): la alerta trae al lado el botón que la resuelve
+    —"ya lo miré, continuar"— en vez de quedar encendida sin salida, que es
+    lo que pasó el 26/08.
+    """
+    frenadas = await base["corridas"].find({"estado": "frenada"}).to_list(None)
     return [
         Alerta(
             Nivel.URGENTE,
@@ -148,27 +156,9 @@ async def _canario(base) -> list[Alerta]:
             "Una corrida se frenó sola",
             "Los primeros tres envíos fallaron, así que el sistema no soltó el resto.",
             "Mirá por qué fallaron antes de reanudar. Frenar costó menos que enterarse al final.",
+            corrida_id=str(corrida["_id"]),
         )
-    ]
-
-
-def _pausa(config: dict[str, Any]) -> list[Alerta]:
-    """El kill switch puesto.
-
-    Es un aviso y no una urgencia: alguien lo apretó a propósito. Pero tiene que
-    estar visible, porque un sistema frenado que nadie recuerda haber frenado se
-    ve exactamente igual que uno roto.
-    """
-    if not config.get("pausa_global"):
-        return []
-    return [
-        Alerta(
-            Nivel.AVISO,
-            "pausa_global",
-            "El sistema está frenado",
-            "Ninguna máquina está recibiendo trabajo.",
-            "Si ya se resolvió lo que lo frenó, soltá el freno desde el panel.",
-        )
+        for corrida in frenadas
     ]
 
 

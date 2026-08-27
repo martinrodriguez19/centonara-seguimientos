@@ -50,12 +50,13 @@ Devolve UNICAMENTE este objeto JSON, sin texto antes ni despues, sin backticks:
 
 { "status": "ok", "texto": "..." }
 
-Si el contexto no alcanza para escribir algo que tenga sentido —por ejemplo, si
-el resumen no tiene ninguna señal comercial, o es una conversacion personal—
-devolve:
+Si el contexto no alcanza para escribir algo que tenga sentido —el resumen no
+dice de que se hablaba, o dice literalmente que no hay tema visible— devolve:
 
 { "status": "sin_contexto", "motivo": "..." }
 
 Devolver "sin_contexto" es una respuesta correcta y esperada. Es mejor que
 inventar un seguimiento generico: el sistema aparta ese chat y lo revisa una
-persona.
+persona. Todos los chats de esta linea son de trabajo: que un resumen suene
+informal o cotidiano NO es motivo para devolver "sin_contexto" — si hay algo
+concreto que retomar, redactalo.

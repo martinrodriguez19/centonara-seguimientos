@@ -268,7 +268,17 @@ async def cancelar(base, corrida_id: ObjectId, *, quien: str, ahora: datetime | 
     Lo que ya se hizo, se hizo: no toca los jobs terminados ni borra borradores
     generados — esos se resuelven en la pantalla de revisión. Devuelve cuántos
     jobs cortó.
+
+    Los **mensajes** de los envíos cortados también se resuelven (D31): un
+    `ENVIANDO` cuyo job se cortó quedaba en ese estado para siempre, y un
+    `EN_ESPERA` con su envío ya encolado esperaba un envío que no iba a llegar.
+    Pasan a `DESCARTADO` con motivo `cancelado`. Los `EN_ESPERA` de una corrida
+    que todavía no encoló envíos se conservan: son la pantalla de revisión.
     """
+    from app.core import mensajes as mensajes_mod
+    from app.core.cola import Codigo
+    from app.core.estados import Estado, Motivo, TransicionInvalida
+
     momento = ahora or datetime.now(UTC)
 
     corrida = await base["corridas"].find_one({"_id": corrida_id})
@@ -280,11 +290,34 @@ async def cancelar(base, corrida_id: ObjectId, *, quien: str, ahora: datetime | 
         {
             "$set": {
                 "estado": "fallido",
-                "codigo": "CANCELADO",
+                "codigo": str(Codigo.CANCELADO),
                 "terminado_en": momento,
             }
         },
     )
+
+    a_cortar = {Estado.ENVIANDO}
+    if corrida.get("estado") == str(EstadoCorrida.ENVIANDO):
+        a_cortar.add(Estado.EN_ESPERA)
+    cortados = 0
+    for mensaje in await mensajes_mod.de_la_corrida(base, corrida_id):
+        if Estado(mensaje["estado"]) not in a_cortar:
+            continue
+        try:
+            await mensajes_mod.mover(
+                base,
+                mensaje["_id"],
+                Estado.DESCARTADO,
+                motivo=Motivo.CANCELADO,
+                quien=quien,
+                ahora=momento,
+            )
+            cortados += 1
+        except (TransicionInvalida, mensajes_mod.CarreraDeEstados):
+            # Alguien lo movió en el medio (un agente reportando justo ahora).
+            # Su estado nuevo es más verdadero que nuestro corte: se respeta.
+            continue
+
     await base["corridas"].update_one(
         {"_id": corrida_id},
         {"$set": {"estado": str(EstadoCorrida.CANCELADA), "terminada_en": momento}},
@@ -294,11 +327,61 @@ async def cancelar(base, corrida_id: ObjectId, *, quien: str, ahora: datetime | 
         que=auditoria.Que.CORRIDA_CANCELADA,
         quien=quien,
         corrida_id=corrida_id,
-        detalle={"jobs_cortados": resultado.modified_count},
+        detalle={"jobs_cortados": resultado.modified_count, "mensajes_cortados": cortados},
         ahora=momento,
     )
-    log.info("corrida_cancelada", corrida=str(corrida_id), jobs=resultado.modified_count)
+    log.info(
+        "corrida_cancelada",
+        corrida=str(corrida_id),
+        jobs=resultado.modified_count,
+        mensajes=cortados,
+    )
     return resultado.modified_count
+
+
+async def reanudar(
+    base, corrida_id: ObjectId, *, quien: str, ahora: datetime | None = None
+) -> None:
+    """Suelta una corrida que el canario frenó (D31).
+
+    Es el "ya lo miré, continuar": la corrida vuelve a `enviando` y se suelta
+    el kill switch que puso el canario, así los agentes retoman los envíos que
+    quedaron encolados. Antes de esto, `frenada` era un estado sin salida — la
+    alerta quedaba encendida para siempre y la única forma de apagarla era
+    cancelar, perdiendo los envíos pendientes.
+
+    Sólo reanuda corridas en `frenada`: reanudar otra cosa no significa nada, y
+    aceptarlo escondería un bug de quien llama.
+    """
+    momento = ahora or datetime.now(UTC)
+
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    if corrida is None:
+        raise CorridaDesconocida(corrida_id)
+    if corrida.get("estado") != str(EstadoCorrida.FRENADA):
+        raise NoEstaFrenada(corrida.get("estado", ""))
+
+    await base["corridas"].update_one(
+        {"_id": corrida_id},
+        {"$set": {"estado": str(EstadoCorrida.ENVIANDO)}},
+    )
+    await configuracion.pausar(base, pausado=False, quien=quien)
+    await auditoria.registrar(
+        base,
+        que=auditoria.Que.CORRIDA_REANUDADA,
+        quien=quien,
+        corrida_id=corrida_id,
+        ahora=momento,
+    )
+    log.info("corrida_reanudada", corrida=str(corrida_id), quien=quien)
+
+
+class NoEstaFrenada(Exception):
+    """Se intentó reanudar una corrida que no está frenada."""
+
+    def __init__(self, estado: str) -> None:
+        self.estado = estado
+        super().__init__(f"la corrida está en {estado!r}, no en frenada")
 
 
 class CorridaDesconocida(Exception):

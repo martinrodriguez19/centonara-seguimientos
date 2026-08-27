@@ -131,6 +131,10 @@ def _resumir_maquina(vendedor: dict[str, Any], ahora: datetime) -> dict[str, Any
         "chequeos_fallando": fallando,
         "diagnostico": diagnostico,
         "version_agente": vendedor.get("version_agente"),
+        # El modo resuelto que reportó el agente al arrancar (D30). Una Mac en
+        # `simulado` falla todos los envíos con CHAT_NO_ABRE: verlo acá evita
+        # diagnosticarlo por ssh, como pasó el 26/08.
+        "modo_agente": vendedor.get("modo_agente"),
         "tope_diario": vendedor.get("tope_diario", 20),
         # El avance del barrido histórico de esta máquina (D27), si arrancó.
         "barrido": vendedor.get("barrido"),
@@ -330,6 +334,22 @@ async def cancelar_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
     except corridas.CorridaDesconocida as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
     return {"ok": True, "jobs_cortados": cortados}
+
+
+@router.post("/corridas/{corrida_id}/reanudar")
+async def reanudar_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
+    """El "ya lo miré, continuar" de una corrida que el canario frenó (D31).
+
+    Vuelve la corrida a `enviando` y suelta el kill switch: los agentes retoman
+    los envíos que quedaron encolados. Sólo funciona sobre una corrida frenada.
+    """
+    try:
+        await corridas.reanudar(db.obtener_base(), _a_id(corrida_id), quien="panel")
+    except corridas.CorridaDesconocida as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    except corridas.NoEstaFrenada as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+    return {"ok": True}
 
 
 @router.get("/corridas")
@@ -641,8 +661,9 @@ class CambioConfiguracion(Estricto):
     tope_por_corrida: Annotated[int | None, Field(ge=1, le=200)] = None
     largo_maximo: Annotated[int | None, Field(ge=50, le=1000)] = None
     dias_anti_duplicado: Annotated[int | None, Field(ge=1, le=90)] = None
+    # Sigue editable por API aunque el panel ya no la muestre (D29): la señal
+    # PALABRA_CONFLICTO protege del seguimiento sobre un reclamo abierto.
     palabras_conflicto: list[Annotated[str, Field(max_length=60)]] | None = None
-    palabras_comerciales: list[Annotated[str, Field(max_length=60)]] | None = None
     destinos_permitidos: list[Annotated[str, Field(max_length=25)]] | None = None
 
     @field_validator("destinos_permitidos")

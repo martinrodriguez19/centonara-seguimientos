@@ -101,6 +101,7 @@ async def dar_de_alta(
                 "ultimo_latido": None,
                 "diagnostico": {},
                 "version_agente": None,
+                "modo_agente": None,
                 "creado_en": momento,
             }
         )
@@ -157,6 +158,7 @@ async def registrar_latido(
     *,
     diagnostico: dict[str, str] | None = None,
     version_agente: str | None = None,
+    modo_agente: str | None = None,
     ahora: datetime | None = None,
 ) -> None:
     """Anota que la máquina está viva y con qué diagnóstico.
@@ -171,6 +173,8 @@ async def registrar_latido(
         cambios["diagnostico"] = diagnostico
     if version_agente is not None:
         cambios["version_agente"] = version_agente
+    if modo_agente is not None:
+        cambios["modo_agente"] = modo_agente
 
     await base["vendedores"].update_one({"maquina": maquina}, {"$set": cambios})
 

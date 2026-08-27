@@ -90,5 +90,14 @@ class Pagina(Protocol):
         ...
 
     async def limpiar_campo(self) -> None:
-        """Borra lo que se haya escrito. Se usa al abortar en modo prueba."""
+        """Borra lo que se haya escrito, sin enviar."""
+        ...
+
+    async def cerrar_chat(self) -> None:
+        """Cierra el chat abierto y vuelve a la lista.
+
+        Es el paso final del modo borradores (D30): lo escrito queda guardado
+        por WhatsApp como borrador de ese chat, listo para que el vendedor lo
+        mande con un click.
+        """
         ...

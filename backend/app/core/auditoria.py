@@ -35,11 +35,17 @@ class Que(StrEnum):
 
     CORRIDA_DISPARADA = "corrida_disparada"
     CORRIDA_CANCELADA = "corrida_cancelada"
+    CORRIDA_REANUDADA = "corrida_reanudada"
+    """Alguien miró por qué el canario frenó la corrida y decidió continuar
+    (D31). Suelta también el kill switch."""
     DATOS_BORRADOS = "datos_borrados"
     """Alguien vació el sistema para entregarlo (D28). El registro de auditoría
     NO se borra —el rol de Mongo ni siquiera lo permite—, así que este evento es
     la marca de dónde empieza la historia del cliente."""
     MENSAJE_ENVIADO = "mensaje_enviado"
+    BORRADOR_DEJADO = "borrador_dejado"
+    """El texto quedó como borrador en el WhatsApp del vendedor, sin enviarse
+    (D30). No es un envío: no cuenta en el tope diario ni como enviado."""
     MENSAJE_VETADO = "mensaje_vetado"
     MENSAJE_EDITADO = "mensaje_editado"
     MENSAJE_LIBERADO = "mensaje_liberado"

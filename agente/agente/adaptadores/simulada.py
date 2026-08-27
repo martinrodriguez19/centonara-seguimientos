@@ -70,6 +70,7 @@ class PaginaSimulada:
         self._quejarse_si_esta_roto()
         chat = self.chats.get(identificador)
         if chat is None:
+            self.motivo_no_abrio = "sin_resultados"
             return False
         self.abierto = chat
         self.campo = chat.borrador_del_vendedor
@@ -112,6 +113,14 @@ class PaginaSimulada:
         return bool(self.abierto and texto in self.abierto.mensajes)
 
     async def limpiar_campo(self) -> None:
+        self.campo = ""
+
+    async def cerrar_chat(self) -> None:
+        # Como WhatsApp Web: al salir del chat, lo escrito queda como borrador
+        # de esa conversación.
+        if self.abierto is not None:
+            self.abierto.borrador_del_vendedor = self.campo
+        self.abierto = None
         self.campo = ""
 
     # -- Ayudas para los tests ------------------------------------------------

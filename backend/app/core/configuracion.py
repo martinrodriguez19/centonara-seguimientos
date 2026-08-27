@@ -71,30 +71,13 @@ POR_DEFECTO: dict[str, Any] = {
         "estafa",
         "denuncia",
     ],
-    # Lo contrario: si el resumen del chat NO tiene ninguna de éstas, el triage
-    # sospecha que no es una conversación de trabajo (las líneas mezclan lo
-    # personal con lo laboral).
-    #
-    # ⚠️ Es la señal más propensa a retener de más, y por eso tiene un
-    # interruptor natural: con la lista vacía, la señal no se enciende nunca.
-    # Si al calibrar retiene demasiado, se vacía y listo — no hay que tocar
-    # código ni desplegar.
-    "palabras_comerciales": [
-        "presupuesto",
-        "precio",
-        "cotización",
-        "pedido",
-        "stock",
-        "entrega",
-        "envío",
-        "compra",
-        "factura",
-        "descuento",
-        "disponibilidad",
-        "material",
-        "obra",
-    ],
 }
+
+# Campos que existieron y se eliminaron. `obtener()` los limpia del documento
+# vivo la primera vez que los ve: `actualizar()` valida contra `POR_DEFECTO`,
+# así que un campo huérfano no se puede sacar desde el panel.
+#   - palabras_comerciales: D29 — todos los chats se consideran comerciales.
+RETIRADOS = ("palabras_comerciales",)
 
 TODOS = "*"
 
@@ -105,12 +88,21 @@ async def obtener(base) -> dict[str, Any]:
     Idempotente: `$setOnInsert` sólo escribe cuando el documento no estaba, así
     que llamarla no pisa lo que el cliente haya cambiado desde el panel.
     """
-    return await base["configuracion"].find_one_and_update(
+    documento = await base["configuracion"].find_one_and_update(
         {"_id": ID},
         {"$setOnInsert": POR_DEFECTO},
         upsert=True,
         return_document=True,
     )
+    huerfanos = [campo for campo in RETIRADOS if campo in documento]
+    if huerfanos:
+        await base["configuracion"].update_one(
+            {"_id": ID}, {"$unset": {campo: "" for campo in huerfanos}}
+        )
+        for campo in huerfanos:
+            del documento[campo]
+        log.info("configuracion_campos_retirados", campos=huerfanos)
+    return documento
 
 
 async def actualizar(base, cambios: dict[str, Any]) -> dict[str, Any]:

@@ -495,6 +495,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
     trabajo = Bucle(
         cliente,
         version=__version__,
+        modo=modo,
         diagnosticar=diagnosticar,
         ejecutor=ejecutor.construir(
             claude_bin=config.claude_bin,

@@ -229,31 +229,21 @@ def test_busca_compromiso_devuelve_none_sin_promesas() -> None:
 
 
 # ---------------------------------------------------------------------------
-# CHAT_NO_COMERCIAL — la que más puede retener de más
+# CHAT_NO_COMERCIAL — eliminada (D29)
 # ---------------------------------------------------------------------------
 
 
-def test_un_chat_sin_senales_de_trabajo_se_aparta() -> None:
-    """Las líneas mezclan lo personal con lo laboral."""
+def test_ningun_chat_se_aparta_por_no_parecer_comercial() -> None:
+    """D29: los vendedores usan estas líneas sólo para trabajo. Un resumen que
+    suena personal ya no es motivo de retención."""
     hallazgos = evaluar_uno(resumen="le mandó fotos del asado del domingo")
-    assert Senal.CHAT_NO_COMERCIAL in senales(hallazgos)
-
-
-def test_un_chat_de_trabajo_no_se_aparta() -> None:
-    assert Senal.CHAT_NO_COMERCIAL not in senales(
-        evaluar_uno(resumen="pidió presupuesto por 200 metros de chapa")
-    )
-
-
-def test_vaciar_la_lista_apaga_la_senal() -> None:
-    """⚠️ El interruptor de la señal más propensa a retener de más.
-
-    Si al calibrar retiene demasiado, se vacía desde el panel: sin tocar código
-    y sin desplegar.
-    """
-    config = {**CONFIG, "palabras_comerciales": []}
-    hallazgos = evaluar_uno(resumen="cualquier cosa que no sea comercial", config=config)
     assert Senal.CHAT_NO_COMERCIAL not in senales(hallazgos)
+
+
+def test_la_senal_existe_solo_por_el_historico() -> None:
+    """El miembro del enum se conserva: hay mensajes viejos que la tienen
+    guardada y el panel tiene que poder seguir traduciéndola."""
+    assert Senal("CHAT_NO_COMERCIAL") is Senal.CHAT_NO_COMERCIAL
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +266,7 @@ def test_se_devuelven_todas_las_senales_no_la_primera() -> None:
 
 
 def test_una_sola_senal_alcanza_para_apartar() -> None:
-    """El triage no puntúa: cualquiera de las cinco manda a revisión."""
+    """El triage no puntúa: cualquiera de las señales manda a revisión."""
     assert len(evaluar_uno(contacto_id="")) >= 1
 
 
@@ -287,17 +277,17 @@ def test_un_hallazgo_se_lee_solo() -> None:
     assert "reclamo" in str(hallazgo)
 
 
-def test_son_cinco_senales_de_triage_y_una_de_redaccion() -> None:
-    """Eran siete. Se sacaron dos: la antigüedad —que contradecía el criterio
-    validado del MVP— y el largo, que ya cubre un guardrail.
+def test_cuatro_senales_activas_y_dos_que_no_enciende_evaluar() -> None:
+    """Eran siete. Se sacaron: la antigüedad —que contradecía el criterio
+    validado del MVP—, el largo —que ya cubre un guardrail— y
+    `CHAT_NO_COMERCIAL` (D29: todos los chats son comerciales; el miembro queda
+    por el histórico).
 
     `SIN_CONTEXTO` se cuenta aparte porque no la enciende `evaluar()`: la trae el
     resultado de `REDACTAR` cuando el modelo se niega a inventar un seguimiento.
-    Es una señal del mismo tipo —por qué se apartó un mensaje, y el panel la
-    muestra igual— pero no sale de mirar el texto, porque no hay texto.
     """
-    del_triage = set(Senal) - {Senal.SIN_CONTEXTO}
-    assert len(del_triage) == 5
+    activas = set(Senal) - {Senal.SIN_CONTEXTO, Senal.CHAT_NO_COMERCIAL}
+    assert len(activas) == 4
     assert len(Senal) == 6
 
 

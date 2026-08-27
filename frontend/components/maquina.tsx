@@ -157,6 +157,16 @@ export function TarjetaMaquina({
           <dd className="text-right tabular-nums">{haceCuanto(maquina.ultimo_latido)}</dd>
           <dt>{textos.maquina.version}</dt>
           <dd className="text-right font-mono">{maquina.version_agente ?? "—"}</dd>
+          <dt>{textos.maquina.modo}</dt>
+          {/* En `simulado` todos los envíos fallan con CHAT_NO_ABRE: si quedó
+              así después de instalar, éste es el lugar donde se ve. */}
+          <dd className="text-right">
+            {maquina.modo_agente === "simulado" ? (
+              <Pildora nivel="atencion">{maquina.modo_agente}</Pildora>
+            ) : (
+              <span className="font-mono">{maquina.modo_agente ?? "—"}</span>
+            )}
+          </dd>
           {/* El avance del barrido histórico (D27), cuando esta máquina lo usa. */}
           {maquina.barrido && (
             <>

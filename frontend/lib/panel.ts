@@ -20,6 +20,10 @@ export type Maquina = {
   chequeos_fallando: string[];
   diagnostico: Record<string, string>;
   version_agente: string | null;
+  /** El modo resuelto que reportó el agente (simulado/prueba/real). En
+   * `simulado` todos los envíos fallan con CHAT_NO_ABRE: verlo acá evita
+   * diagnosticarlo entrando a la Mac. */
+  modo_agente: string | null;
   tope_diario: number;
   /** El avance del barrido histórico (D27), si esta máquina lo arrancó.
    * En una línea a propósito: el test de contrato lee estos tipos plano. */
@@ -83,16 +87,12 @@ export type Configuracion = {
   tope_por_corrida: number;
   largo_maximo: number;
   dias_anti_duplicado: number;
-  palabras_conflicto: string[];
   /**
-   * Lo que hace que un chat parezca de trabajo. Si el resumen no contiene
-   * ninguna, el triage marca `CHAT_NO_COMERCIAL` y el borrador se retiene.
-   *
-   * Es el otro extremo de la misma perilla que `palabras_conflicto`, y el que
-   * mueve `tasa_retencion` —el número que la pantalla de métricas dice calibrar
-   * cuando se va del 10 al 20%—.
+   * Las palabras que apartan un mensaje (señal PALABRA_CONFLICTO). El panel ya
+   * no las muestra (D29), pero siguen activas en el backend y editables por
+   * API: protegen del seguimiento sobre un reclamo abierto.
    */
-  palabras_comerciales: string[];
+  palabras_conflicto: string[];
   /** El horario de envío. Editable desde el panel (D26): lo maneja el
    * responsable. `24:00` como `fin` significa hasta el final del día. */
   ventana: { inicio: string; fin: string; dias: number[] };
@@ -119,7 +119,14 @@ export type Mensaje = {
   contacto_id: string;
   resumen: string;
   texto: string;
-  estado: "BORRADOR" | "RETENIDO" | "EN_ESPERA" | "ENVIANDO" | "ENVIADO" | "DESCARTADO";
+  estado:
+    | "BORRADOR"
+    | "RETENIDO"
+    | "EN_ESPERA"
+    | "ENVIANDO"
+    | "ENVIADO"
+    | "BORRADOR_DEJADO"
+    | "DESCARTADO";
   motivo: string | null;
   /** Por qué se apartó, o qué guardrail lo rechazó. Nunca vacío si no está limpio. */
   senales: string[];
@@ -139,6 +146,9 @@ export type Alerta = {
   detalle: string;
   /** Qué hacer. Nunca vacío: una alerta sin acción es una queja. */
   accion: string;
+  /** La corrida involucrada, cuando la acción es sobre una en particular
+   * (D31): permite mostrar el botón que la resuelve al lado de la alerta. */
+  corrida_id: string | null;
 };
 
 /** Cómo salió una corrida. Lo que devuelve `GET /corridas/{id}/metricas`. */
@@ -363,6 +373,11 @@ export const traerMetricasDeCorrida = (id: string) =>
 
 export const cancelarCorrida = (id: string) =>
   pedir<{ ok: boolean; jobs_cortados: number }>(`/corridas/${id}/cancelar`, conCuerpo("POST"));
+
+/** El "ya lo miré, continuar" de una corrida que el canario frenó (D31).
+ * Vuelve la corrida a `enviando` y suelta el kill switch. */
+export const reanudarCorrida = (id: string) =>
+  pedir<{ ok: boolean }>(`/corridas/${id}/reanudar`, conCuerpo("POST"));
 
 // --- Revisión de borradores ------------------------------------------------
 

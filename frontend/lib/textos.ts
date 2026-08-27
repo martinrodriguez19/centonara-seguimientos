@@ -149,6 +149,7 @@ export const textos = {
     ultimoLatido: "Último latido",
     nunca: "nunca",
     version: "Versión",
+    modo: "Modo",
     topeDiario: "Tope de mensajes por día",
     topeDiarioAyuda: "Lo que protege la línea de este vendedor en particular.",
 
@@ -198,20 +199,20 @@ export const textos = {
     enviarAyuda:
       "Salen espaciados, en orden aleatorio. Los primeros tres salen y el sistema espera diez minutos antes de soltar el resto.",
 
-    // --- Los dos modos de envío -------------------------------------------
+    // --- Los dos modos de envío (D30) -------------------------------------
     //
     // La ambigüedad más cara que puede tener esta pantalla es no saber si lo
     // que salió fue de verdad. Por eso el modo se dice ANTES de apretar, en el
     // propio botón, y DESPUÉS en la confirmación.
-    modoTitulo: "¿Cómo querés enviarlos?",
-    modoPrueba: "Ensayo",
+    modoTitulo: "¿Qué querés hacer con ellos?",
+    modoPrueba: "Dejar borradores",
     modoPruebaDetalle:
-      "Hace todo el recorrido —abre el chat, verifica el contacto, escribe el texto— pero no aprieta enviar. Nadie recibe nada.",
-    modoReal: "Enviar de verdad",
+      "Hace todo el recorrido —abre el chat, verifica el contacto, escribe el texto— pero no aprieta enviar: el mensaje queda como borrador en el WhatsApp de cada vendedor, listo para mandarlo con un click.",
+    modoReal: "Envío",
     modoRealDetalle:
       "Los mensajes salen de la línea de cada vendedor y llegan a los contactos. No se puede deshacer.",
     modoRealSinDestinos:
-      "No se puede enviar de verdad: la lista de destinos permitidos está vacía, y vacía significa a nadie. Se abre desde Configuración.",
+      "No se puede enviar: la lista de destinos permitidos está vacía, y vacía significa a nadie. Se abre desde Configuración.",
 
     // Misma fricción que liberar retenidos en lote: escribir el número obliga
     // a leerlo, que es todo lo que hace falta.
@@ -219,13 +220,13 @@ export const textos = {
       `Van a salir ${cuantos} ${cuantos === 1 ? "mensaje" : "mensajes"} de verdad, ` +
       `desde la línea de cada vendedor. Escribí ${cuantos} para confirmar.`,
     enviarRealBoton: (cuantos: number) =>
-      cuantos === 1 ? "Enviar 1 mensaje de verdad" : `Enviar ${cuantos} mensajes de verdad`,
+      cuantos === 1 ? "Enviar 1 mensaje" : `Enviar ${cuantos} mensajes`,
 
     // Y el resultado también dice el modo: "se encolaron 3 mensajes" sin más
     // deja al operador sin saber qué acaba de hacer.
     enviadoPrueba: (cuantos: number) =>
-      `Se encolaron ${cuantos} ${cuantos === 1 ? "mensaje" : "mensajes"} en modo ensayo. ` +
-      "Nadie va a recibir nada.",
+      `${cuantos === 1 ? "1 mensaje va" : `${cuantos} mensajes van`} a quedar como ` +
+      "borradores en el WhatsApp de cada vendedor. Nada se envía: los manda cada vendedor.",
     enviadoReal: (cuantos: number) =>
       `Se encolaron ${cuantos} ${cuantos === 1 ? "mensaje" : "mensajes"} para salir de verdad.`,
 
@@ -341,9 +342,13 @@ export const textos = {
     tituloGeneracion: "Generación de seguimientos",
     tituloDiagnostico: "Diagnóstico de las máquinas",
     modoReal: "Envío real",
-    modoPrueba: "Ensayo",
+    modoPrueba: "Borradores",
     terminada: "Terminada",
     enCurso: "En curso",
+    // Los dos estados que antes eran invisibles (D31): una corrida frenada se
+    // veía "casi terminada" y nadie entendía por qué no avanzaba.
+    frenada: "Frenada por el sistema",
+    cancelada: "Cancelada",
     verTodas: "Ver todas",
     resumen: "Resumen de la corrida",
     avance: "Avance",
@@ -383,13 +388,23 @@ export const textos = {
       `${cuantas} ${cuantas === 1 ? "corrida" : "corridas"}, US$ ${total.toFixed(2)} en total.`,
   },
 
-  /** Los seis estados de un mensaje, dichos como los diría una persona. */
+  // Los botones que resuelven una alerta, cuando la alerta tiene uno (D31).
+  alertas: {
+    verCorrida: "Ver la corrida",
+    reanudar: "Ya lo miré, continuar",
+    reanudando: "Reanudando…",
+    avisoReanudada: "La corrida sigue. Los envíos pendientes se retoman.",
+    avisoFalloReanudar: "No se pudo reanudar. Probá de nuevo.",
+  },
+
+  /** Los siete estados de un mensaje, dichos como los diría una persona. */
   estados: {
     BORRADOR: "Sin revisar por el sistema",
     RETENIDO: "Apartado para que lo mires",
     EN_ESPERA: "Listo para salir",
     ENVIANDO: "Saliendo",
     ENVIADO: "Entregado",
+    BORRADOR_DEJADO: "Borrador dejado en WhatsApp",
     DESCARTADO: "No sale",
   } as Record<string, string>,
 
@@ -415,7 +430,8 @@ export const textos = {
       "Se apretó enviar y no se pudo confirmar. Puede haber salido: conviene mirar el teléfono del vendedor antes de hacer nada.",
     SELECTOR_ROTO: "WhatsApp Web cambió por dentro. La corrida se frenó a propósito.",
     CAMPO_NO_VACIO: "Había algo escrito en el chat. No se tocó para no pisar lo del vendedor.",
-    CHAT_NO_ABRE: "No se pudo abrir el chat.",
+    CHAT_NO_ABRE:
+      "No se pudo abrir el chat. Si les pasa a todos los de una máquina, revisá en su tarjeta que no esté en modo simulado.",
     SESION_CAIDA: "La sesión de WhatsApp de esa máquina venció. Hay que escanear el QR de nuevo.",
     TIMEOUT: "WhatsApp tardó demasiado en responder.",
     ERROR_INESPERADO: "Algo falló y no está clasificado. El detalle está en el log de la máquina.",
@@ -424,6 +440,8 @@ export const textos = {
     vencido: "Quedó viejo antes de salir.",
     fallido: "El envío falló.",
     sin_confirmar: "Se apretó enviar y no se pudo confirmar.",
+    cancelado: "Se canceló la corrida antes de que saliera.",
+    CANCELADO: "Se canceló la corrida antes de que saliera.",
   } as Record<string, string>,
 
   // Los nombres técnicos no se le muestran a nadie.

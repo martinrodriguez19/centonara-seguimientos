@@ -54,6 +54,18 @@ def test_el_ciclo_completo_de_un_mensaje_que_sale() -> None:
     assert es_terminal(estado)
 
 
+def test_el_ciclo_de_un_borrador_que_se_deja_en_whatsapp() -> None:
+    """D30: el modo borradores termina en BORRADOR_DEJADO, que es terminal.
+
+    El sistema no vuelve a tocar ese chat: lo manda el vendedor, o nadie.
+    """
+    estado = Estado.BORRADOR
+    estado = transicionar(estado, Estado.EN_ESPERA)
+    estado = tomar_para_enviar(estado)
+    estado = transicionar(estado, Estado.BORRADOR_DEJADO)
+    assert es_terminal(estado)
+
+
 def test_el_ciclo_de_un_retenido_que_alguien_libera() -> None:
     estado = Estado.BORRADOR
     estado = transicionar(estado, Estado.RETENIDO)

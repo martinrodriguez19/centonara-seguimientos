@@ -16,7 +16,7 @@ por un motivo, y moverlos convierte una garantía en una intención:
     6. COMPARAR — si no coincide, abortar            (R1) ⚠️
     7. El campo de escritura está vacío
     8. Escribir el texto EXACTO
-    9. En modo prueba: limpiar y salir SIN enviar
+    9. En modo prueba: dejar el borrador y salir SIN enviar (D30)
    10. Enviar
    11. Confirmar que apareció en el hilo
 
@@ -44,17 +44,24 @@ class Resultado:
     ok: bool
     codigo: str | None = None
     detalle: dict[str, Any] = field(default_factory=dict)
-    #  Qué se habría escrito. En modo prueba es lo único que queda como evidencia.
+    #  Qué se escribió. En modo borradores es la evidencia de lo que quedó.
     texto_escrito: str = ""
-    simulado: bool = False
+    #  True cuando el texto quedó como borrador de WhatsApp, sin enviarse (D30).
+    borrador: bool = False
 
     def a_reporte(self) -> dict[str, Any]:
-        """Lo que se le manda al backend."""
+        """Lo que se le manda al backend.
+
+        `borrador` viaja siempre: sin él, el backend marcaría un borrador
+        dejado como ENVIADO — lo auditaría como enviado, lo contaría en el tope
+        diario y no se podría enviar de verdad nunca.
+        """
         return {
             "ok": self.ok,
             "codigo": self.codigo,
             "detalle": self.detalle,
             "raw": self.texto_escrito,
+            "borrador": self.borrador,
         }
 
 
@@ -126,7 +133,12 @@ async def _secuencia(
 
     # ---- 2. El chat ---------------------------------------------------------
     if not await pagina.buscar_contacto(contacto_id):
-        return Resultado(False, "CHAT_NO_ABRE", {"contacto_id": contacto_id})
+        detalle: dict[str, Any] = {"contacto_id": contacto_id}
+        # "La búsqueda no trajo nada" y "hubo filas pero ninguna abrió" son
+        # fallas distintas; que el reporte lo diga evita diagnosticar por logs.
+        if motivo := getattr(pagina, "motivo_no_abrio", None):
+            detalle["motivo"] = motivo
+        return Resultado(False, "CHAT_NO_ABRE", detalle)
 
     # ---- 3. Un grupo nunca ---------------------------------------------------
     #
@@ -179,15 +191,16 @@ async def _secuencia(
     # ---- 8. Escribir, literal ------------------------------------------------
     await pagina.escribir(texto)
 
-    # ---- 9. Modo prueba: hasta acá y nada más --------------------------------
+    # ---- 9. Modo prueba: dejar el borrador y salir SIN enviar (D30) ----------
     #
-    # Se limpia el campo antes de salir. Dejar el texto escrito sería dejar una
-    # trampa: el vendedor abre el chat, ve algo redactado, y lo manda sin saber
-    # de dónde salió.
+    # El texto queda escrito en el campo y se cierra el chat: WhatsApp Web lo
+    # guarda como borrador de esa conversación, y el vendedor lo manda con un
+    # click. No es una trampa — es el producto: el vendedor sabe que el sistema
+    # deja borradores, y el circuito es "el sistema deja, el vendedor manda".
     if modo != "real":
-        await pagina.limpiar_campo()
-        log.info("envio_simulado", contacto=contacto_nombre, largo=len(texto))
-        return Resultado(True, texto_escrito=texto, simulado=True)
+        await pagina.cerrar_chat()
+        log.info("borrador_dejado", contacto=contacto_nombre, largo=len(texto))
+        return Resultado(True, texto_escrito=texto, borrador=True)
 
     # ---- 10. Enviar ----------------------------------------------------------
     await pagina.apretar_enviar()

@@ -98,9 +98,14 @@ class Bucle:
         espera_pausado: float = ESPERA_PAUSADO,
         espera_maxima: float = ESPERA_MAXIMA,
         dormir: Callable[[float], Awaitable[None]] | None = None,
+        modo: str = "",
     ) -> None:
         self._cliente = cliente
         self._version = version
+        # El modo resuelto de esta máquina. Viaja en el registro para que el
+        # panel pueda decir "esta Mac está en simulado" — la causa del 26/08
+        # que hubo que diagnosticar entrando al `.env` por ssh.
+        self._modo = modo
         self._diagnosticar = diagnosticar
         self._ejecutar = ejecutor or _no_sabe_hacer_nada
         self._intervalo = intervalo
@@ -136,7 +141,9 @@ class Bucle:
         """
         try:
             respuesta = await self._cliente.registrar(
-                version=self._version, diagnostico=self.estado.diagnostico.a_dict()
+                version=self._version,
+                diagnostico=self.estado.diagnostico.a_dict(),
+                modo=self._modo,
             )
             self.estado.conectado = True
             self.estado.pausado = bool(respuesta.get("pausada"))

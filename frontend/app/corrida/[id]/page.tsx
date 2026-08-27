@@ -1,16 +1,20 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { ClipboardList } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ClipboardList, Play, X } from "lucide-react";
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 
 import { ErrorDeCarga } from "@/components/error-de-carga";
 import { Button } from "@/components/ui/button";
+import { useAvisos } from "@/components/ui/avisos-flotantes";
+import { Confirmacion } from "@/components/ui/dialogo";
 import { EsqueletoDeLista } from "@/components/ui/esqueleto";
 import { Pildora, type Nivel } from "@/components/ui/estado";
 import { Cuerpo, Encabezado, Fila, SinFilas, Tabla, Td, Th } from "@/components/ui/tabla";
 import {
+  cancelarCorrida,
+  reanudarCorrida,
   traerCorrida,
   traerMensajes,
   traerMetricasDeCorrida,
@@ -58,7 +62,7 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
   const metricas = useQuery({
     queryKey: ["metricas-corrida", id],
     queryFn: () => traerMetricasDeCorrida(id),
-    refetchInterval: (consulta) => (corrida.data?.terminada ? false : 8000),
+    refetchInterval: () => (corrida.data?.terminada ? false : 8000),
   });
 
   if (corrida.isPending) {
@@ -79,11 +83,15 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
 
   const datos = corrida.data;
   const mensajes = revision.data?.mensajes ?? [];
-  const enviados = mensajes.filter((m) => m.estado === "ENVIADO" || m.estado === "ENVIANDO");
+  const enviados = mensajes.filter(
+    (m) => m.estado === "ENVIADO" || m.estado === "ENVIANDO" || m.estado === "BORRADOR_DEJADO",
+  );
   const hayBorradores = mensajes.some(
     (m) => m.estado === "RETENIDO" || m.estado === "EN_ESPERA" || m.estado === "BORRADOR",
   );
   const hechos = datos.jobs.total - datos.jobs.pendientes;
+  const frenada = datos.estado === "frenada";
+  const cancelada = datos.estado === "cancelada";
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 px-6 py-8">
@@ -101,18 +109,33 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* ⚠️ El modo, siempre visible. Mirando una corrida vieja, saber si
-              fue un ensayo o salieron mensajes de verdad es lo primero. */}
+              quedaron borradores o salieron mensajes de verdad es lo primero. */}
           <Pildora nivel={datos.modo === "real" ? "critico" : "neutro"}>
             {datos.modo === "real" ? textos.corrida.modoReal : textos.corrida.modoPrueba}
           </Pildora>
-          <Pildora nivel={datos.terminada ? "ok" : "atencion"}>
-            {datos.terminada ? textos.corrida.terminada : textos.corrida.enCurso}
-          </Pildora>
+          {/* Frenada y cancelada eran invisibles (D31): el campo estado no se
+              mostraba en ninguna pantalla y una corrida frenada parecía "casi
+              terminada". */}
+          {frenada ? (
+            <Pildora nivel="critico">{textos.corrida.frenada}</Pildora>
+          ) : cancelada ? (
+            <Pildora nivel="neutro">{textos.corrida.cancelada}</Pildora>
+          ) : (
+            <Pildora nivel={datos.terminada ? "ok" : "atencion"}>
+              {datos.terminada ? textos.corrida.terminada : textos.corrida.enCurso}
+            </Pildora>
+          )}
           <Button variant="ghost" size="sm" asChild>
             <Link href="/corridas">{textos.corrida.verTodas}</Link>
           </Button>
         </div>
       </div>
+
+      <AccionesDeCorrida
+        id={id}
+        frenada={frenada}
+        puedeCancelar={!cancelada && datos.jobs.pendientes > 0}
+      />
 
       <section className="grid gap-3 sm:grid-cols-4" aria-label={textos.corrida.resumen}>
         <Dato titulo={textos.corrida.avance} valor={`${hechos} / ${datos.jobs.total}`} ayuda={textos.corrida.avanceAyuda} />
@@ -179,6 +202,80 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
   );
 }
 
+/**
+ * Reanudar y cancelar, desde el detalle (D31).
+ *
+ * Antes cancelar sólo se podía desde el botón del panel, y sólo para la última
+ * corrida con pendientes; y reanudar no existía: una corrida que el canario
+ * frenaba quedaba en `frenada` para siempre, con su alerta encendida.
+ */
+function AccionesDeCorrida({
+  id,
+  frenada,
+  puedeCancelar,
+}: {
+  id: string;
+  frenada: boolean;
+  puedeCancelar: boolean;
+}) {
+  const clienteQuery = useQueryClient();
+  const { avisar } = useAvisos();
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+
+  const refrescar = () => {
+    void clienteQuery.invalidateQueries({ queryKey: ["corrida", id] });
+    void clienteQuery.invalidateQueries({ queryKey: ["mensajes", id] });
+    void clienteQuery.invalidateQueries({ queryKey: ["alertas"] });
+    void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
+  };
+
+  const reanudar = useMutation({
+    mutationFn: () => reanudarCorrida(id),
+    onSuccess: () => avisar(textos.alertas.avisoReanudada),
+    onError: () => avisar(textos.alertas.avisoFalloReanudar, "critico"),
+    onSettled: refrescar,
+  });
+
+  const cancelar = useMutation({
+    mutationFn: () => cancelarCorrida(id),
+    onSuccess: () => setConfirmandoCancelar(false),
+    onError: () => avisar(textos.maquina.avisoFallo, "critico"),
+    onSettled: refrescar,
+  });
+
+  if (!frenada && !puedeCancelar) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {frenada && (
+        <Button disabled={reanudar.isPending} onClick={() => reanudar.mutate()}>
+          <Play className="size-4" aria-hidden />
+          {reanudar.isPending ? textos.alertas.reanudando : textos.alertas.reanudar}
+        </Button>
+      )}
+      {puedeCancelar && (
+        <>
+          <Button variant="outline" onClick={() => setConfirmandoCancelar(true)}>
+            <X className="size-4" aria-hidden />
+            {textos.boton.cancelar}
+          </Button>
+          <Confirmacion
+            abierto={confirmandoCancelar}
+            onCerrar={() => setConfirmandoCancelar(false)}
+            onConfirmar={() => cancelar.mutate()}
+            titulo={textos.boton.confirmarCancelarTitulo}
+            confirmar={textos.boton.cancelar}
+            peligrosa
+            ocupado={cancelar.isPending}
+          >
+            {textos.boton.confirmarCancelar}
+          </Confirmacion>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Dato({
   titulo,
   valor,
@@ -208,6 +305,9 @@ function Dato({
 function TablaDeEnvio({ mensajes }: { mensajes: Mensaje[] }) {
   const nivelDe = (mensaje: Mensaje): Nivel => {
     if (mensaje.estado === "ENVIADO") return "ok";
+    // El resultado esperado de una corrida de borradores (D30): quedó escrito
+    // en el WhatsApp del vendedor, sin enviarse.
+    if (mensaje.estado === "BORRADOR_DEJADO") return "ok";
     if (mensaje.estado === "ENVIANDO") return "neutro";
     return "critico";
   };

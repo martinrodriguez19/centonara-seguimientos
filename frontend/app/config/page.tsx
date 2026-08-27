@@ -167,20 +167,6 @@ export default function Config() {
         </CardContent>
       </Card>
 
-      <Palabras
-        titulo="Palabras que apartan un mensaje"
-        ayuda="Si el resumen del chat contiene alguna, el borrador se aparta para que lo mires antes de enviarlo. Agregá los términos de tu rubro."
-        palabras={datos.palabras_conflicto}
-        onGuardar={(palabras_conflicto) => guardar.mutate({ palabras_conflicto })}
-      />
-
-      <Palabras
-        titulo="Palabras que hacen que un chat parezca de trabajo"
-        ayuda="Si el resumen no contiene ninguna, el chat se considera no comercial y el borrador se retiene. Es la perilla que mueve la tasa de retención: si en métricas se te va del 10 al 20%, se calibra acá."
-        palabras={datos.palabras_comerciales}
-        onGuardar={(palabras_comerciales) => guardar.mutate({ palabras_comerciales })}
-      />
-
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Cuándo y a qué ritmo sale</CardTitle>
@@ -473,52 +459,6 @@ function Numero({
       </div>
       {ayuda && <span className="block text-xs text-muted-foreground">{ayuda}</span>}
     </label>
-  );
-}
-
-/**
- * Una lista de palabras, editable como texto.
- *
- * Sirve a las dos del triage, que son la misma perilla por los dos lados:
- * `palabras_conflicto` aparta un borrador, y `palabras_comerciales` decide si
- * el chat parece de trabajo. Por eso el título y la ayuda vienen de afuera.
- */
-function Palabras({
-  titulo,
-  ayuda,
-  palabras,
-  onGuardar,
-}: {
-  titulo: string;
-  ayuda: string;
-  palabras: string[];
-  onGuardar: (palabras: string[]) => void;
-}) {
-  const [borrador, setBorrador] = useState(palabras.join("\n"));
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{titulo}</CardTitle>
-        <p className="text-sm text-muted-foreground">{ayuda}</p>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <textarea
-          rows={8}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={borrador}
-          onChange={(evento) => setBorrador(evento.target.value)}
-        />
-        <Button
-          size="sm"
-          onClick={() =>
-            onGuardar(borrador.split("\n").map((p) => p.trim()).filter(Boolean))
-          }
-        >
-          Guardar palabras
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
 

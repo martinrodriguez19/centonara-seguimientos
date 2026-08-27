@@ -166,7 +166,6 @@ async def test_cambiar_un_tope_en_una_base_nueva_no_borra_lo_demas(base) -> None
 
     assert config["tope_diario_maquina"] == 5
     assert config["palabras_conflicto"], "las palabras del triage siguen ahí"
-    assert config["palabras_comerciales"]
     assert config["largo_maximo"] == 600
     assert config["ventana"]["inicio"] == "09:00"
 

@@ -38,6 +38,16 @@ from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
 
+# De menos a más permisivo. La máquina pone el techo y el payload sólo puede
+# bajarlo: una Mac configurada en `prueba` no aprieta enviar, mande lo que
+# mande el panel. Un modo desconocido vale 0: lo más restrictivo (R2).
+_PERMISIVIDAD = {"simulado": 0, "prueba": 1, "real": 2}
+
+
+def _modo_efectivo(maquina: str, pedido: str) -> str:
+    """El más restrictivo entre el modo de la máquina y el del payload."""
+    return min(pedido, maquina, key=lambda m: _PERMISIVIDAD.get(m, 0))
+
 
 def construir(
     *,
@@ -171,12 +181,17 @@ async def _enviar(
     # manda no habilita nada.
     permitidos = job.vigente.get("destinos_permitidos") or []
 
-    if modo == "simulado":
+    # ⚠️ El modo efectivo es el MÁS RESTRICTIVO entre la máquina y el pedido.
+    # Antes el payload le ganaba al `.env`: una Mac en `prueba` apretaba enviar
+    # si el panel mandaba `real`, contradiciendo la tabla del SOP.
+    modo_efectivo = _modo_efectivo(modo, str(carga.get("modo", "prueba")))
+
+    if modo_efectivo == "simulado":
         # No toca ningún navegador. Sirve para que una máquina recién instalada
         # recorra la cola entera sin escribir en ningún lado.
         pagina: Any = PaginaSimulada()
     else:
-        if selectores.VERIFICADO is None and modo == "real":
+        if selectores.VERIFICADO is None and modo_efectivo == "real":
             # ⚠️ El guard no es una fase pendiente: es la precondición que falta.
             # Los selectores nunca se probaron contra WhatsApp Web, así que un
             # envío real es la primera vez que confiaríamos en algo no
@@ -207,7 +222,7 @@ async def _enviar(
         contacto_id=str(carga.get("contacto_id", "")),
         contacto_nombre=str(carga.get("contacto_nombre", "")),
         texto=str(carga.get("texto", "")),
-        modo=str(carga.get("modo", modo)),
+        modo=modo_efectivo,
         destinos_permitidos=permitidos,
     )
     return resultado.a_reporte()

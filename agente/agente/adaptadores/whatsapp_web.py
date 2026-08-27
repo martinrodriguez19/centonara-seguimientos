@@ -52,6 +52,10 @@ log = obtener_logger(__name__)
 # `SELECTOR_ROTO` que frena la corrida sin motivo.
 ESPERA_MS = 15_000
 ESPERA_CORTA_MS = 3_000
+# La búsqueda de un contacto y la confirmación de que el chat abrió esperan
+# más que una lectura suelta: 3 s contra un WhatsApp Web con red lenta producía
+# `CHAT_NO_ABRE` espurios — chats que existían y no llegaban a dibujarse.
+ESPERA_BUSQUEDA_MS = 8_000
 
 # ⚠️ Seleccionar todo NO es `Control+A` en macOS: es `Cmd+A`. Y macOS es donde
 # esto va a correr.
@@ -62,10 +66,8 @@ ESPERA_CORTA_MS = 3_000
 #   - El buscador no se limpia, así que la búsqueda anterior sigue puesta y se
 #     abre el chat del contacto anterior. En una corrida eso es el segundo
 #     mensaje entrando al chat del primero.
-#   - `limpiar_campo()` no borra nada, así que el modo prueba **deja el texto
-#     escrito en el chat del vendedor**: abre la conversación, ve un mensaje
-#     redactado, y lo manda sin saber de dónde salió. Es exactamente la trampa
-#     que el modo prueba existe para no dejar.
+#   - `limpiar_campo()` no borra nada, así que un aborto que quiso dejar el
+#     campo limpio lo deja escrito.
 #
 # `ControlOrMeta` lo resuelve Playwright según el sistema.
 SELECCIONAR_TODO = "ControlOrMeta+A"
@@ -118,7 +120,13 @@ class PaginaWhatsApp:
 
         `False` NO es un error de selector: que un contacto no esté en la lista
         es un dato del mundo, y el motor lo reporta como `CHAT_NO_ABRE`.
+
+        `motivo_no_abrio` queda cargado cuando devuelve `False`, para que el
+        reporte distinga "la búsqueda no trajo resultados" de "hubo filas pero
+        ninguna abrió el chat que decía ser" — antes los dos eran el mismo
+        `CHAT_NO_ABRE` genérico y diagnosticarlo exigía ir a los logs de la Mac.
         """
+        self.motivo_no_abrio: str | None = None
         buscador = await self._exigir(selectores.BUSCADOR)
 
         #  Se limpia antes de escribir: si quedó una búsqueda anterior, los
@@ -130,10 +138,11 @@ class PaginaWhatsApp:
 
         try:
             await self._page.wait_for_selector(
-                selectores.RESULTADO_DE_BUSQUEDA.css, timeout=ESPERA_CORTA_MS
+                selectores.RESULTADO_DE_BUSQUEDA.css, timeout=ESPERA_BUSQUEDA_MS
             )
         except Exception:
             log.info("contacto_sin_resultados", identificador=identificador)
+            self.motivo_no_abrio = "sin_resultados"
             return False
 
         # ⚠️ Locators y no handles, y cada fila protegida. WhatsApp redibuja la
@@ -143,8 +152,9 @@ class PaginaWhatsApp:
         # re-resuelve en el momento del click, y si la fila igual desapareció,
         # se prueba la siguiente en vez de reventar el job entero.
         filas = self._page.locator(selectores.RESULTADO_DE_BUSQUEDA.css)
-        cantidad = min(await filas.count(), 4)
+        cantidad = min(await filas.count(), 6)
         if cantidad == 0:
+            self.motivo_no_abrio = "sin_resultados"
             return False
 
         # ⚠️ La primera fila no siempre es un chat: la lista nueva es una grilla
@@ -176,7 +186,7 @@ class PaginaWhatsApp:
                         return lineas.some(l => fila.includes(l));
                     }""",
                     arg=[selectores.HEADER.css, texto_fila],
-                    timeout=ESPERA_CORTA_MS,
+                    timeout=ESPERA_BUSQUEDA_MS,
                 )
                 return True
             except Exception:
@@ -187,6 +197,7 @@ class PaginaWhatsApp:
         # verdad pasa es que el DOM cambió, los selectores del chat abierto lo
         # van a decir con nombre propio en la próxima corrida que sí abra.
         log.info("resultados_sin_chat", filas=cantidad)
+        self.motivo_no_abrio = "resultados_sin_chat"
         return False
 
     # -- Leer quién es --------------------------------------------------------
@@ -283,15 +294,20 @@ class PaginaWhatsApp:
         await campo.press_sequentially(texto, delay=10)
 
     async def limpiar_campo(self) -> None:
-        """Borra lo escrito. Se usa al abortar en modo prueba.
-
-        Dejar el texto sería dejar una trampa: el vendedor abre el chat, ve algo
-        redactado y lo manda sin saber de dónde salió.
-        """
+        """Borra lo escrito, sin enviar."""
         campo = await self._exigir(selectores.CAMPO_DE_TEXTO)
         await campo.click(timeout=self._espera)
         await self._page.keyboard.press(SELECCIONAR_TODO)
         await self._page.keyboard.press("Delete")
+
+    async def cerrar_chat(self) -> None:
+        """Cierra el chat abierto: Escape vuelve a la lista de chats.
+
+        Es el paso final del modo borradores (D30): al salir del chat, WhatsApp
+        Web guarda lo escrito como borrador de esa conversación. El vendedor lo
+        ve marcado en su lista y lo manda con un click.
+        """
+        await self._page.keyboard.press("Escape")
 
     async def apretar_enviar(self) -> None:
         """El único método de este archivo que hace que un mensaje salga."""

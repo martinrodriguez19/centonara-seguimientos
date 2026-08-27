@@ -498,6 +498,85 @@ async def test_el_canario_no_decide_con_jobs_a_medias(base) -> None:
 
 
 @sin_mongo
+async def test_una_corrida_frenada_se_puede_reanudar(base) -> None:
+    """D31: el "ya lo miré, continuar". Vuelve a `enviando` y suelta el freno.
+
+    Antes `frenada` era un estado sin salida: la alerta del canario quedaba
+    encendida para siempre y la única forma de apagarla era cancelar, perdiendo
+    los envíos pendientes.
+    """
+    from app.core import cola, corridas
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+    )
+    for n in range(6):
+        await borrador(base, corrida_id, n)
+    await validacion.validar_corrida(base, corrida_id, ahora=MIERCOLES)
+    await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+    jobs = sorted(
+        await base["jobs"].find({"corrida_id": corrida_id}).to_list(None),
+        key=lambda j: j["disponible_desde"],
+    )
+    for job in jobs[: cola.CANARIO]:
+        await base["jobs"].update_one(
+            {"_id": job["_id"]}, {"$set": {"estado": str(cola.EstadoJob.FALLIDO)}}
+        )
+    assert await corridas.revisar_canario(base, corrida_id) is True
+
+    await corridas.reanudar(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+    assert (await base["corridas"].find_one({"_id": corrida_id}))["estado"] == "enviando"
+    assert await configuracion.esta_pausado(base) is False
+    evento = await base["auditoria"].find_one({"que": "corrida_reanudada"})
+    assert evento is not None and evento["quien"] == "panel"
+
+
+@sin_mongo
+async def test_reanudar_una_corrida_que_no_esta_frenada_falla(base) -> None:
+    """Reanudar otra cosa no significa nada: aceptarlo escondería un bug."""
+    import pytest
+
+    from app.core import corridas
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+    )
+
+    with pytest.raises(corridas.NoEstaFrenada):
+        await corridas.reanudar(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+
+@sin_mongo
+async def test_cancelar_una_corrida_enviando_resuelve_los_mensajes(base) -> None:
+    """D31: nada queda en `ENVIANDO` o `EN_ESPERA` esperando un envío que no
+    va a llegar. Pasan a `DESCARTADO` con motivo `cancelado`."""
+    from app.core import corridas
+    from app.core.estados import Motivo
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+    )
+    for n in range(3):
+        await borrador(base, corrida_id, n)
+    await validacion.validar_corrida(base, corrida_id, ahora=MIERCOLES)
+    await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=MIERCOLES)
+    # Uno ya lo tomó un agente:
+    en_espera = await base["mensajes"].find({"corrida_id": corrida_id}).to_list(None)
+    await mensajes.mover(base, en_espera[0]["_id"], Estado.ENVIANDO, quien="mac-rocio")
+
+    await corridas.cancelar(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+    finales = await base["mensajes"].find({"corrida_id": corrida_id}).to_list(None)
+    assert {m["estado"] for m in finales} == {str(Estado.DESCARTADO)}
+    assert {m["motivo"] for m in finales} == {str(Motivo.CANCELADO)}
+
+
+@sin_mongo
 async def test_un_mensaje_vencido_no_se_encola(base) -> None:
     """Entre que se generó y que alguien apretó enviar pasó un día."""
     from app.core import corridas

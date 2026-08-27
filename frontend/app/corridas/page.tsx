@@ -86,7 +86,13 @@ export default function Corridas() {
                     </div>
                   </Td>
                   <Td>
-                    {corrida.terminada ? (
+                    {/* Frenada y cancelada primero: eran invisibles (D31) y
+                        una corrida frenada se veía "en curso" para siempre. */}
+                    {corrida.estado === "frenada" ? (
+                      <Pildora nivel="critico">{textos.corrida.frenada}</Pildora>
+                    ) : corrida.estado === "cancelada" ? (
+                      <Pildora nivel="neutro">{textos.corrida.cancelada}</Pildora>
+                    ) : corrida.terminada ? (
                       <Pildora nivel={corrida.jobs.fallido ? "atencion" : "ok"}>
                         {corrida.jobs.fallido
                           ? textos.corridas.conFallas(corrida.jobs.fallido)

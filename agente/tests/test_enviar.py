@@ -240,7 +240,7 @@ async def test_si_el_vendedor_estaba_escribiendo_no_se_le_pisa() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Modo prueba
+# Modo prueba: dejar borradores (D30)
 # ---------------------------------------------------------------------------
 
 
@@ -250,22 +250,38 @@ async def test_en_modo_prueba_hace_todo_menos_enviar() -> None:
     resultado = await mandar(pagina, modo="prueba")
 
     assert resultado.ok
-    assert resultado.simulado
+    assert resultado.borrador
     assert resultado.texto_escrito == TEXTO
     assert pagina.enviados == [], "no salió nada"
 
 
-async def test_el_modo_prueba_limpia_el_campo_al_salir() -> None:
-    """⚠️ Dejar el texto escrito sería dejar una trampa.
+async def test_el_modo_prueba_deja_el_texto_como_borrador_del_chat() -> None:
+    """D30: el texto queda como borrador de WhatsApp, no se borra.
 
-    El vendedor abre el chat, ve algo redactado que él no escribió, y lo manda
-    sin saber de dónde salió.
+    El vendedor lo ve en su lista de chats y lo manda con un click. El chat
+    queda cerrado — es lo que hace que WhatsApp persista el borrador.
     """
-    pagina = pagina_con(chat_normal())
+    chats = chat_normal()
+    pagina = pagina_con(chats)
 
     await mandar(pagina, modo="prueba")
 
-    assert not pagina.escribio_algo
+    assert pagina.abierto is None, "el chat quedó cerrado"
+    unico = next(iter(chats.values()))
+    assert unico.borrador_del_vendedor == TEXTO, "el texto quedó como borrador"
+
+
+async def test_el_reporte_del_borrador_lo_dice() -> None:
+    """⚠️ Sin el flag, el backend marcaría el borrador como ENVIADO: lo
+    contaría en el tope diario y no se podría enviar de verdad nunca."""
+    pagina = pagina_con(chat_normal())
+
+    resultado = await mandar(pagina, modo="prueba")
+
+    assert resultado.a_reporte()["borrador"] is True
+
+    resultado_real = await mandar(pagina_con(chat_normal()), modo="real")
+    assert resultado_real.a_reporte()["borrador"] is False
 
 
 @pytest.mark.parametrize("modo", ["prueba", "simulado", "", "REAL", "Real"])

@@ -62,9 +62,12 @@ class Cliente:
     async def cerrar(self) -> None:
         await self._http.aclose()
 
-    async def registrar(self, *, version: str, diagnostico: dict[str, str]) -> dict[str, Any]:
+    async def registrar(
+        self, *, version: str, diagnostico: dict[str, str], modo: str = ""
+    ) -> dict[str, Any]:
         respuesta = await self._http.post(
-            "/api/agente/registrar", json={"version": version, "diagnostico": diagnostico}
+            "/api/agente/registrar",
+            json={"version": version, "diagnostico": diagnostico, "modo": modo},
         )
         self._revisar(respuesta)
         return respuesta.json()
@@ -95,6 +98,7 @@ class Cliente:
         raw: str = "",
         stderr: str = "",
         costo_usd: float = 0.0,
+        borrador: bool = False,
     ) -> dict[str, Any]:
         respuesta = await self._http.post(
             f"/api/agente/jobs/{job_id}/resultado",
@@ -107,6 +111,8 @@ class Cliente:
                 "raw": raw[-100_000:],
                 "stderr": stderr[-100_000:],
                 "costo_usd": costo_usd,
+                # D30: sin esto, el backend daría por enviado un borrador.
+                "borrador": borrador,
             },
         )
         self._revisar(respuesta)

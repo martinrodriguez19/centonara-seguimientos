@@ -111,12 +111,15 @@ El triage no bloquea, **aparta**. La mayoría de los mensajes sale sin tocar nad
 | `SIN_RESPUESTA_PREVIA` | El contacto no respondió al último seguimiento que le mandamos | Insistir sobre silencio es lo que dispara "bloquear/reportar" |
 | `IDENTIDAD_AMBIGUA` | No se pudo resolver el E.164, o el nombre coincide con más de un contacto | Duda sobre a quién se le escribe |
 | `COMPROMISO_CONCRETO` | El borrador menciona precios, fechas, plazos o cantidades | Un dato inventado por el modelo se vuelve una promesa comercial |
-| `CHAT_NO_COMERCIAL` | El resumen no tiene señales de intención comercial | Las líneas mezclan personal y trabajo |
 
 Cualquiera → `RETENIDO`. Ninguna → `EN_ESPERA`.
 
-**Las listas de palabras viven en `configuracion`, no hardcodeadas.** El cliente va a querer
-agregar términos de su rubro.
+> Había una quinta señal, `CHAT_NO_COMERCIAL`, que apartaba los chats sin palabras "comerciales"
+> en el resumen. Se eliminó (D29): los vendedores usan estas líneas sólo para trabajo, y la
+> división comercial/personal por palabras apartaba chats legítimos.
+
+**La lista de palabras de conflicto vive en `configuracion`, no hardcodeada.** Ya no se muestra
+en el panel (D29), pero sigue activa y editable por API.
 
 > **Nota sobre la antigüedad.** La versión anterior de este documento retenía los chats de más de
 > 60 días. Se sacó: el MVP validó que leer los chats recientes funciona, y la antigüedad de una

@@ -141,8 +141,8 @@ export const grupos: Grupo[] = [
         titulo: "Cambiar el modo del agente",
         comando: "open -e ~/centonara-seguimientos/.env",
         queHace:
-          "Abre el archivo de configuración de la máquina. La línea AGENTE_MODO admite «simulado» (no toca ningún navegador), «prueba» (escribe el mensaje y lo borra sin enviarlo) y «real» (aprieta enviar).",
-        cuando: "Para dejar una máquina en prueba mientras se la calibra.",
+          "Abre el archivo de configuración de la máquina. La línea AGENTE_MODO admite «simulado» (no toca ningún navegador: todo envío falla con «no se pudo abrir el chat»), «prueba» (escribe el mensaje y lo deja como borrador, sin enviarlo) y «real» (puede apretar enviar). La máquina pone el techo: en «prueba» no envía aunque el panel pida envío real.",
+        cuando: "Para dejar una máquina en prueba mientras se la calibra, o cuando todos sus envíos fallan con «no se pudo abrir el chat» (quedó en simulado).",
         aviso: "Después de guardar hay que reiniciar el agente, si no el cambio no tiene efecto.",
       },
     ],

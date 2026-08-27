@@ -11,11 +11,12 @@ export type Modo = "prueba" | "real";
 /**
  * Los dos botones de envío, con la fricción repartida según lo que cuesta.
  *
- * **Ensayo** es un click: hace todo el recorrido menos apretar enviar, y nadie
- * recibe nada. Ponerle fricción sólo lograría que se use menos, que es lo
- * contrario de lo que conviene.
+ * **Dejar borradores** (D30) es un click: hace todo el recorrido menos apretar
+ * enviar, y el mensaje queda como borrador en el WhatsApp de cada vendedor.
+ * Ponerle fricción sólo lograría que se use menos, que es lo contrario de lo
+ * que conviene.
  *
- * **De verdad** pide escribir la cantidad de mensajes que van a salir. Es la
+ * **Envío** pide escribir la cantidad de mensajes que van a salir. Es la
  * misma fricción que ya usa liberar retenidos en lote, y por el mismo motivo:
  * escribir el número obliga a leerlo. Un `confirm()` se acepta sin mirar, y
  * esta es exactamente la acción que alguien apurado haría sin mirar.

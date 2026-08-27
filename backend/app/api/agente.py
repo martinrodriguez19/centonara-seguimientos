@@ -64,6 +64,10 @@ class Estricto(BaseModel):
 class Registro(Estricto):
     version: Annotated[str, Field(max_length=32)]
     diagnostico: dict[str, str] = Field(default_factory=dict)
+    # El modo resuelto de la máquina (simulado/prueba/real). Se muestra en el
+    # panel: una Mac que quedó en `simulado` falla todos los envíos con
+    # CHAT_NO_ABRE, y verlo de un vistazo evita diagnosticar por ssh.
+    modo: Annotated[str, Field(max_length=16)] = ""
 
 
 class Latido(Estricto):
@@ -107,6 +111,11 @@ class ResultadoJob(Estricto):
     raw: Annotated[str, Field(max_length=200_000)] = ""
     stderr: Annotated[str, Field(max_length=200_000)] = ""
     costo_usd: Annotated[float, Field(ge=0)] = 0.0
+    # D30: el texto quedó como borrador de WhatsApp, sin enviarse. Decide si el
+    # mensaje termina en BORRADOR_DEJADO o en ENVIADO. `False` por defecto para
+    # que un agente viejo que no lo manda siga contando como envío — el error
+    # conservador es el contrario al que había.
+    borrador: bool = False
 
 
 class RespuestaRegistro(BaseModel):
@@ -133,8 +142,14 @@ async def registrar(cuerpo: Registro, maquina: Maquina) -> RespuestaRegistro:
         maquina["maquina"],
         diagnostico=cuerpo.diagnostico,
         version_agente=cuerpo.version,
+        modo_agente=cuerpo.modo or None,
     )
-    log.info("agente_registrado", maquina=maquina["maquina"], version=cuerpo.version)
+    log.info(
+        "agente_registrado",
+        maquina=maquina["maquina"],
+        version=cuerpo.version,
+        modo=cuerpo.modo,
+    )
     return RespuestaRegistro(
         maquina=maquina["maquina"],
         activo=bool(maquina.get("activo")),
@@ -392,7 +407,10 @@ async def _resolver_mensaje(base, job, cuerpo: ResultadoJob, reporte, maquina: s
 
     try:
         if cuerpo.ok:
-            await mensajes.mover(base, identificador, Estado.ENVIADO, quien=maquina)
+            # D30: un borrador dejado no es un envío — no se audita como
+            # enviado ni consume el tope diario.
+            destino = Estado.BORRADOR_DEJADO if cuerpo.borrador else Estado.ENVIADO
+            await mensajes.mover(base, identificador, destino, quien=maquina)
         elif reporte.reintenta:
             # Vuelve a la cola. El mensaje vuelve a estar listo, no descartado:
             # todavía puede salir.

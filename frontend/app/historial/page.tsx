@@ -32,7 +32,11 @@ const POR_PAGINA = 25;
 /** Los nombres técnicos no se le muestran a nadie. */
 const QUE: Record<string, string> = {
   corrida_disparada: "Se disparó una corrida",
+  corrida_cancelada: "Se canceló una corrida",
+  corrida_reanudada: "Se reanudó una corrida frenada",
+  datos_borrados: "Se vació el sistema para entregarlo",
   mensaje_enviado: "Se envió un mensaje",
+  borrador_dejado: "Se dejó un borrador en el WhatsApp del vendedor",
   mensaje_vetado: "Se frenó un mensaje",
   mensaje_editado: "Se editó un mensaje",
   mensaje_liberado: "Se liberó un mensaje retenido",
@@ -49,8 +53,9 @@ const QUE: Record<string, string> = {
 /** Los grupos del filtro. Menos que los tipos de evento, y a propósito. */
 const GRUPOS = {
   todo: () => true,
-  mensajes: (que: string) => que.startsWith("mensaje_") || que === "envio_abortado",
-  corridas: (que: string) => que === "corrida_disparada",
+  mensajes: (que: string) =>
+    que.startsWith("mensaje_") || que === "envio_abortado" || que === "borrador_dejado",
+  corridas: (que: string) => que.startsWith("corrida_"),
   cambios: (que: string) =>
     que.startsWith("configuracion") ||
     que.startsWith("destinos") ||

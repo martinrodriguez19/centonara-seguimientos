@@ -5,7 +5,15 @@
 > sigue, y —sobre todo— qué decisiones ya se tomaron y no hace falta volver a
 > discutir.
 >
-> Última actualización: 21 de agosto de 2026.
+> Última actualización: 27 de agosto de 2026.
+>
+> **Nota:** después de la primera entrega se implementó la Entrega 2 (D29 a
+> D31): todos los chats se consideran comerciales, "Dejar borradores" reemplaza
+> al ensayo, y las corridas frenadas se pueden reanudar y cancelar. El detalle,
+> con el diagnóstico del incidente del 26/08, está en
+> [`PLAN-ENTREGA-2.md`](PLAN-ENTREGA-2.md). Los números de abajo de la sección 2
+> quedaron de la entrega anterior; hoy son 641 tests de backend y 212 del
+> agente, verdes.
 
 ---
 

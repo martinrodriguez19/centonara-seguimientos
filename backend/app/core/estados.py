@@ -1,12 +1,12 @@
 """Máquina de estados de un mensaje.
 
-Es la pieza central del sistema: todo lo demás la sirve. Seis estados y un
+Es la pieza central del sistema: todo lo demás la sirve. Siete estados y un
 campo `motivo`, en vez de los doce del plan anterior — lo que allá eran estados
 distintos (rechazado, vetado, vencido, fallido) acá es el porqué de uno solo.
 
 ```
   BORRADOR ──▶ EN_ESPERA ──▶ ENVIANDO ──▶ ENVIADO
-      │             ▲  │          │
+      │             ▲  │          │└─────▶ BORRADOR_DEJADO   (modo borradores, D30)
       │             │  │          └──(falla, quedan intentos)──▶ EN_ESPERA
       ▼             │  ▼
   RETENIDO ─(libera)┘  └──────────────────▶ DESCARTADO
@@ -26,7 +26,7 @@ from enum import StrEnum
 
 
 class Estado(StrEnum):
-    """Los seis estados. `StrEnum` para que se guarden legibles en Mongo."""
+    """Los siete estados. `StrEnum` para que se guarden legibles en Mongo."""
 
     BORRADOR = "BORRADOR"
     """El modelo lo redactó, todavía no pasó las reglas."""
@@ -42,6 +42,12 @@ class Estado(StrEnum):
 
     ENVIADO = "ENVIADO"
     """Salió y se confirmó en el hilo. Terminal."""
+
+    BORRADOR_DEJADO = "BORRADOR_DEJADO"
+    """Quedó escrito como borrador en el WhatsApp del vendedor, sin enviarse
+    (D30). Lo manda el vendedor a mano, o no lo manda. Terminal: el sistema no
+    vuelve a tocar ese chat — un Envío posterior lo abortaría con
+    `CAMPO_NO_VACIO`, que es el circuito esperado, no un error."""
 
     DESCARTADO = "DESCARTADO"
     """No sale nunca. El porqué está en `motivo`. Terminal."""
@@ -71,8 +77,13 @@ class Motivo(StrEnum):
     SIN_CONFIRMAR = "sin_confirmar"
     """Se apretó enviar y no apareció en el hilo. **Dispara alerta.**"""
 
+    CANCELADO = "cancelado"
+    """Una persona canceló la corrida antes de que saliera (D31)."""
 
-TERMINALES: frozenset[Estado] = frozenset({Estado.ENVIADO, Estado.DESCARTADO})
+
+TERMINALES: frozenset[Estado] = frozenset(
+    {Estado.ENVIADO, Estado.BORRADOR_DEJADO, Estado.DESCARTADO}
+)
 
 # La tabla. Es la única fuente de verdad sobre qué transición existe.
 #
@@ -87,9 +98,12 @@ TRANSICIONES: dict[Estado, frozenset[Estado]] = {
     Estado.EN_ESPERA: frozenset({Estado.ENVIANDO, Estado.DESCARTADO}),
     # ENVIANDO vuelve a EN_ESPERA cuando falla algo reintentable: el agente no
     # pudo abrir el chat, se cayó la sesión. El mensaje sigue vivo y lo toma
-    # otro intento.
-    Estado.ENVIANDO: frozenset({Estado.ENVIADO, Estado.EN_ESPERA, Estado.DESCARTADO}),
+    # otro intento. BORRADOR_DEJADO es el final del modo borradores (D30).
+    Estado.ENVIANDO: frozenset(
+        {Estado.ENVIADO, Estado.BORRADOR_DEJADO, Estado.EN_ESPERA, Estado.DESCARTADO}
+    ),
     Estado.ENVIADO: frozenset(),
+    Estado.BORRADOR_DEJADO: frozenset(),
     Estado.DESCARTADO: frozenset(),
 }
 

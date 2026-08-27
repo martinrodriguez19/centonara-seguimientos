@@ -98,15 +98,20 @@ class Codigo(StrEnum):
     SESION_CAIDA = "SESION_CAIDA"
     TIMEOUT = "TIMEOUT"
     ERROR_INESPERADO = "ERROR_INESPERADO"
+    CANCELADO = "CANCELADO"
+    """No lo reporta ningún agente: lo escribe `corridas.cancelar` cuando una
+    persona corta la corrida. Está en el enum para que `Codigo("CANCELADO")`
+    exista — antes era un string suelto escrito directo en Mongo (D31)."""
 
     @property
     def reintenta(self) -> bool:
         """¿Tiene sentido volver a intentarlo?
 
-        Los cuatro que devuelven `False` no son fallas transitorias: son el
+        Los que devuelven `False` no son fallas transitorias: son el
         sistema haciendo su trabajo. `CONTACTO_NO_COINCIDE` significa que la
         verificación de identidad abortó el envío — reintentar sería insistir
-        con el chat equivocado.
+        con el chat equivocado. Y un `CANCELADO` reintentado desharía la
+        decisión de la persona que canceló.
 
         `SIN_CONFIRMAR` es distinto y peor: se apretó enviar y no se pudo
         confirmar. El mensaje **puede haber salido**. Reintentar sería mandarlo
@@ -132,6 +137,7 @@ _NO_SE_REINTENTAN = frozenset(
         Codigo.DESTINO_NO_PERMITIDO,
         Codigo.SIN_CONFIRMAR,
         Codigo.SELECTOR_ROTO,
+        Codigo.CANCELADO,
     }
 )
 

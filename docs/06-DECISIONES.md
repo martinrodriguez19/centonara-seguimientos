@@ -459,6 +459,90 @@ mensajes de otra empresa, que es exactamente lo que esto existe para evitar.
 
 ---
 
+### D29 — Todos los chats se consideran comerciales
+
+**Contexto.** El triage tenía una señal `CHAT_NO_COMERCIAL` que apartaba los chats cuyo resumen no
+contenía ninguna palabra de una lista de "palabras comerciales". El cliente fue claro después de la
+primera entrega: los vendedores usan esas líneas sólo para trabajo. La división comercial/personal
+por palabras aparta chats legítimos y no protege de nada.
+
+**Decisión: se elimina la señal, la lista `palabras_comerciales`, y las tarjetas de palabras del
+panel.** A todos los chats se les redacta un seguimiento. El prompt de redacción deja de apartar
+"conversaciones personales": `sin_contexto` queda sólo para cuando no hay literalmente nada que
+retomar.
+
+**Lo que NO se elimina: `palabras_conflicto` sigue funcionando en el backend.** Esa señal no
+clasifica comercial/personal — aparta el seguimiento sobre un reclamo abierto, el peor error
+posible del sistema (§7.3 de 03-REGLAS). Desaparece su tarjeta del panel, pero la lista por
+defecto sigue activa y editable por API. Eliminarla del todo sería una decisión aparte, no un
+efecto colateral de ésta.
+
+El miembro del enum `Senal.CHAT_NO_COMERCIAL` y su traducción en el panel se conservan: hay
+mensajes históricos con esa señal guardada y tienen que seguir siendo legibles.
+
+**Qué la revertiría.** Que el cliente sume vendedores que mezclan lo personal con lo laboral en la
+misma línea. Ahí se restaura la señal desde el historial de git — la perilla (lista vacía = señal
+apagada) ya existía y volvería con ella.
+
+---
+
+### D30 — "Dejar borradores" reemplaza al ensayo
+
+**Contexto.** El modo prueba escribía el mensaje y lo borraba: servía para verificar el mecanismo,
+no para el cliente. Lo que el cliente necesita es que el sistema deje el mensaje **escrito y sin
+enviar** en el WhatsApp de cada vendedor, para que él lo revise y lo mande con un click.
+
+**Decisión: el modo prueba pasa a dejar el texto como borrador de WhatsApp.** Mismos doce pasos
+del envío (identidad, destino permitido, campo vacío — todo idéntico), pero al final no se aprieta
+enviar y **no se limpia el campo**: se cierra el chat para que WhatsApp Web persista el borrador.
+En el panel se renombra "Ensayo" → **"Dejar borradores"** y "Enviar de verdad" → **"Envío"**. El
+valor interno del modo sigue siendo `"prueba"` — cambiar el contrato entre panel, backend y agente
+no compra nada.
+
+**Tres consecuencias que son parte de la decisión:**
+
+1. **Estado nuevo `BORRADOR_DEJADO`.** Hasta ahora un ensayo marcaba los mensajes como `ENVIADO`:
+   los auditaba como enviados, los contaba en el tope diario y los "quemaba" (ya no se podían
+   enviar de verdad). El agente ahora reporta si fue borrador, y el mensaje termina en
+   `BORRADOR_DEJADO`: no cuenta como enviado, no consume el tope G4, evento de auditoría propio.
+   **Sí cuenta para el anti-duplicado G5**: si se le dejó un borrador a un contacto, no se le
+   genera otro seguimiento por `dias_anti_duplicado`, lo haya mandado el vendedor o no.
+2. **El circuito es "dejar borradores → el vendedor manda a mano".** No "borradores y después
+   envío automático": un borrador dejado ocupa el campo de escritura, y un Envío posterior al
+   mismo chat aborta con `CAMPO_NO_VACIO` (G8). Es el sistema fallando cerrado, no un bug.
+3. **El modo efectivo es el más restrictivo entre la máquina y el pedido.** Se encontró que el
+   modo del payload le ganaba al de la máquina: una Mac configurada en `prueba` apretaba enviar
+   si el panel mandaba `real`. Eso contradecía el SOP y era un agujero de seguridad. Ahora
+   `simulado < prueba < real`: la máquina pone el techo, el payload sólo puede bajarlo.
+
+**Qué la revertiría.** Que los vendedores no manden los borradores y el cliente pida volver al
+envío directo como único camino. El Envío ya existe; no habría nada que construir.
+
+---
+
+### D31 — Una corrida frenada se puede reanudar, y cancelar resuelve todo
+
+**Contexto.** El 26/08 el canario frenó una corrida de ensayo y la dejó en `frenada` — un estado
+del que ninguna transición salía. La alerta "una corrida se frenó sola" quedó encendida sin ningún
+botón que la apagara: la única salida era cancelar (perdiendo los envíos) o borrar los datos.
+
+**Decisión: `frenada → enviando` existe, con endpoint y botón.** Reanudar suelta también el kill
+switch si lo puso el canario. La alerta pasa de ser un callejón sin salida a tener su acción al
+lado: "ya lo miré, continuar". Además: cancelar se puede desde el listado y el detalle (no sólo la
+última corrida), cancelar resuelve también los mensajes colgados (`ENVIANDO`/`EN_ESPERA` →
+`DESCARTADO` con motivo `cancelado`), `CANCELADO` entra al enum de códigos (era un string suelto
+escrito directo en Mongo), y el estado real de la corrida (`frenada`, `cancelada`) se muestra en
+el panel.
+
+**Lo que no cambia:** las alertas siguen sin guardarse — se recalculan del estado en cada
+consulta, y no se agrega un "descartar alerta" genérico. Lo que faltaba era la acción que resuelve
+la causa, no una forma de esconder el síntoma.
+
+**Qué la revertiría.** Nada previsible: es la corrección de un estado terminal que nunca debió
+serlo.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

@@ -32,7 +32,7 @@ class ClienteFalso:
         self.consultas = 0
         self.registros = 0
 
-    async def registrar(self, *, version: str, diagnostico: dict) -> dict:
+    async def registrar(self, *, version: str, diagnostico: dict, modo: str = "") -> dict:
         self.registros += 1
         if isinstance(self._registro, Exception):
             raise self._registro

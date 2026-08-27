@@ -210,11 +210,17 @@ Dos resultados que **parecen fallas y no lo son**:
   hablar —una conversación que fue sólo "ok, gracias"— y se negó a inventar.
   Se pueden escribir a mano ahí mismo, o descartar.
 
-## 3.4 — Enviar de verdad
+## 3.4 — Dejar borradores, o enviar
 
-Cuando los borradores se ven bien, el botón de enviar los manda **de a uno, con
-pausas al azar**, sólo a los números permitidos, y frenando todo si los tres
-primeros fallan.
+Cuando los borradores se ven bien, hay dos botones (D30):
+
+- **Dejar borradores**: el sistema abre cada chat, verifica el contacto,
+  escribe el mensaje y **no lo envía** — queda como borrador en el WhatsApp del
+  vendedor, que lo manda con un click cuando quiera. Ojo: mientras ese borrador
+  esté sin mandar, el sistema no vuelve a escribir en ese chat (lo detecta
+  ocupado y aborta, a propósito).
+- **Envío**: los manda **de a uno, con pausas al azar**, sólo a los números
+  permitidos, y frenando todo si los tres primeros fallan.
 
 ---
 
@@ -259,9 +265,13 @@ línea `AGENTE_MODO`:
 
 | Modo | Qué hace |
 |---|---|
-| `simulado` | No toca ningún navegador. Para verificar que la máquina está viva |
-| `prueba` | Abre el chat, verifica la identidad, escribe el mensaje **y lo borra sin enviarlo** |
-| `real` | Lo mismo, y aprieta enviar |
+| `simulado` | No toca ningún navegador. Para verificar que la máquina está viva. ⚠️ Todos los envíos y borradores "fallan" con *no se pudo abrir el chat*: si eso pasa en todos, la máquina quedó en este modo |
+| `prueba` | Abre el chat, verifica la identidad, escribe el mensaje **y lo deja como borrador, sin enviarlo** (D30) |
+| `real` | Lo mismo, y puede apretar enviar |
+
+**La máquina pone el techo.** Una Mac en `prueba` nunca aprieta enviar, aunque
+desde el panel se pida un envío real: a lo sumo deja el borrador. El modo de
+cada máquina se ve en su tarjeta del panel.
 
 Después de cambiarlo:
 

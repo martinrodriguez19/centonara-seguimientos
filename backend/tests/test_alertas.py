@@ -127,9 +127,15 @@ async def test_los_sin_confirmar_son_la_alerta_mas_importante(base) -> None:
 
 
 @sin_mongo
-async def test_una_corrida_frenada_por_el_canario_alerta(base) -> None:
-    await base["corridas"].insert_one({"estado": "frenada", "creada_en": AHORA})
-    assert "canario_fallido" in codigos(await alertas.revisar(base, ahora=AHORA))
+async def test_una_corrida_frenada_por_el_canario_alerta_y_dice_cual(base) -> None:
+    """La alerta trae la corrida (D31): es lo que permite ponerle al lado el
+    botón que la resuelve, en vez de dejarla encendida sin salida."""
+    resultado = await base["corridas"].insert_one({"estado": "frenada", "creada_en": AHORA})
+
+    alerta = next(
+        a for a in await alertas.revisar(base, ahora=AHORA) if a.codigo == "canario_fallido"
+    )
+    assert alerta.corrida_id == str(resultado.inserted_id)
 
 
 @sin_mongo
@@ -186,13 +192,12 @@ async def test_una_maquina_pausada_no_alerta_aunque_este_caida(base) -> None:
 
 
 @sin_mongo
-async def test_el_kill_switch_puesto_es_un_aviso_no_una_urgencia(base) -> None:
-    """Alguien lo apretó a propósito. Pero tiene que verse: un sistema frenado
-    que nadie recuerda haber frenado se ve igual que uno roto."""
+async def test_el_kill_switch_puesto_ya_no_genera_alerta(base) -> None:
+    """El freno lo muestra el propio kill switch del panel; con la alerta
+    además, el mismo freno aparecía dos veces, una debajo de la otra (D31)."""
     await configuracion.pausar(base, pausado=True, quien="prueba")
 
-    alerta = next(a for a in await alertas.revisar(base, ahora=AHORA) if a.codigo == "pausa_global")
-    assert alerta.nivel is alertas.Nivel.AVISO
+    assert "pausa_global" not in codigos(await alertas.revisar(base, ahora=AHORA))
 
 
 @sin_mongo

@@ -222,6 +222,35 @@ async def test_enviar_queda_registrado(base) -> None:
 
 
 @sin_mongo
+async def test_dejar_un_borrador_se_audita_como_tal_y_no_como_envio(base) -> None:
+    """D30: nada salió de esa línea. Auditarlo como enviado sería mentir —
+    y contarlo en el tope diario quemaría cupo que no se usó."""
+    mensaje_id = await crear(base)
+    await mensajes.mover(base, mensaje_id, Estado.EN_ESPERA, ahora=MIERCOLES)
+    await mensajes.mover(base, mensaje_id, Estado.ENVIANDO, ahora=MIERCOLES)
+    await mensajes.mover(
+        base, mensaje_id, Estado.BORRADOR_DEJADO, quien="mac-rocio", ahora=MIERCOLES
+    )
+
+    eventos = await auditoria.de_un_mensaje(base, mensaje_id)
+    assert [e["que"] for e in eventos] == ["borrador_dejado"]
+    assert await mensajes.enviados_hoy(base, "mac-rocio", ahora=MIERCOLES) == 0
+
+
+@sin_mongo
+async def test_un_borrador_dejado_cuenta_para_el_anti_duplicado(base) -> None:
+    """D30: ese contacto ya tiene un seguimiento esperándolo en el chat, lo
+    haya mandado el vendedor o no. Generarle otro sería duplicarlo."""
+    mensaje_id = await crear(base)
+    await mensajes.mover(base, mensaje_id, Estado.EN_ESPERA, ahora=MIERCOLES)
+    await mensajes.mover(base, mensaje_id, Estado.ENVIANDO, ahora=MIERCOLES)
+    await mensajes.mover(base, mensaje_id, Estado.BORRADOR_DEJADO, ahora=MIERCOLES)
+
+    contacto = (await base["mensajes"].find_one({"_id": mensaje_id}))["contacto_id"]
+    assert await mensajes.le_escribimos_hace_poco(base, contacto, dias=7, ahora=MIERCOLES)
+
+
+@sin_mongo
 async def test_descartar_queda_registrado_con_el_motivo(base) -> None:
     mensaje_id = await crear(base)
     await mensajes.mover(

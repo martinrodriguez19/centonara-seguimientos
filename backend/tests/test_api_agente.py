@@ -343,6 +343,57 @@ async def test_el_enviar_entregado_trae_los_destinos_vigentes(
 
 
 @sin_mongo
+async def test_un_reporte_con_borrador_no_marca_el_mensaje_como_enviado(
+    cliente, base, maquina_activa
+) -> None:
+    """⚠️ D30: el bug que quemaba los borradores.
+
+    Un ensayo terminaba en `ENVIADO`: se auditaba como enviado, consumía el
+    tope diario, y esos mensajes ya no se podían enviar de verdad. Con el flag
+    `borrador` en el reporte, terminan en `BORRADOR_DEJADO`.
+    """
+    from app.core import mensajes
+    from app.core.estados import Estado
+
+    corrida_id = ObjectId()
+    mensaje_id = await mensajes.crear_borrador(
+        base,
+        corrida_id=corrida_id,
+        maquina="mac-rocio",
+        contacto_id="+5491123231151",
+        contacto_nombre="Corralón",
+        texto="hola, ¿seguimos?",
+    )
+    await mensajes.mover(base, mensaje_id, Estado.EN_ESPERA)
+    await cola.encolar(
+        base,
+        tipo=cola.Tipo.ENVIAR,
+        maquina="mac-rocio",
+        corrida_id=corrida_id,
+        payload={
+            "mensaje_id": str(mensaje_id),
+            "contacto_id": "+5491123231151",
+            "contacto_nombre": "Corralón",
+            "texto": "hola, ¿seguimos?",
+            "modo": "prueba",
+        },
+    )
+    #  Entregarlo lo marca ENVIANDO; el reporte con `borrador` lo resuelve.
+    job = (await cliente.get("/api/agente/jobs/proximo", headers=auth(maquina_activa.token))).json()
+    respuesta = await cliente.post(
+        f"/api/agente/jobs/{job['id']}/resultado",
+        json={"ok": True, "raw": "hola, ¿seguimos?", "borrador": True},
+        headers=auth(maquina_activa.token),
+    )
+
+    assert respuesta.status_code == 200
+    documento = await base["mensajes"].find_one({"_id": mensaje_id})
+    assert documento["estado"] == str(Estado.BORRADOR_DEJADO)
+    assert await base["auditoria"].find_one({"que": "borrador_dejado"}) is not None
+    assert await base["auditoria"].find_one({"que": "mensaje_enviado"}) is None
+
+
+@sin_mongo
 async def test_lo_vigente_se_lee_al_entregar_y_no_al_encolar(cliente, base, maquina_activa) -> None:
     """Cerrar la lista desde el panel tiene efecto sobre lo ya encolado."""
     from app.core import cola, configuracion
