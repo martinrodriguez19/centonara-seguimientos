@@ -358,8 +358,13 @@ async def test_el_motor_no_le_escribe_a_un_grupo(navegador) -> None:
     assert await pagina.campo_tiene_texto() is False
 
 
-async def test_en_modo_prueba_escribe_y_limpia_sin_enviar(navegador) -> None:
-    """El modo prueba tiene que dejar la pantalla como la encontró."""
+async def test_en_modo_borradores_escribe_y_no_envia(navegador) -> None:
+    """D30: el texto **queda escrito** en el chat, y no sale.
+
+    Este test decía lo contrario hasta D30 —modo prueba escribía y limpiaba— y
+    es el que quedó afuera del cambio: sólo corre con navegador, así que en las
+    máquinas del equipo se saltea y lo agarró el CI.
+    """
     pagina = await abrir(navegador, [CORRALON])
 
     resultado = await enviar(
@@ -372,8 +377,8 @@ async def test_en_modo_prueba_escribe_y_limpia_sin_enviar(navegador) -> None:
     )
 
     assert resultado.ok
-    assert resultado.simulado is True
-    assert await pagina.campo_tiene_texto() is False
+    assert resultado.borrador is True
+    assert await pagina.campo_tiene_texto() is True, "el borrador queda para el vendedor"
     assert await pagina.confirmar_en_hilo("mensaje de prueba", timeout_s=1) is False
 
 
