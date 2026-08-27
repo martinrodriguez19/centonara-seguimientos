@@ -216,7 +216,9 @@ export const grupos: Grupo[] = [
         titulo: "3. Bajar Node 18",
         comando: "curl -fsSLO https://nodejs.org/dist/v18.20.8/node-v18.20.8.pkg",
         queHace:
-          "Node 18 es la última rama que corre en macOS 10.15; las siguientes piden 13.5 o más. Es la pieza que hace posible todo lo demás.",
+          "Node 18 es la última rama que corre en macOS 10.15; las siguientes piden 13.5 o más. Es la pieza que hace posible todo lo demás, y sirve para dos cosas: Claude Code, que lee los chats, y el motor de envío — el navegador que escribe los mensajes también necesita un Node, y el que trae adentro está compilado para macOS 11 o más nuevo. El agente lo detecta solo y usa éste; no hay que configurar nada.",
+        aviso:
+          "Si esta Mac no tiene Node instalado, el envío falla con «dyld: Symbol not found» y una referencia a «playwright/driver/node». Ese error significa exactamente esto y se resuelve con este paso.",
       },
       {
         id: "catalina-node-instalar",

@@ -95,6 +95,74 @@ def test_el_apagado_se_registra_en_este_sistema_operativo() -> None:
             signal.signal(getattr(signal, nombre), manejador)
 
 
+class TestNodeParaPlaywright:
+    """⚠️ El `node` que trae Playwright no carga en macOS anterior a Big Sur.
+
+    Está compilado para macOS 11+ (13.5 en las versiones nuevas) y en Catalina
+    dyld mata el proceso antes de que Playwright arranque. Pasó en producción:
+    una iMac 2012 con 10.15 dejó de poder vincular el navegador después de una
+    actualización de dependencias, con un error que no nombra a Playwright.
+
+    Los tres casos que importan: que en una Mac vieja use el node del sistema,
+    que en una Mac al día **no toque nada**, y que respete una decisión previa.
+    """
+
+    @staticmethod
+    def _en_macos(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
+        monkeypatch.setattr(main_mod.sys, "platform", "darwin")
+        monkeypatch.setattr(main_mod.platform, "mac_ver", lambda: (version, ("", "", ""), ""))
+        monkeypatch.delenv("PLAYWRIGHT_NODEJS_PATH", raising=False)
+
+    def test_en_catalina_usa_el_node_del_sistema(self, monkeypatch, tmp_path) -> None:
+        self._en_macos(monkeypatch, "10.15.7")
+        node = tmp_path / "node"
+        node.write_text("")
+        monkeypatch.setattr(main_mod, "NODE_DEL_SISTEMA", (node,))
+
+        assert main_mod.apuntar_a_node_del_sistema() == str(node)
+        assert os.environ["PLAYWRIGHT_NODEJS_PATH"] == str(node)
+
+    def test_en_una_mac_al_dia_no_toca_nada(self, monkeypatch, tmp_path) -> None:
+        """El node embebido es el correcto: cambiarlo sería romper lo que anda."""
+        self._en_macos(monkeypatch, "14.4")
+        node = tmp_path / "node"
+        node.write_text("")
+        monkeypatch.setattr(main_mod, "NODE_DEL_SISTEMA", (node,))
+
+        assert main_mod.apuntar_a_node_del_sistema() is None
+        assert "PLAYWRIGHT_NODEJS_PATH" not in os.environ
+
+    def test_big_sur_reportado_como_10_16_no_cuenta_como_viejo(self, monkeypatch, tmp_path) -> None:
+        """Big Sur puede reportarse como 10.16 por compatibilidad, y ahí el
+        node de Playwright carga bien. El corte está justo en ese borde."""
+        self._en_macos(monkeypatch, "10.16")
+        node = tmp_path / "node"
+        node.write_text("")
+        monkeypatch.setattr(main_mod, "NODE_DEL_SISTEMA", (node,))
+
+        assert main_mod.apuntar_a_node_del_sistema() is None
+
+    def test_una_eleccion_previa_se_respeta(self, monkeypatch, tmp_path) -> None:
+        self._en_macos(monkeypatch, "10.15.7")
+        monkeypatch.setenv("PLAYWRIGHT_NODEJS_PATH", "/lo/que/eligieron")
+
+        assert main_mod.apuntar_a_node_del_sistema() is None
+        assert os.environ["PLAYWRIGHT_NODEJS_PATH"] == "/lo/que/eligieron"
+
+    def test_sin_node_del_sistema_lo_reporta_en_vez_de_romper(self, monkeypatch, tmp_path) -> None:
+        """No hay nada que hacer, pero el log tiene que decir qué falta."""
+        self._en_macos(monkeypatch, "10.15.7")
+        monkeypatch.setattr(main_mod, "NODE_DEL_SISTEMA", (tmp_path / "no-esta",))
+
+        assert main_mod.apuntar_a_node_del_sistema() is None
+
+    def test_fuera_de_macos_no_aplica(self, monkeypatch) -> None:
+        monkeypatch.setattr(main_mod.sys, "platform", "win32")
+        monkeypatch.delenv("PLAYWRIGHT_NODEJS_PATH", raising=False)
+
+        assert main_mod.apuntar_a_node_del_sistema() is None
+
+
 def test_sslkeylogfile_se_descarta_al_arrancar(monkeypatch: pytest.MonkeyPatch) -> None:
     """Un antivirus con escudo web mata el proceso si esa variable queda puesta.
 

@@ -14,10 +14,12 @@ un sistema en particular, sin `os.system`, sin nada que dependa del SO.
 import argparse
 import asyncio
 import os
+import platform
 import signal
 import sys
 import threading
 from collections.abc import Sequence
+from pathlib import Path
 from types import FrameType
 
 from pydantic import ValidationError
@@ -219,9 +221,69 @@ def soltar_sslkeylogfile() -> str | None:
     return valor
 
 
+# Dónde deja el instalador oficial de nodejs.org el intérprete, y dónde lo deja
+# Homebrew. En ese orden: el `.pkg` oficial es el que se usa en las Macs viejas,
+# porque es el único que todavía publica binarios para macOS 10.15.
+NODE_DEL_SISTEMA = (Path("/usr/local/bin/node"), Path("/opt/homebrew/bin/node"))
+
+# macOS 10.16 es Big Sur reportándose como 10.15 por compatibilidad. El corte va
+# ahí y no en 11: por debajo está Catalina de verdad, que es donde el problema
+# ocurre; en Big Sur el node de Playwright carga bien y no hay que tocar nada.
+PRIMER_MACOS_QUE_CARGA_EL_NODE_DE_PLAYWRIGHT = (10, 16)
+
+
+def apuntar_a_node_del_sistema() -> str | None:
+    """En macOS viejo usa el `node` del sistema para Playwright. Devuelve cuál.
+
+    Playwright trae su propio `node`, compilado para macOS 11 o más nuevo —13.5
+    en las versiones recientes—. En una Mac con Catalina ese binario no carga y
+    dyld mata el proceso antes de que Playwright arranque:
+
+        dyld: Symbol not found: __ZNSt3__113basic_filebufIcNS_11char_traitsIcEEE4openEPKcj
+          Referenced from: .../playwright/driver/node (which was built for Mac OS X 13.5)
+
+    El mensaje no menciona a Playwright ni dice qué hacer, y el envío falla
+    entero: sin driver no hay navegador, y sin navegador no se escribe nada.
+
+    Playwright acepta otro intérprete por `PLAYWRIGHT_NODEJS_PATH`, y el node
+    oficial de nodejs.org **sí** publica binarios para 10.15. Esas Macs ya lo
+    tienen instalado: es el mismo Node 18 del rodeo que necesita Claude Code.
+
+    Sólo toca el entorno de este proceso, sólo en macOS viejo, y sólo si nadie
+    lo definió antes. En una Mac al día no hace nada: ahí el node embebido es el
+    correcto y cambiarlo sería romper lo que funciona.
+    """
+    if sys.platform != "darwin" or os.environ.get("PLAYWRIGHT_NODEJS_PATH"):
+        return None
+
+    try:
+        version = tuple(int(n) for n in platform.mac_ver()[0].split(".")[:2])
+    except ValueError:
+        return None
+    if not version or version >= PRIMER_MACOS_QUE_CARGA_EL_NODE_DE_PLAYWRIGHT:
+        return None
+
+    for ruta in NODE_DEL_SISTEMA:
+        if ruta.exists():
+            os.environ["PLAYWRIGHT_NODEJS_PATH"] = str(ruta)
+            log.info("node_del_sistema", ruta=str(ruta), macos=platform.mac_ver()[0])
+            return str(ruta)
+
+    log.warning(
+        "sin_node_para_playwright",
+        macos=platform.mac_ver()[0],
+        detalle=(
+            "el node que trae Playwright no carga en este macOS y no hay uno "
+            "del sistema: el envío va a fallar. Instalar Node 18 desde nodejs.org"
+        ),
+    )
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = construir_parser().parse_args(argv)
     soltar_sslkeylogfile()
+    apuntar_a_node_del_sistema()
 
     try:
         config = obtener_configuracion()

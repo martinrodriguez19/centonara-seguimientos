@@ -17,7 +17,7 @@ dependencies = [
     "structlog>=24.4.0",
     # El motor de envio (fase 4). El navegador se baja aparte, una vez por
     # maquina: `playwright install chromium`.
-    "playwright>=1.48.0",
+    "playwright>=1.48.0,<1.53",  # 1.53+ exige Node 20; hay Macs con Catalina (Node 18 es su techo)
 ]
 
 [dependency-groups]
