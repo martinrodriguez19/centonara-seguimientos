@@ -267,8 +267,17 @@ export const grupos: Grupo[] = [
         comando: "claude",
         queHace: "Se entra con la cuenta de esta máquina y se sale escribiendo /exit.",
       },
+      {
+        id: "catalina-extension",
+        titulo: "10. Comprobar si puede leer el navegador",
+        comando: 'claude -p --chrome "decime cuántas pestañas hay abiertas"',
+        queHace:
+          "Es la prueba que decide si esta máquina sirve para leer chats. Cuesta centavos y tarda un minuto.",
+        aviso:
+          "Si contesta «Hubo un error al intentar conectarme a la extensión de Chrome (crypto is not defined)», pará acá: esta Mac no va a poder leer chats. Verificado en una iMac 2012 con 10.15.8, Chrome 128 y Claude Code 2.1.100, con el node del sistema —que sí tiene crypto— y sin ningún otro node instalado. No es configuración: es el límite de las versiones que corren en este macOS.",
+      },
     ],
-    pie: "Después de esto, cerrá la Terminal y abrí una nueva —si no, el instalador no ve el PATH que dejó el paso 5— y corré el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. Lo que se está aceptando: Node 18 dejó de recibir parches en abril de 2025, esta versión de Claude Code queda congelada, y Anthropic puede dejar de aceptar versiones viejas cuando quiera — el día que pase, esa máquina deja de funcionar sin aviso. Sirve para desbloquear ahora; el reemplazo de la máquina va en la lista de cosas a pedir.",
+    pie: "Después de esto, cerrá la Terminal y abrí una nueva —si no, el instalador no ve el PATH que dejó el paso 5— y corré el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. ⚠️ Lo que este rodeo NO resuelve, y está verificado: la conexión con la extensión de Chrome falla con «crypto is not defined», así que estas Macs no pueden LEER chats. Sí pueden ESCRIBIR: el motor de envío anda con Playwright fijado en 1.52 y el Node del sistema, y el agente se configura solo. Sirven para enviar y dejar borradores, no para generarlos. Lo que se acepta: Node 18 sin parches desde abril de 2025, Chrome 128 como última versión posible, Claude Code congelado, y Anthropic puede dejar de aceptar versiones viejas cuando quiera. Reemplazar la máquina no es una mejora: es lo único que devuelve la lectura de chats."
   },
 
   {
