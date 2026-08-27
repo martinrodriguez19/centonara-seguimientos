@@ -116,12 +116,17 @@ export default function Config() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sobre la empresa</CardTitle>
+          <CardTitle className="text-base">Indicaciones para redactar</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Todo lo que el redactor tiene que saber para escribir con conocimiento real: qué vende
-            la empresa, productos y servicios, promociones vigentes, cómo le habla a sus clientes,
-            con qué conviene recaptar. Cuanto más concreto, más fuertes salen los mensajes. Se
-            puede cambiar cuando quieras — cada redacción usa la versión del momento.
+            Lo que escribas acá manda sobre lo que dicen los mensajes y cómo lo dicen: qué vende la
+            empresa, productos y servicios, promociones vigentes, qué destacar, qué no mencionar,
+            con qué tono le hablás a tus clientes. Cuanto más concreto, más concretos salen los
+            borradores. Se puede cambiar cuando quieras — cada redacción usa la versión del
+            momento.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Dos cosas no las cambia ni pidiéndolo: el sistema no inventa precios, fechas ni plazos
+            que no estén acá o en la conversación, y no deja huecos sin completar en el texto.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -470,8 +475,15 @@ function Numero({
  * como una enumeración de cinco días.
  */
 /**
- * El texto libre del dueño sobre su empresa (D27). Viaja a cada redacción como
- * referencia; el prompt de la máquina lo enmarca como dato, no instrucciones.
+ * Las indicaciones del dueño sobre su empresa (D27, ampliado en D33).
+ *
+ * Viajan a cada redacción y **mandan sobre el contenido y el tono** del
+ * borrador; lo único que no pueden cambiar son las prohibiciones del prompt —no
+ * inventar datos, no dejar placeholders— y la tarea.
+ *
+ * El contador se pone en ámbar pasada la mitad del tope: no porque haya un
+ * problema, sino porque este texto viaja en CADA redacción y a partir de ahí
+ * empieza a pesar en la factura. Es el aviso antes de la sorpresa.
  */
 function ContextoEmpresa({
   valor,
@@ -483,29 +495,32 @@ function ContextoEmpresa({
   onGuardar: (texto: string) => void;
 }) {
   const [borrador, setBorrador] = useState(valor);
-  const LIMITE = 6000;
+  const LIMITE = 20000;
+  const pesado = borrador.length > LIMITE / 2;
 
   return (
     <>
       <textarea
-        rows={10}
+        rows={14}
         maxLength={LIMITE}
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         placeholder={
           "Ejemplo:\nSomos E-Ticketpro, vendemos entradas y gestión de eventos.\n" +
           "Productos: ticketera online, control de accesos, cashless.\n" +
           "Promo vigente: 20% de descuento en la primera fecha.\n" +
-          "Tono: cercano y profesional, tuteo rioplatense."
+          "Tono: cercano y profesional, tuteo rioplatense.\n" +
+          "No mencionar: precios de la competencia, plazos de instalación."
         }
         value={borrador}
         onChange={(evento) => setBorrador(evento.target.value)}
       />
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Button size="sm" disabled={guardando || borrador === valor} onClick={() => onGuardar(borrador)}>
-          Guardar información
+          Guardar indicaciones
         </Button>
         <span className="text-xs tabular-nums text-muted-foreground">
-          {borrador.length} / {LIMITE}
+          {pesado && <span className="mr-2">Cada mensaje lo lee entero.</span>}
+          {borrador.length.toLocaleString("es-AR")} / {LIMITE.toLocaleString("es-AR")}
         </span>
       </div>
     </>

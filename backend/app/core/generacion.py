@@ -149,10 +149,12 @@ async def _encolar_redaccion(
             "quien_hablo_ultimo": chat.get("quien_hablo_ultimo", "contacto"),
             "antiguedad_dias": chat.get("antiguedad_dias", 0),
             "largo_maximo": config.get("largo_maximo", 600),
-            # Lo que el dueño escribió sobre su empresa, para redactar con
-            # conocimiento real de la oferta. Dato acotado; el prompt fijo de
-            # la máquina lo enmarca como referencia.
-            "contexto_empresa": str(config.get("contexto_empresa", ""))[:6000],
+            # Las indicaciones del dueño sobre su empresa (D33): qué vende, qué
+            # ofrecer, con qué tono. Mandan sobre el contenido y el estilo del
+            # borrador; no sobre las prohibiciones ni sobre la tarea.
+            "contexto_empresa": str(config.get("contexto_empresa", ""))[
+                : configuracion.LARGO_CONTEXTO_EMPRESA
+            ],
         },
         contexto={
             "contacto_id": contacto_id,

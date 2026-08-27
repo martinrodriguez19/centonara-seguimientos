@@ -260,24 +260,16 @@ dos servicios de arranque automático (`com.centonara.agente` y
 `com.centonara.chrome`, en `~/Library/LaunchAgents/`), y las herramientas `uv` y
 `claude` en `~/.local/bin`. Los logs, en `~/Library/Logs/centonara/`.
 
-**Los tres modos del agente**, en el archivo `~/centonara-seguimientos/.env`,
-línea `AGENTE_MODO`:
+**El agente no tiene modo (D32).** Instalado, está siempre operativo: si un
+mensaje queda como borrador o se envía lo decide el botón que se apretó en el
+panel, no un archivo de la Mac. La variable `AGENTE_MODO` que aparecía acá en
+versiones anteriores ya no existe — si quedó en un `.env` viejo, se ignora.
 
-| Modo | Qué hace |
-|---|---|
-| `simulado` | No toca ningún navegador. Para verificar que la máquina está viva. ⚠️ Todos los envíos y borradores "fallan" con *no se pudo abrir el chat*: si eso pasa en todos, la máquina quedó en este modo |
-| `prueba` | Abre el chat, verifica la identidad, escribe el mensaje **y lo deja como borrador, sin enviarlo** (D30) |
-| `real` | Lo mismo, y puede apretar enviar |
-
-**La máquina pone el techo.** Una Mac en `prueba` nunca aprieta enviar, aunque
-desde el panel se pida un envío real: a lo sumo deja el borrador. El modo de
-cada máquina se ve en su tarjeta del panel.
-
-Después de cambiarlo:
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.centonara.agente
-```
+Para desarrollo existe el flag `--simulado` (corre contra una página en
+memoria, sin navegador); en ese estado la tarjeta de la máquina en el panel
+muestra "simulado" en amarillo, y todos los envíos y borradores "fallan" con
+*no se pudo abrir el chat*. Ninguna máquina llega ahí por configuración: hay
+que pedirlo en la línea de comandos, cada vez.
 
 **Cuando WhatsApp cambie por dentro** y los mensajes dejen de salir, esto dice
 exactamente qué se rompió, abriendo el chat de un número de prueba y sin enviar

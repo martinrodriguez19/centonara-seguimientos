@@ -18,6 +18,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.configuracion import LARGO_CONTEXTO_EMPRESA
 from app.core.contactos import NumeroInvalido, normalizar
 
 # Cota dura sobre cuántos chats se leen de una. La tenía el MVP y se conserva:
@@ -75,9 +76,10 @@ class PayloadRedactar(PayloadBase):
     quien_hablo_ultimo: Literal["contacto", "vendedor"]
     antiguedad_dias: Annotated[int, Field(ge=0, le=3650)]
     largo_maximo: Annotated[int, Field(ge=50, le=1000)] = 600
-    # Lo que el dueño escribió en el panel sobre su empresa. Es DATO acotado que
-    # el prompt fijo de la máquina enmarca como referencia, no instrucciones.
-    contexto_empresa: Annotated[str, Field(max_length=6000)] = ""
+    # Las indicaciones del dueño sobre su empresa (D33). Mandan sobre qué dice
+    # el mensaje y con qué tono; las prohibiciones del prompt —no inventar
+    # datos, no dejar placeholders— y la tarea no las puede cambiar.
+    contexto_empresa: Annotated[str, Field(max_length=LARGO_CONTEXTO_EMPRESA)] = ""
 
 
 class PayloadEnviar(PayloadBase):

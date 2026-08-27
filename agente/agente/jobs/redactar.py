@@ -31,6 +31,11 @@ log = obtener_logger(__name__)
 # persona (`yo`), porque se lo lee un modelo que está mirando ese chat.
 COMO_LO_DICE_EL_PROMPT = {"contacto": "contacto", "vendedor": "yo"}
 
+# El mismo tope que valida el backend (`core.configuracion`). Acá se recorta
+# igual: el agente no confía en que el payload venga acotado, y un contexto
+# gigante encarece cada redacción.
+LARGO_CONTEXTO_EMPRESA = 20_000
+
 
 @dataclass(frozen=True)
 class Resultado:
@@ -66,9 +71,11 @@ async def redactar(
 ) -> Resultado:
     """Redacta un borrador para un chat, o explica por qué no hay contexto.
 
-    `contexto_empresa` es el texto que el dueño escribió en su panel: qué vende,
-    qué ofrece, cómo habla. Viaja como dato acotado y el prompt lo enmarca como
-    referencia — no como instrucciones. Vacío es válido: el prompt lo dice.
+    `contexto_empresa` son las indicaciones que el dueño escribió en su panel:
+    qué vende, qué ofrecer, con qué tono escribir (D33). El prompt las hace
+    mandar sobre el contenido y el estilo del borrador; lo que no pueden tocar
+    —las prohibiciones y la tarea— está escrito después de ellas. Vacío es
+    válido: el prompt lo dice.
     """
     prompt = rellenar(
         carpeta / "prompts" / "prompt-redactar.txt",
@@ -78,8 +85,8 @@ async def redactar(
             "ULTIMO_LO_MANDO": COMO_LO_DICE_EL_PROMPT.get(quien_hablo_ultimo, "contacto"),
             "ANTIGUEDAD_DIAS": str(max(0, int(antiguedad_dias))),
             "LARGO_MAXIMO": str(largo_maximo),
-            "CONTEXTO_EMPRESA": contexto_empresa[:6000].strip()
-            or "(el dueño no cargó información adicional)",
+            "CONTEXTO_EMPRESA": contexto_empresa[:LARGO_CONTEXTO_EMPRESA].strip()
+            or "(el dueño no cargó indicaciones)",
         },
     )
 

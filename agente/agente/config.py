@@ -20,7 +20,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Ya no hay staging: un solo entorno desplegado, que es producción (D17).
 Entorno = Literal["local", "produccion"]
-Modo = Literal["simulado", "prueba", "real"]
+
+# El agente instalado está siempre operativo (D32): qué pasa con cada mensaje
+# —borrador o envío— lo decide el panel y viaja en el payload de cada job.
+# `simulado` existe sólo como flag explícito de desarrollo (`--simulado`):
+# corre contra la página en memoria, sin navegador. No hay forma de llegar a
+# `simulado` por configuración — la perilla AGENTE_MODO fue la causa del
+# incidente del 26/08 (dos Macs quedaron en simulado tras instalar) y se
+# eliminó; si quedó en un `.env` viejo, se ignora.
+Modo = Literal["simulado", "operativo"]
 
 
 def _carpeta_agente() -> Path:
@@ -77,8 +85,6 @@ class Configuracion(BaseSettings):
     # encolado y la lista pudo cambiar en el medio.
     entorno: Entorno = "local"
 
-    modo: Modo = Field("simulado", validation_alias="AGENTE_MODO")
-
     backend_url: str = Field("http://localhost:8000", validation_alias="AGENTE_BACKEND_URL")
     token: str = Field("", validation_alias="AGENTE_TOKEN")
     machine_id: str = Field("mac-1", validation_alias="AGENTE_MACHINE_ID")
@@ -128,7 +134,6 @@ class Configuracion(BaseSettings):
         """
         return {
             "entorno": self.entorno,
-            "modo": self.modo,
             "machine_id": self.machine_id,
             "device_id": self.device_id or None,
             "backend_url": self.backend_url,

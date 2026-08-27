@@ -363,33 +363,12 @@ primeros fallan.</p>
 dos servicios de arranque automático (<code>com.centonara.agente</code> y
 <code>com.centonara.chrome</code>, en <code>~/Library/LaunchAgents/</code>), y las herramientas <code>uv</code> y
 <code>claude</code> en <code>~/.local/bin</code>. Los logs, en <code>~/Library/Logs/centonara/</code>.</p>
-<p><strong>Los tres modos del agente</strong>, en el archivo <code>~/centonara-seguimientos/.env</code>,
-línea <code>AGENTE_MODO</code>:</p>
-<table>
-<thead>
-<tr>
-<th>Modo</th>
-<th>Qué hace</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>simulado</code></td>
-<td>No toca ningún navegador. Para verificar que la máquina está viva</td>
-</tr>
-<tr>
-<td><code>prueba</code></td>
-<td>Abre el chat, verifica la identidad, escribe el mensaje <strong>y lo borra sin enviarlo</strong></td>
-</tr>
-<tr>
-<td><code>real</code></td>
-<td>Lo mismo, y aprieta enviar</td>
-</tr>
-</tbody>
-</table>
-<p>Después de cambiarlo:</p>
-<pre><code class="language-bash">launchctl kickstart -k gui/$(id -u)/com.centonara.agente
-</code></pre>
+<p><strong>El agente no tiene modo (D32).</strong> Instalado, está siempre operativo: si un
+mensaje queda como borrador o se envía lo decide el botón que se apretó en el
+panel, no un archivo de la Mac. La variable <code>AGENTE_MODO</code> de versiones
+anteriores ya no existe — si quedó en un <code>.env</code> viejo, se ignora. Para
+desarrollo existe el flag <code>--simulado</code> (página en memoria, sin navegador);
+en ese estado la tarjeta de la máquina lo muestra en amarillo.</p>
 <p><strong>Cuando WhatsApp cambie por dentro</strong> y los mensajes dejen de salir, esto dice
 exactamente qué se rompió, abriendo el chat de un número de prueba y sin enviar
 nada:</p>

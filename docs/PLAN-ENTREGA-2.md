@@ -5,10 +5,22 @@
 > las alertas que hoy no se pueden apagar.
 >
 > **Estado (27/08/2026): los Sprints 1, 2 y 3 están implementados.** Decisiones registradas como
-> D29, D30 y D31 en [`06-DECISIONES.md`](06-DECISIONES.md). 641 tests de backend y 212 del agente
+> D29 a D32 en [`06-DECISIONES.md`](06-DECISIONES.md). 641 tests de backend y 213 del agente
 > en verde, cobertura 100% en los cinco archivos críticos, lint y build del frontend limpios. La
-> causa del fallo del 26/08 se confirmó: las Macs estaban en `AGENTE_MODO=simulado`. Queda el
-> Sprint 0 (acciones desde el panel y el `.env` de cada Mac) y desplegar.
+> causa del fallo del 26/08 se confirmó: las Macs estaban en `AGENTE_MODO=simulado`.
+>
+> **Y por pedido del cliente, la perilla desapareció (D32):** `AGENTE_MODO` ya no existe. El
+> agente instalado está siempre operativo — borrador o envío lo decide únicamente el botón del
+> panel — y un `AGENTE_MODO` que haya quedado en un `.env` viejo se ignora, así que **las Macs ya
+> instaladas no necesitan que nadie las toque**. `simulado` quedó sólo como flag de desarrollo
+> (`--simulado`), y el panel lo muestra en amarillo en la tarjeta de la máquina. El S0.3 del
+> Sprint 0 queda obsoleto: con desplegar, alcanza.
+>
+> **Y las indicaciones para redactar pasaron a mandar (D33):** el texto que el dueño escribe en
+> Configuración subió de 6.000 a **20.000 caracteres**, y el prompt lo trata como sus indicaciones
+> para ese mensaje —qué ofrecer, qué destacar, qué no mencionar, con qué tono— en vez de como
+> trasfondo. Lo único que ese texto no puede cambiar son las prohibiciones (no inventar precios ni
+> fechas, no dejar placeholders) y la tarea. El panel avisa que lo largo se paga en cada mensaje.
 
 ---
 

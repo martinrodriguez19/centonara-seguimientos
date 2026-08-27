@@ -649,9 +649,11 @@ class CambioConfiguracion(Estricto):
     # Cómo elige chats la generación (D27): los recientes de la ventana, o el
     # barrido del historial del más viejo a hoy.
     modo_lectura: Literal["recientes", "barrido"] | None = None
-    # Lo que el redactor tiene que saber de la empresa. Dato acotado que viaja
-    # al REDACTAR; el prompt fijo de la máquina lo enmarca como referencia.
-    contexto_empresa: Annotated[str | None, Field(max_length=6000)] = None
+    # Las indicaciones del dueño sobre su empresa (D33), que viajan al REDACTAR
+    # y mandan sobre el contenido y el tono del borrador.
+    contexto_empresa: Annotated[
+        str | None, Field(max_length=configuracion.LARGO_CONTEXTO_EMPRESA)
+    ] = None
     # La ventana de antigüedad: desde y hasta cuántos días de silencio vale la
     # pena un seguimiento. Que min <= max se verifica en el endpoint, contra lo
     # que va a quedar guardado: acá puede venir un solo extremo.

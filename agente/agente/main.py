@@ -44,13 +44,17 @@ def construir_parser() -> argparse.ArgumentParser:
         prog="agente",
         description="Agente local del Sistema de Seguimiento Comercial v2.",
     )
-    # No existe una opción --real ni --prueba, a propósito: para que el agente
-    # haga algo distinto de simular hay que cambiar la configuración de la
-    # máquina, que es un acto deliberado y queda escrito.
+    # No existe una opción --real ni --prueba, a propósito: qué pasa con cada
+    # mensaje —borrador o envío— lo decide el panel y viaja en el payload de
+    # cada job (D32). El agente instalado está siempre operativo.
     parser.add_argument(
         "--simulado",
         action="store_true",
-        help="Fuerza el modo simulado, sin tocar el navegador. Gana sobre AGENTE_MODO.",
+        help=(
+            "Modo de desarrollo: corre contra una página en memoria, sin tocar "
+            "ningún navegador. Es la única forma de que el agente no sea "
+            "operativo — no hay variable de entorno que lo haga (D32)."
+        ),
     )
     parser.add_argument(
         "--diagnostico",
@@ -106,13 +110,14 @@ def construir_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def resolver_modo(config: Configuracion, forzar_simulado: bool) -> Modo:
-    """El modo con el que se va a correr.
+def resolver_modo(forzar_simulado: bool) -> Modo:
+    """Operativo, salvo que la línea de comandos pida simular (D32).
 
-    La opción de línea de comandos gana sobre el entorno, y la única que hay
-    lleva hacia el lado seguro.
+    No hay variable de entorno que decida esto: la perilla `AGENTE_MODO` fue la
+    causa del incidente del 26/08 —Macs que quedaron en simulado tras instalar—
+    y se eliminó. Un `.env` viejo que todavía la tenga se ignora.
     """
-    return "simulado" if forzar_simulado else config.modo
+    return "simulado" if forzar_simulado else "operativo"
 
 
 def ejecutar_simulado(
@@ -247,23 +252,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         paso = asyncio.run(verificacion.verificar_selectores(config, chat=args.chat))
         return SALIDA_OK if paso else SALIDA_DIAGNOSTICO
 
-    modo = resolver_modo(config, args.simulado)
+    modo = resolver_modo(args.simulado)
 
-    # El bloque que cortaba acá cuando el modo no era `simulado` se fue: el motor
-    # de envío ya existe (`adaptadores/whatsapp_web.py`), así que negarse a
-    # arrancar sería negarse a hacer el trabajo.
-    #
-    # Lo que impide que un mensaje llegue a alguien que no corresponde no era
-    # nunca este bloque, y sigue en pie:
+    # Lo que impide que un mensaje llegue a alguien que no corresponde nunca
+    # fue el modo de la máquina (D32), y sigue en pie:
     #
     #   - `destinos_permitidos`, verificado en el backend al encolar y otra vez
     #     en el agente antes de escribir (R4)
     #   - la comparación de identidad contra el chat abierto (R1)
-    #   - y, mientras los selectores no se hayan verificado contra WhatsApp Web,
-    #     un `ENVIAR` en modo `real` se rechaza en el despachador
-    #
-    # Además `AGENTE_MODO` viene en `simulado` por defecto en todos lados: para
-    # que algo salga hay que decirlo, y eso queda escrito en la máquina.
+    #   - qué se hace con cada mensaje —borrador o envío— lo decide el panel y
+    #     viaja en el payload; enviar de verdad tiene su fricción propia ahí
+    #   - y, mientras los selectores no se hayan verificado contra WhatsApp
+    #     Web, un envío real se rechaza en el despachador
 
     parar = threading.Event()
     atender_apagado(parar)
@@ -345,7 +345,6 @@ def correr_datos(config: Configuracion) -> int:
     print(f"  {CARPETA_AGENTE.parent / '.env'}")
     print()
     print("AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com")
-    print("AGENTE_MODO=simulado")
     if claude:
         print(f"CLAUDE_BIN={claude}")
     else:

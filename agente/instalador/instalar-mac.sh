@@ -245,7 +245,6 @@ Poné esto en   ${REPO}/.env
 y completá o reemplazá estas líneas:
 
 AGENTE_BACKEND_URL=https://backend-produccion-7yqr.onrender.com
-AGENTE_MODO=simulado
 CLAUDE_BIN=${CLAUDE_BIN}
 CHROME_PERFIL_DIR=${CHROME_PERFIL_DIR}
 CHROME_PUERTO=${CHROME_PUERTO}

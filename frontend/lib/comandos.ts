@@ -126,7 +126,7 @@ export const grupos: Grupo[] = [
         titulo: "Reiniciar el agente",
         comando: "launchctl kickstart -k gui/$(id -u)/com.centonara.agente",
         queHace: "Lo frena y lo vuelve a levantar, con la configuración nueva.",
-        cuando: "Después de tocar cualquier cosa del archivo .env — el modo, por ejemplo.",
+        cuando: "Después de tocar cualquier cosa del archivo .env.",
       },
       {
         id: "estado",
@@ -136,15 +136,10 @@ export const grupos: Grupo[] = [
           "Lista los dos servicios de arranque automático con su número de proceso y el resultado de la última vez que corrieron. Un 0 en el medio es que salió bien.",
         cuando: "Cuando la máquina figura «sin conexión» en el panel y la Mac está claramente prendida.",
       },
-      {
-        id: "modo",
-        titulo: "Cambiar el modo del agente",
-        comando: "open -e ~/centonara-seguimientos/.env",
-        queHace:
-          "Abre el archivo de configuración de la máquina. La línea AGENTE_MODO admite «simulado» (no toca ningún navegador: todo envío falla con «no se pudo abrir el chat»), «prueba» (escribe el mensaje y lo deja como borrador, sin enviarlo) y «real» (puede apretar enviar). La máquina pone el techo: en «prueba» no envía aunque el panel pida envío real.",
-        cuando: "Para dejar una máquina en prueba mientras se la calibra, o cuando todos sus envíos fallan con «no se pudo abrir el chat» (quedó en simulado).",
-        aviso: "Después de guardar hay que reiniciar el agente, si no el cambio no tiene efecto.",
-      },
+      // El comando "cambiar el modo del agente" se fue con la perilla (D32):
+      // el agente instalado está siempre operativo, y si un mensaje queda como
+      // borrador o se envía lo decide el botón del panel. Un AGENTE_MODO que
+      // haya quedado en un .env viejo se ignora.
     ],
   },
 
@@ -335,7 +330,7 @@ export const grupos: Grupo[] = [
         queHace:
           "Copia la plantilla y la abre. Hay que pegar lo que imprimió el paso 6, y completar AGENTE_BACKEND_URL con la dirección del backend, más AGENTE_MACHINE_ID y AGENTE_TOKEN con lo que dio el panel al dar de alta la máquina.",
         aviso:
-          "Dejá AGENTE_MODO en «simulado» por ahora. En Windows se usa punto y coma para encadenar, no «&&»: ahí «&&» es un error de sintaxis.",
+          "En Windows se usa punto y coma para encadenar, no «&&»: ahí «&&» es un error de sintaxis.",
       },
       {
         id: "windows-diagnostico",

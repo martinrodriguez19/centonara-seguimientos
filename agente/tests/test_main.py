@@ -24,18 +24,18 @@ from agente.main import (
 RAPIDO = 0.01
 
 
-def test_la_opcion_simulado_gana_sobre_el_entorno() -> None:
-    config = Configuracion(modo="real")
-    assert resolver_modo(config, forzar_simulado=True) == "simulado"
-    assert resolver_modo(config, forzar_simulado=False) == "real"
+def test_sin_la_opcion_simulado_el_agente_es_operativo() -> None:
+    """D32: no hay variable de entorno que decida esto. Simular hay que
+    pedirlo en la línea de comandos, cada vez."""
+    assert resolver_modo(forzar_simulado=True) == "simulado"
+    assert resolver_modo(forzar_simulado=False) == "operativo"
 
 
-@pytest.mark.parametrize("modo", ["prueba", "real"])
-def test_con_simulado_arranca_aunque_el_entorno_pida_enviar(
-    modo: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """La opción explícita lleva hacia el lado seguro, no al revés."""
-    monkeypatch.setenv("AGENTE_MODO", modo)
+@pytest.mark.parametrize("modo_viejo", ["simulado", "prueba", "real"])
+def test_un_agente_modo_viejo_no_molesta(modo_viejo: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Las Macs instaladas antes de D32 tienen AGENTE_MODO en su `.env`: se
+    ignora, sea cual sea su valor, y el agente arranca igual."""
+    monkeypatch.setenv("AGENTE_MODO", modo_viejo)
     monkeypatch.setattr(
         "agente.main.ejecutar_simulado",
         lambda config, **kwargs: 0,

@@ -23,6 +23,16 @@ log = obtener_logger(__name__)
 
 ID = "unica"
 
+# Cuánto puede escribir el dueño sobre su empresa (D33). Viaja en CADA
+# redacción, así que el número no es gratis: 20.000 caracteres son unos 5.000
+# tokens por borrador. El tope existe para que nadie se sorprenda con la
+# factura, no para proteger al sistema — el panel muestra el contador y lo dice.
+#
+# Vive acá y no repetido en cada esquema: el modelo del endpoint, el payload del
+# job y el recorte al encolar tienen que coincidir, y tres números sueltos que
+# deben coincidir terminan no coincidiendo.
+LARGO_CONTEXTO_EMPRESA = 20_000
+
 # Los valores con los que arranca una base vacía. Conservadores a propósito:
 # es más fácil aflojar un tope cuando hay datos que explicar por qué salieron
 # doscientos mensajes el primer día.

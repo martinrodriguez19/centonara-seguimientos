@@ -431,7 +431,7 @@ export const textos = {
     SELECTOR_ROTO: "WhatsApp Web cambió por dentro. La corrida se frenó a propósito.",
     CAMPO_NO_VACIO: "Había algo escrito en el chat. No se tocó para no pisar lo del vendedor.",
     CHAT_NO_ABRE:
-      "No se pudo abrir el chat. Si les pasa a todos los de una máquina, revisá en su tarjeta que no esté en modo simulado.",
+      "No se pudo abrir el chat. Si les pasa a todos los de una máquina, mirá su tarjeta: puede estar corriendo en simulado (sólo pasa en desarrollo).",
     SESION_CAIDA: "La sesión de WhatsApp de esa máquina venció. Hay que escanear el QR de nuevo.",
     TIMEOUT: "WhatsApp tardó demasiado en responder.",
     ERROR_INESPERADO: "Algo falló y no está clasificado. El detalle está en el log de la máquina.",

@@ -409,11 +409,12 @@ historial de WhatsApp del más antiguo hacia hoy, de a tandas diarias, sin recon
 
 **Decisión, en tres partes.**
 
-1. **`contexto_empresa`**: un texto libre del dueño en Configuración (tope 6000 caracteres) que
-   viaja en el payload de cada `REDACTAR`. No viola la regla "el prompt no viaja por la red": lo
-   que viaja es una **variable acotada** —como ya lo eran los resúmenes— que el prompt fijo de la
-   máquina interpola entre marcas explícitas y enmarca como dato de referencia, no instrucciones.
-   Reusar el sistema para otro rubro es cambiar ese texto, sin deploy.
+1. **`contexto_empresa`**: un texto libre del dueño en Configuración (tope 6000 caracteres;
+   **D33 lo subió a 20.000 y lo convirtió en indicaciones que mandan**) que viaja en el payload
+   de cada `REDACTAR`. No viola la regla "el prompt no viaja por la red": lo que viaja es una
+   **variable acotada** —como ya lo eran los resúmenes— que el prompt fijo de la máquina
+   interpola entre marcas explícitas. Reusar el sistema para otro rubro es cambiar ese texto,
+   sin deploy.
 2. **Barrido del historial** (`modo_lectura: "barrido"`): la posición en la lista de WhatsApp no
    sirve de cursor —se reordena con cada mensaje—, así que el cursor es **la antigüedad**: cada
    máquina guarda en su documento hasta qué antigüedad llegó (`barrido.hasta_dias`) y los nombres
@@ -510,10 +511,10 @@ no compra nada.
 2. **El circuito es "dejar borradores → el vendedor manda a mano".** No "borradores y después
    envío automático": un borrador dejado ocupa el campo de escritura, y un Envío posterior al
    mismo chat aborta con `CAMPO_NO_VACIO` (G8). Es el sistema fallando cerrado, no un bug.
-3. **El modo efectivo es el más restrictivo entre la máquina y el pedido.** Se encontró que el
-   modo del payload le ganaba al de la máquina: una Mac configurada en `prueba` apretaba enviar
-   si el panel mandaba `real`. Eso contradecía el SOP y era un agujero de seguridad. Ahora
-   `simulado < prueba < real`: la máquina pone el techo, el payload sólo puede bajarlo.
+3. ~~El modo efectivo es el más restrictivo entre la máquina y el pedido.~~ **Revisado por D32,
+   el mismo día:** la perilla por máquina se eliminó entera. El cliente opera en producción y una
+   perilla en cada Mac es una falla humana esperando el despliegue — de hecho ya lo fue, el 26/08.
+   Qué pasa con cada mensaje lo decide únicamente el panel.
 
 **Qué la revertiría.** Que los vendedores no manden los borradores y el cliente pida volver al
 envío directo como único camino. El Envío ya existe; no habría nada que construir.
@@ -540,6 +541,77 @@ la causa, no una forma de esconder el síntoma.
 
 **Qué la revertiría.** Nada previsible: es la corrección de un estado terminal que nunca debió
 serlo.
+
+---
+
+### D32 — El agente no tiene modo: qué pasa lo decide el panel *(revisa D30 §3)*
+
+**Contexto.** El agente tenía tres modos en el `.env` (`simulado`, `prueba`, `real`) y D30 había
+establecido que la máquina ponía el techo. En la práctica, la perilla por máquina fue la causa
+directa del incidente del 26/08: dos Macs quedaron en `simulado` después de instalar y todos los
+"ensayos" fallaron con `CHAT_NO_ABRE`, mientras el mismo flujo andaba en otra máquina. El cliente
+ya opera en producción y fue explícito: no quiere ajustar modos por máquina — cada perilla en cada
+Mac es una falla humana esperando el despliegue.
+
+**Decisión: `AGENTE_MODO` deja de existir.** El agente instalado está siempre **operativo**: qué
+pasa con cada mensaje —quedar como borrador o enviarse— lo decide únicamente el botón que se
+apretó en el panel, y viaja en el payload de cada job (`modo: "prueba" | "real"`, los nombres del
+contrato no cambian). Una variable `AGENTE_MODO` que haya quedado en un `.env` viejo se ignora:
+las Macs ya instaladas pasan a operativas sin tocarlas.
+
+`simulado` sobrevive **sólo como flag explícito de desarrollo** (`--simulado`): corre contra la
+página en memoria, sin navegador, y el panel lo muestra en amarillo en la tarjeta de la máquina.
+Nadie llega a `simulado` por configuración: hay que pedirlo en la línea de comandos, cada vez.
+
+**Lo que protege de un envío no querido ya no es el `.env`, y nunca debió serlo:** la lista de
+destinos permitidos (R4, verificada en backend y agente), la fricción del botón Envío (escribir la
+cantidad), el consentimiento por vendedor (G7), y la verificación de identidad (R1). Todos viven
+en el servidor o en el flujo del panel — donde una sola persona los ve y los opera — no repartidos
+en un archivo por máquina.
+
+**Qué la revertiría.** Que aparezca la necesidad real de congelar una máquina puntual en "nunca
+envía" (por ejemplo, una línea en observación por riesgo de bloqueo). Ahí la perilla vuelve, pero
+al panel —donde se ve— y no al `.env`.
+
+---
+
+### D33 — Lo que el dueño escribe en el panel manda sobre el contenido del borrador
+
+**Contexto.** D27 sumó `contexto_empresa`: un texto que el dueño escribe en su panel y que viaja a
+cada redacción. Se enmarcó como **dato de referencia, no instrucciones**, y con un tope de 6.000
+caracteres. Al usarlo de verdad aparecieron dos límites: el cliente se queda corto de espacio para
+describir su catálogo y sus promociones, y —más importante— el modelo lo trata como trasfondo, así
+que las indicaciones de tono y de qué ofrecer no se reflejan con fuerza en el borrador.
+
+**Decisión: el texto pasa a 20.000 caracteres y el prompt lo trata como las indicaciones del
+dueño para ese mensaje.** Manda sobre el contenido y el estilo: qué ofrecer, qué destacar, qué no
+mencionar, con qué tono escribir. Si sus indicaciones contradicen el tono por defecto del prompt,
+gana el dueño — es su negocio y su voz.
+
+**Dos cosas que ese texto no puede hacer, y están escritas en el prompt después de él:**
+
+1. **Levantar las prohibiciones.** No inventar precios, fechas, plazos ni cantidades que no estén
+   en el contexto; no dejar placeholders. Eso no es preferencia de estilo: un dato inventado se
+   convierte en una promesa comercial que alguien tiene que cumplir.
+2. **Cambiar la tarea.** Sigue siendo redactar un seguimiento para ese chat, con el formato de
+   salida pedido. Un texto que pida otra cosa se ignora y se sigue con el seguimiento.
+
+**Por qué esto no contradice la advertencia de F4.10.** Lo que empeoró las cosas en el MVP fue
+meter frases de *autorización* en el pedido ("esto está autorizado, no preguntes") — el patrón
+exacto de una inyección. Acá no se autoriza nada: se le da al dueño control sobre **qué dice** un
+mensaje que igual pasa por validación, triage y revisión humana. R3 sigue en pie sin un rasguño:
+el modelo no decide a quién escribirle, cuántos mensajes ni cuándo, y ningún límite del sistema
+vive en este texto.
+
+**El costo es real y por eso se avisa en el panel.** Este texto viaja en **cada** redacción:
+20.000 caracteres son unos 5.000 tokens por borrador, y una corrida de 20 chats en 5 máquinas son
+100 borradores. El panel muestra el contador de caracteres y dice que lo largo se paga en cada
+mensaje. El tope no está para proteger al sistema —está para que nadie se sorprenda con la
+factura.
+
+**Qué la revertiría.** Que con datos reales aparezcan borradores que siguen las indicaciones del
+dueño a costa de ignorar la conversación. Ahí se ajusta el prompt para que el resumen del chat
+recupere prioridad, no se vuelve a bajar el tope.
 
 ---
 

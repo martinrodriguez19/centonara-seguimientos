@@ -754,8 +754,20 @@ async def test_modo_de_lectura_y_contexto_de_empresa_se_guardan(adentro, base) -
 
 
 @sin_mongo
+async def test_las_indicaciones_largas_del_dueño_entran(adentro, base) -> None:
+    """D33: el tope subió a 20.000 caracteres. Un catálogo con promociones y
+    tono no entraba en los 6.000 de antes."""
+    largo = "x" * configuracion.LARGO_CONTEXTO_EMPRESA
+    respuesta = await adentro.patch("/api/configuracion", json={"contexto_empresa": largo})
+
+    assert respuesta.status_code == 200
+    assert len(respuesta.json()["contexto_empresa"]) == configuracion.LARGO_CONTEXTO_EMPRESA
+
+
+@sin_mongo
 async def test_un_contexto_de_empresa_desmedido_se_rechaza(adentro, base) -> None:
-    desmedido = "x" * 6001
+    """El tope existe por el costo: este texto viaja en CADA redacción."""
+    desmedido = "x" * (configuracion.LARGO_CONTEXTO_EMPRESA + 1)
     respuesta = await adentro.patch("/api/configuracion", json={"contexto_empresa": desmedido})
     assert respuesta.status_code == 422
 

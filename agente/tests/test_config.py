@@ -14,7 +14,6 @@ def test_lee_las_variables_del_agente(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENTE_TOKEN", "tok-123")
     monkeypatch.setenv("AGENTE_MACHINE_ID", "PC-7")
     monkeypatch.setenv("AGENTE_DEVICE_ID", "dev-abc")
-    monkeypatch.setenv("AGENTE_MODO", "simulado")
 
     config = Configuracion()
 
@@ -22,7 +21,6 @@ def test_lee_las_variables_del_agente(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.token == "tok-123"
     assert config.machine_id == "PC-7"
     assert config.device_id == "dev-abc"
-    assert config.modo == "simulado"
 
 
 def test_claude_bin_se_lee_sin_prefijo(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -31,17 +29,20 @@ def test_claude_bin_se_lee_sin_prefijo(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Configuracion().claude_bin == r"C:\Users\vendedor\AppData\claude.exe"
 
 
-def test_por_defecto_es_local_y_simulado() -> None:
-    """El default más conservador: la máquina de cualquiera es local y no envía."""
+def test_por_defecto_es_local() -> None:
     config = Configuracion()
     assert config.entorno == "local"
-    assert config.modo == "simulado"
 
 
-def test_un_modo_inventado_no_arranca() -> None:
-    """Un typo en AGENTE_MODO no puede quedar en un valor intermedio."""
-    with pytest.raises(ValidationError):
-        Configuracion(modo="simluado")
+def test_un_agente_modo_viejo_en_el_env_se_ignora(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D32: la perilla AGENTE_MODO se eliminó — fue la causa del 26/08.
+
+    Las Macs ya instaladas la tienen en su `.env`: no puede romper el arranque
+    ni tener ningún efecto. La única forma de no ser operativo es `--simulado`.
+    """
+    monkeypatch.setenv("AGENTE_MODO", "simulado")
+    config = Configuracion()
+    assert not hasattr(config, "modo")
 
 
 def test_un_entorno_inventado_no_arranca() -> None:

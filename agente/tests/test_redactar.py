@@ -166,8 +166,8 @@ async def test_un_fallo_de_la_invocacion_se_propaga() -> None:
 
 
 async def test_el_contexto_de_empresa_llega_al_prompt() -> None:
-    """Lo que el dueño escribió en su panel entra al prompt, enmarcado como
-    dato entre las marcas — no como instrucciones sueltas."""
+    """Lo que el dueño escribió en su panel entra al prompt, entre marcas
+    propias para que se vea dónde empieza y dónde termina lo suyo."""
     invocador = responde({"status": "ok", "texto": "Hola"})
     await correr(
         invocador,
@@ -176,8 +176,36 @@ async def test_el_contexto_de_empresa_llega_al_prompt() -> None:
 
     prompt = invocador.visto["prompt"]
     assert "Vendemos entradas para eventos" in prompt
-    assert "<<INFO EMPRESA>>" in prompt
-    assert "<<FIN INFO EMPRESA>>" in prompt
+    assert "<<INDICACIONES DEL DUEÑO>>" in prompt
+    assert "<<FIN INDICACIONES DEL DUEÑO>>" in prompt
+
+
+async def test_el_prompt_hace_mandar_las_indicaciones_pero_no_las_prohibiciones() -> None:
+    """⚠️ D33: el equilibrio del que depende todo esto.
+
+    Las indicaciones del dueño mandan sobre qué dice el mensaje y con qué tono
+    —para eso las escribe—, pero no pueden levantar las prohibiciones ni
+    cambiar la tarea. Si alguien reescribe el prompt y se lleva puesta una de
+    las dos mitades, esto lo agarra.
+    """
+    invocador = responde({"status": "ok", "texto": "Hola"})
+    await correr(invocador, contexto_empresa="Tono: informal.")
+    prompt = invocador.visto["prompt"]
+
+    assert "Seguilas" in prompt, "las indicaciones mandan sobre el contenido"
+    assert "NO cambia" in prompt, "y hay cosas que no pueden cambiar"
+    assert "NO inventes precios" in prompt
+    assert "NO uses placeholders" in prompt
+
+
+async def test_las_indicaciones_largas_no_se_recortan_antes_del_tope() -> None:
+    """D33: 20.000 caracteres. El recorte de acá es la última defensa contra
+    un payload gigante, no el límite real — ese lo pone el panel."""
+    invocador = responde({"status": "ok", "texto": "Hola"})
+    contexto = "a" * 19_000 + "PROMO-DEL-FINAL"
+    await correr(invocador, contexto_empresa=contexto)
+
+    assert "PROMO-DEL-FINAL" in invocador.visto["prompt"]
 
 
 async def test_sin_contexto_de_empresa_el_prompt_lo_dice() -> None:
@@ -185,4 +213,4 @@ async def test_sin_contexto_de_empresa_el_prompt_lo_dice() -> None:
     invocador = responde({"status": "ok", "texto": "Hola"})
     await correr(invocador)
 
-    assert "no cargó información adicional" in invocador.visto["prompt"]
+    assert "no cargó indicaciones" in invocador.visto["prompt"]

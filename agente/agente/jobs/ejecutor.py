@@ -11,13 +11,16 @@ escribir lo decide `destinos_permitidos`.
 
 `ENVIAR` es el caso incómodo y está tratado aparte, por dos motivos:
 
-- **El modo decide contra qué se ejecuta.** `simulado` va contra la página en
-  memoria y no toca ningún navegador. `prueba` y `real` van contra WhatsApp Web,
-  y la diferencia entre esos dos la decide el motor, no esto.
+- **Contra qué se ejecuta lo decide la máquina; qué se hace, el panel (D32).**
+  Con `--simulado` (desarrollo) se corre contra la página en memoria, sin
+  navegador. Operativo, va contra WhatsApp Web — y si el mensaje queda como
+  borrador o se envía lo dice el `modo` del payload, que puso el botón del
+  panel. La máquina no tiene una perilla propia: la tuvo, y fue la causa del
+  incidente del 26/08.
 - **Los selectores no están verificados contra WhatsApp Web real.** Mientras
-  `selectores.VERIFICADO` sea `None`, un `ENVIAR` en modo `real` se rechaza. No
-  es una fase pendiente: es la precondición concreta que falta, y el guard
-  desaparece solo el día que alguien la cumpla.
+  `selectores.VERIFICADO` sea `None`, un envío real se rechaza. No es una fase
+  pendiente: es la precondición concreta que falta, y el guard desaparece solo
+  el día que alguien la cumpla.
 """
 
 from __future__ import annotations
@@ -37,16 +40,6 @@ from agente.jobs import resolver as resolver_job
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
-
-# De menos a más permisivo. La máquina pone el techo y el payload sólo puede
-# bajarlo: una Mac configurada en `prueba` no aprieta enviar, mande lo que
-# mande el panel. Un modo desconocido vale 0: lo más restrictivo (R2).
-_PERMISIVIDAD = {"simulado": 0, "prueba": 1, "real": 2}
-
-
-def _modo_efectivo(maquina: str, pedido: str) -> str:
-    """El más restrictivo entre el modo de la máquina y el del payload."""
-    return min(pedido, maquina, key=lambda m: _PERMISIVIDAD.get(m, 0))
 
 
 def construir(
@@ -181,17 +174,17 @@ async def _enviar(
     # manda no habilita nada.
     permitidos = job.vigente.get("destinos_permitidos") or []
 
-    # ⚠️ El modo efectivo es el MÁS RESTRICTIVO entre la máquina y el pedido.
-    # Antes el payload le ganaba al `.env`: una Mac en `prueba` apretaba enviar
-    # si el panel mandaba `real`, contradiciendo la tabla del SOP.
-    modo_efectivo = _modo_efectivo(modo, str(carga.get("modo", "prueba")))
+    # Qué se hace con el mensaje —borrador o envío— lo decide el panel y viaja
+    # en el payload (D32). La máquina no tiene voz: la perilla por máquina fue
+    # la causa del 26/08. Ausente = "prueba", el lado que no envía (R2).
+    modo_pedido = str(carga.get("modo", "prueba"))
 
-    if modo_efectivo == "simulado":
-        # No toca ningún navegador. Sirve para que una máquina recién instalada
-        # recorra la cola entera sin escribir en ningún lado.
+    if modo == "simulado":
+        # Desarrollo (`--simulado`): no toca ningún navegador, corre contra la
+        # página en memoria.
         pagina: Any = PaginaSimulada()
     else:
-        if selectores.VERIFICADO is None and modo_efectivo == "real":
+        if selectores.VERIFICADO is None and modo_pedido == "real":
             # ⚠️ El guard no es una fase pendiente: es la precondición que falta.
             # Los selectores nunca se probaron contra WhatsApp Web, así que un
             # envío real es la primera vez que confiaríamos en algo no
@@ -222,7 +215,7 @@ async def _enviar(
         contacto_id=str(carga.get("contacto_id", "")),
         contacto_nombre=str(carga.get("contacto_nombre", "")),
         texto=str(carga.get("texto", "")),
-        modo=modo_efectivo,
+        modo=modo_pedido,
         destinos_permitidos=permitidos,
     )
     return resultado.a_reporte()

@@ -78,7 +78,7 @@ async def test_sin_el_chrome_del_vendedor_no_se_le_paga_a_ningun_modelo() -> Non
         llamadas["veces"] += 1
         return NoSePudo()
 
-    resultado = await construir(modo="real", asegurar_navegador=asegurar)(
+    resultado = await construir(modo="operativo", asegurar_navegador=asegurar)(
         Job("1", "LISTAR", {"n_chats": 5, "run_id": "r1"})
     )
 
@@ -115,50 +115,58 @@ async def test_en_modo_real_no_se_envia_con_los_selectores_sin_verificar(monkeyp
     Esto es lo que lo garantiza.
     """
     monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", None)
-    resultado = await construir(modo="real")(job_enviar(["+5491123231151"], modo="real"))
+    resultado = await construir(modo="operativo")(job_enviar(["+5491123231151"], modo="real"))
 
     assert resultado["ok"] is False
     assert resultado["codigo"] == "SELECTOR_ROTO"
     assert "nunca se verificaron" in resultado["detalle"]["motivo"]
 
 
-async def test_una_maquina_en_prueba_no_envia_aunque_el_panel_pida_real(monkeypatch) -> None:
-    """⚠️ El modo efectivo es el MÁS RESTRICTIVO entre la máquina y el payload.
+async def test_que_pasa_con_el_mensaje_lo_decide_el_payload_no_la_maquina(monkeypatch) -> None:
+    """⚠️ D32: la máquina no tiene una perilla propia.
 
-    Era el agujero: el modo del payload le ganaba al `.env`, así que una Mac
-    configurada en `prueba` apretaba enviar si el panel mandaba `real`. La
-    tabla del SOP decía lo contrario.
+    El mismo agente, sin cambiar nada de su configuración, deja un borrador
+    cuando el panel apretó "Dejar borradores" y envía cuando apretó "Envío".
+    La perilla por máquina fue la causa del incidente del 26/08 y se eliminó.
     """
     from agente.adaptadores.simulada import Chat, PaginaSimulada
 
     monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", "2026-08-24")
-    falsa = PaginaSimulada(
-        {"+5491123231151": Chat(nombre="Corralón San Justo", telefono="+5491123231151")}
-    )
 
-    async def abrir():
-        return falsa
+    async def con_pagina(falsa):
+        async def abrir():
+            return falsa
 
-    ejecutar = ejecutor.construir(
-        claude_bin="",
-        device_id="dev-1",
-        carpeta=CARPETA,
-        modo="prueba",
-        diagnosticar=sano,
-        abrir_pagina=abrir,
-    )
-    resultado = await ejecutar(job_enviar(["+5491123231151"], modo="real"))
+        return ejecutor.construir(
+            claude_bin="",
+            device_id="dev-1",
+            carpeta=CARPETA,
+            modo="operativo",
+            diagnosticar=sano,
+            abrir_pagina=abrir,
+        )
 
+    chat = {"+5491123231151": Chat(nombre="Corralón San Justo", telefono="+5491123231151")}
+
+    borradores = PaginaSimulada(dict(chat))
+    resultado = await (await con_pagina(borradores))(job_enviar(["+5491123231151"], modo="prueba"))
     assert resultado["ok"] is True
     assert resultado["borrador"] is True, "quedó como borrador, no salió"
-    assert falsa.enviados == [], "no se apretó enviar"
+    assert borradores.enviados == [], "no se apretó enviar"
 
-
-async def test_una_maquina_en_simulado_nunca_toca_el_navegador() -> None:
-    """Aunque el panel pida `real`, en simulado se usa la página en memoria."""
-    resultado = await construir(modo="simulado")(
-        job_enviar(["+5491123231151"], modo="real")
+    envios = PaginaSimulada(
+        {"+5491123231151": Chat(nombre="Corralón San Justo", telefono="+5491123231151")}
     )
+    resultado = await (await con_pagina(envios))(job_enviar(["+5491123231151"], modo="real"))
+    assert resultado["ok"] is True
+    assert resultado["borrador"] is False
+    assert envios.enviados == [("+5491123231151", "Hola, ¿seguimos?")]
+
+
+async def test_con_simulado_nunca_se_toca_el_navegador() -> None:
+    """`--simulado` es de desarrollo: aunque el panel pida `real`, se usa la
+    página en memoria."""
+    resultado = await construir(modo="simulado")(job_enviar(["+5491123231151"], modo="real"))
 
     #  La página simulada no tiene ese chat: si hubiera intentado abrir un
     #  navegador de verdad, el motivo sería otro.
@@ -200,7 +208,7 @@ async def test_sin_forma_de_abrir_el_navegador_lo_dice(monkeypatch) -> None:
     """Si nadie inyectó `abrir_pagina`, el motivo lo tiene que decir claro."""
     monkeypatch.setattr(ejecutor.selectores, "VERIFICADO", "2026-08-24")
 
-    resultado = await construir(modo="real")(job_enviar(["+5491123231151"]))
+    resultado = await construir(modo="operativo")(job_enviar(["+5491123231151"]))
 
     assert resultado["ok"] is False
     assert "navegador" in resultado["detalle"]["motivo"]
@@ -222,7 +230,7 @@ async def test_en_modo_real_usa_la_pagina_que_le_dan(monkeypatch) -> None:
         claude_bin="",
         device_id="dev-1",
         carpeta=CARPETA,
-        modo="real",
+        modo="operativo",
         diagnosticar=sano,
         abrir_pagina=abrir,
     )

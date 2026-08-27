@@ -20,8 +20,9 @@ export type Maquina = {
   chequeos_fallando: string[];
   diagnostico: Record<string, string>;
   version_agente: string | null;
-  /** El modo resuelto que reportó el agente (simulado/prueba/real). En
-   * `simulado` todos los envíos fallan con CHAT_NO_ABRE: verlo acá evita
+  /** Lo que reportó el agente al arrancar: "operativo", o "simulado" si
+   * alguien lo corrió con el flag de desarrollo `--simulado` (D32). En
+   * simulado todos los envíos fallan con CHAT_NO_ABRE: verlo acá evita
    * diagnosticarlo entrando a la Mac. */
   modo_agente: string | null;
   tope_diario: number;

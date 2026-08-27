@@ -223,7 +223,6 @@ viejo() {
   sed -n "s/^$1=//p" "$ENV_ARCHIVO" | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//'
 }
 BACKEND_URL=$(viejo AGENTE_BACKEND_URL); BACKEND_URL="${BACKEND_URL:-$BACKEND_POR_DEFECTO}"
-MODO=$(viejo AGENTE_MODO);               MODO="${MODO:-simulado}"
 PUERTO=$(viejo CHROME_PUERTO);           PUERTO="${PUERTO:-9222}"
 MACHINE_ID=$(viejo AGENTE_MACHINE_ID)
 TOKEN=$(viejo AGENTE_TOKEN)
@@ -273,7 +272,6 @@ cat > "$ENV_ARCHIVO" <<ENV_EOF
 # Escrito por agente/instalador/instalar.sh. Volver a correr el instalador lo
 # regenera conservando estos valores. NO se comparte: tiene el token.
 AGENTE_BACKEND_URL=$BACKEND_URL
-AGENTE_MODO=$MODO
 CLAUDE_BIN=$CLAUDE_BIN
 CHROME_PERFIL_DIR=$PERFIL
 CHROME_PUERTO=$PUERTO

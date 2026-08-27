@@ -64,9 +64,10 @@ class Estricto(BaseModel):
 class Registro(Estricto):
     version: Annotated[str, Field(max_length=32)]
     diagnostico: dict[str, str] = Field(default_factory=dict)
-    # El modo resuelto de la máquina (simulado/prueba/real). Se muestra en el
-    # panel: una Mac que quedó en `simulado` falla todos los envíos con
-    # CHAT_NO_ABRE, y verlo de un vistazo evita diagnosticar por ssh.
+    # Cómo está corriendo el agente: "operativo", o "simulado" si alguien lo
+    # arrancó con el flag de desarrollo `--simulado` (D32). Se muestra en el
+    # panel: en simulado todos los envíos fallan con CHAT_NO_ABRE, y verlo de
+    # un vistazo evita diagnosticar por ssh.
     modo: Annotated[str, Field(max_length=16)] = ""
 
 

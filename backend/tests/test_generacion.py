@@ -392,6 +392,30 @@ async def test_el_contexto_de_empresa_viaja_en_el_payload(base) -> None:
 
 
 @sin_mongo
+async def test_las_indicaciones_largas_llegan_enteras_a_la_redaccion(base) -> None:
+    """⚠️ D33: los tres topes tienen que coincidir.
+
+    El del endpoint deja guardar 20.000; si el recorte de acá o el esquema del
+    payload se quedaran cortos, el dueño escribiría un catálogo que el redactor
+    nunca ve entero — y nadie se enteraría, porque no falla nada.
+    """
+    from app.modelos.jobs import validar_payload
+
+    await abrir_destinos(base)
+    indicaciones = "b" * (configuracion.LARGO_CONTEXTO_EMPRESA - 15) + "PROMO-DEL-FINAL"
+    await configuracion.actualizar(base, {"contexto_empresa": indicaciones})
+
+    resultado = await generacion.encolar_redacciones(
+        base, corrida_id=ObjectId(), maquina="pc-1", chats=[chat()]
+    )
+
+    job = await base["jobs"].find_one({"_id": resultado.jobs[0]})
+    assert job["payload"]["contexto_empresa"].endswith("PROMO-DEL-FINAL")
+    assert len(job["payload"]["contexto_empresa"]) == configuracion.LARGO_CONTEXTO_EMPRESA
+    validar_payload("REDACTAR", job["payload"])
+
+
+@sin_mongo
 async def test_un_contacto_con_mensaje_reciente_no_se_vuelve_a_redactar(base) -> None:
     """El anti-duplicado corre ANTES de pagar la redacción: un borrador de la
     corrida de la mañana bloquea al de la tarde — y en el barrido es lo que
