@@ -186,3 +186,55 @@ def test_sslkeylogfile_se_descarta_al_arrancar(monkeypatch: pytest.MonkeyPatch) 
 def test_sin_sslkeylogfile_no_pasa_nada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SSLKEYLOGFILE", raising=False)
     assert main_mod.soltar_sslkeylogfile() is None
+
+
+class TestWebcryptoParaClaudeCode:
+    """⚠️ En Node 18 el servidor MCP del navegador no encuentra `crypto`.
+
+    Sin esto, `claude -p --chrome` no conecta con la extensión y la máquina no
+    lee un solo chat. Verificado en la iMac con Catalina: con el flag, el mismo
+    comando que fallaba lista las pestañas.
+
+    El detalle que costó caro: `typeof crypto` en una terminal dice `object` y
+    hace descartar esta causa. Node 18 expone WebCrypto en el hilo principal
+    pero no en los worker threads, que es donde corre el MCP.
+    """
+
+    @staticmethod
+    def _en_macos(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
+        monkeypatch.setattr(main_mod.sys, "platform", "darwin")
+        monkeypatch.setattr(main_mod.platform, "mac_ver", lambda: (version, ("", "", ""), ""))
+        monkeypatch.delenv("NODE_OPTIONS", raising=False)
+
+    def test_en_catalina_enciende_el_flag(self, monkeypatch) -> None:
+        self._en_macos(monkeypatch, "10.15.7")
+
+        assert main_mod.habilitar_webcrypto_global() is True
+        assert os.environ["NODE_OPTIONS"] == main_mod.FLAG_WEBCRYPTO
+
+    def test_en_una_mac_al_dia_no_lo_toca(self, monkeypatch) -> None:
+        """En Node 20 ese flag ya no existe: pasarlo haría que no arranque nada."""
+        self._en_macos(monkeypatch, "14.4")
+
+        assert main_mod.habilitar_webcrypto_global() is False
+        assert "NODE_OPTIONS" not in os.environ
+
+    def test_no_pisa_lo_que_ya_habia_en_node_options(self, monkeypatch) -> None:
+        self._en_macos(monkeypatch, "10.15.7")
+        monkeypatch.setenv("NODE_OPTIONS", "--max-old-space-size=4096")
+
+        assert main_mod.habilitar_webcrypto_global() is True
+        assert os.environ["NODE_OPTIONS"] == f"--max-old-space-size=4096 {main_mod.FLAG_WEBCRYPTO}"
+
+    def test_no_lo_agrega_dos_veces(self, monkeypatch) -> None:
+        self._en_macos(monkeypatch, "10.15.7")
+        monkeypatch.setenv("NODE_OPTIONS", main_mod.FLAG_WEBCRYPTO)
+
+        assert main_mod.habilitar_webcrypto_global() is False
+        assert os.environ["NODE_OPTIONS"].count(main_mod.FLAG_WEBCRYPTO) == 1
+
+    def test_fuera_de_macos_no_aplica(self, monkeypatch) -> None:
+        monkeypatch.setattr(main_mod.sys, "platform", "win32")
+        monkeypatch.delenv("NODE_OPTIONS", raising=False)
+
+        assert main_mod.habilitar_webcrypto_global() is False

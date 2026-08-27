@@ -226,10 +226,24 @@ def soltar_sslkeylogfile() -> str | None:
 # porque es el único que todavía publica binarios para macOS 10.15.
 NODE_DEL_SISTEMA = (Path("/usr/local/bin/node"), Path("/opt/homebrew/bin/node"))
 
-# macOS 10.16 es Big Sur reportándose como 10.15 por compatibilidad. El corte va
-# ahí y no en 11: por debajo está Catalina de verdad, que es donde el problema
-# ocurre; en Big Sur el node de Playwright carga bien y no hay que tocar nada.
-PRIMER_MACOS_QUE_CARGA_EL_NODE_DE_PLAYWRIGHT = (10, 16)
+# Node 20 pide macOS 11 o más nuevo, así que por debajo de eso el techo del
+# sistema es Node 18 — y de ahí salen los dos parches de este módulo. El corte
+# va en 10.16 y no en 11 porque Big Sur puede reportarse como 10.16 por
+# compatibilidad, y ahí ya no hace falta parchear nada.
+PRIMER_MACOS_CON_NODE_20 = (10, 16)
+
+FLAG_WEBCRYPTO = "--experimental-global-webcrypto"
+
+
+def _macos_sin_node_20() -> bool:
+    """¿Este macOS es tan viejo que no puede correr Node 20?"""
+    if sys.platform != "darwin":
+        return False
+    try:
+        version = tuple(int(n) for n in platform.mac_ver()[0].split(".")[:2])
+    except ValueError:
+        return False
+    return bool(version) and version < PRIMER_MACOS_CON_NODE_20
 
 
 def apuntar_a_node_del_sistema() -> str | None:
@@ -253,14 +267,7 @@ def apuntar_a_node_del_sistema() -> str | None:
     lo definió antes. En una Mac al día no hace nada: ahí el node embebido es el
     correcto y cambiarlo sería romper lo que funciona.
     """
-    if sys.platform != "darwin" or os.environ.get("PLAYWRIGHT_NODEJS_PATH"):
-        return None
-
-    try:
-        version = tuple(int(n) for n in platform.mac_ver()[0].split(".")[:2])
-    except ValueError:
-        return None
-    if not version or version >= PRIMER_MACOS_QUE_CARGA_EL_NODE_DE_PLAYWRIGHT:
+    if os.environ.get("PLAYWRIGHT_NODEJS_PATH") or not _macos_sin_node_20():
         return None
 
     for ruta in NODE_DEL_SISTEMA:
@@ -280,10 +287,43 @@ def apuntar_a_node_del_sistema() -> str | None:
     return None
 
 
+def habilitar_webcrypto_global() -> bool:
+    """Enciende `crypto` global para Claude Code en macOS viejo. Dice si lo hizo.
+
+    Sin esto, `claude -p --chrome` no se conecta a la extensión y la máquina no
+    puede leer un solo chat — puede escribir, que es la otra mitad:
+
+        Hubo un error al intentar conectarme a la extensión de Chrome
+        (`crypto is not defined`)
+
+    ⚠️ **`typeof crypto` en una terminal dice `object` y engaña.** Node 18 sí
+    expone WebCrypto en el hilo principal; lo que no hace —y Node 20 sí— es
+    exponerlo dentro de los *worker threads*, que es donde corre el servidor
+    MCP del navegador. Verificarlo con `node -e` lleva a descartar esta causa
+    por el motivo equivocado; la prueba que vale es correr `claude -p --chrome`
+    con el flag y sin él.
+
+    El agente se lo pasa a Claude Code por `NODE_OPTIONS`, que hereda porque lo
+    lanzamos como subproceso. **Sólo en macOS viejo**, que es donde Node 18 es
+    el techo: en Node 20 el flag ya no existe y pasarlo haría que no arranque.
+    """
+    if not _macos_sin_node_20():
+        return False
+
+    actual = os.environ.get("NODE_OPTIONS", "")
+    if FLAG_WEBCRYPTO in actual:
+        return False
+
+    os.environ["NODE_OPTIONS"] = f"{actual} {FLAG_WEBCRYPTO}".strip()
+    log.info("webcrypto_habilitado", node_options=os.environ["NODE_OPTIONS"])
+    return True
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = construir_parser().parse_args(argv)
     soltar_sslkeylogfile()
     apuntar_a_node_del_sistema()
+    habilitar_webcrypto_global()
 
     try:
         config = obtener_configuracion()
