@@ -384,8 +384,18 @@ export const grupos: Grupo[] = [
           "Abre el navegador y consume saldo de Claude. Es el único chequeo que no puede hacerse sin mirar la página, por eso no viene con el diagnóstico.",
       },
       {
+        id: "windows-navegador",
+        titulo: "13. Bajar el navegador que escribe los mensajes",
+        comando:
+          "uv run --directory $HOME\\centonara-seguimientos\\agente playwright install chromium",
+        queHace:
+          "Descarga el navegador propio de Playwright, unos 100 MB. En la Mac este paso no existe porque ahí siempre hay un Chrome instalado y el motor de envío lo usa; en Windows puede no haberlo, o estar en una ruta que el agente no busca.",
+        aviso:
+          "Si te lo saltás, el paso siguiente falla con «no se pudo abrir el perfil en ...\\Centonara\\Chrome». Ese mensaje significa exactamente esto y no que el perfil esté roto.",
+      },
+      {
         id: "windows-vincular",
-        titulo: "13. Vincular el navegador de envío",
+        titulo: "14. Vincular el navegador de envío",
         comando:
           "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main --vincular",
         queHace:
@@ -393,7 +403,7 @@ export const grupos: Grupo[] = [
       },
       {
         id: "windows-arrancar",
-        titulo: "14. Arrancar el agente",
+        titulo: "15. Arrancar el agente",
         comando: "uv run --directory $HOME\\centonara-seguimientos\\agente python -m agente.main",
         queHace:
           "Lo pone a trabajar. La ventana queda ocupada: mientras esté abierta, la máquina figura online en el panel. Se corta con Control + C.",
