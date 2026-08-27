@@ -411,12 +411,30 @@ export const grupos: Grupo[] = [
       },
       {
         id: "windows-inicio",
-        titulo: "16. Que arranque solo al prender la máquina",
-        comando: `Set-Content -Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\centonara.bat" -Value '@echo off', 'cd /d %USERPROFILE%\\centonara-seguimientos', ':loop', 'uv run --directory agente python -m agente.main', 'timeout /t 10 >nul', 'goto loop'`,
+        titulo: "16. Dejar el arranque automático, sin ventana",
+        comando:
+          `Set-Content -Path "$HOME\\centonara-seguimientos\\centonara.bat" -Value '@echo off', 'cd /d %USERPROFILE%\\centonara-seguimientos', ':loop', 'uv run --directory agente python -m agente.main', 'timeout /t 10 >nul', 'goto loop'`,
         queHace:
-          "Crea un archivo en la carpeta de Inicio de Windows que arranca el agente cuando el vendedor inicia sesión, y lo vuelve a levantar si se cae. Es el reemplazo del arranque automático que en la Mac hace el sistema.",
+          "Deja el bucle que mantiene vivo al agente: si se cae, espera diez segundos y lo vuelve a levantar. Va en la carpeta del proyecto, no en el arranque — de eso se ocupa el paso siguiente.",
+      },
+      {
+        id: "windows-oculto",
+        titulo: "17. Que arranque solo al iniciar sesión, oculto",
+        comando:
+          `Set-Content -Path "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\centonara.vbs" -Value 'CreateObject("WScript.Shell").Run "cmd /c ""%USERPROFILE%\\centonara-seguimientos\\centonara.bat""", 0, False'`,
+        queHace:
+          "Lanza el bucle sin ventana cada vez que el vendedor inicia sesión. El cero del final es lo que la esconde: con la ventana a la vista, alguien la cierra y el agente se apaga sin que nadie se entere.",
         aviso:
-          "Más rudimentario que en la Mac: abre una ventana de consola que el vendedor puede cerrar sin querer, y el reintento es cada diez segundos sin importar el motivo de la caída. Sirve, pero si esta máquina se queda, conviene pasarlo al Programador de tareas.",
+          "Necesita la sesión de Windows iniciada, no alcanza con la máquina prendida: el agente maneja un navegador con interfaz. Y ojo con dejar también el .bat en Startup — serían dos agentes corriendo. Al ocultar la ventana, el vendedor pierde la forma de cortarlo desde su máquina: queda el kill switch del panel y «Pausar por hoy» en su tarjeta.",
+      },
+      {
+        id: "windows-vivo",
+        titulo: "18. Ver si el agente está corriendo",
+        comando:
+          `Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object CommandLine -like '*agente.main*' | Select-Object ProcessId, CreationDate`,
+        queHace:
+          "Sin ventana no hay nada que mirar, así que esto lo busca entre los procesos. Si no devuelve nada, el agente no está vivo.",
+        cuando: "Cuando el panel dice que la máquina está sin conexión y no sabés si el problema es la máquina o la red.",
       },
     ],
     pie: "Nada de esto modifica el sistema actual: no toca el instalador de Mac, ni el código del agente, ni la configuración de las otras máquinas. Es el mismo agente corriendo, con los pasos hechos a mano. En el panel, esta máquina se da de alta y se activa igual que cualquier otra — y el consentimiento del vendedor se registra igual, porque los mensajes también salen de su línea.",
