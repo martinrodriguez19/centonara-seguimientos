@@ -356,12 +356,13 @@ export const grupos: Grupo[] = [
       },
       {
         id: "windows-claude-bin",
-        titulo: "10. Averiguar la ruta completa de Claude Code",
-        comando: '"CLAUDE_BIN=$((Get-Command claude).Source)"',
+        titulo: "10. Escribir la ruta de Claude Code en el .env",
+        comando:
+          '(Get-Content $HOME\\centonara-seguimientos\\.env) -replace \'^CLAUDE_BIN=.*\', "CLAUDE_BIN=$((Get-Command claude).Source)" | Set-Content $HOME\\centonara-seguimientos\\.env',
         queHace:
-          "Imprime la línea lista para pegar en el .env. Tiene que ser la ruta completa y no el atajo: el agente arranca desde un proceso cuyo PATH no es el de tu PowerShell, y ahí «claude» a secas no resuelve.",
+          "Averigua dónde quedó Claude Code y lo deja escrito en el archivo de configuración, sin abrir nada. Tiene que ser la ruta completa y no el atajo: el agente arranca desde un proceso cuyo PATH no es el de tu PowerShell, y ahí «claude» a secas no resuelve.",
         aviso:
-          "Si dice que no reconoce «claude», cerrá PowerShell y abrí una ventana nueva: el instalador de Claude Code dejó el PATH pero esta sesión no lo tomó.",
+          "Si dice que no reconoce «claude», cerrá PowerShell y abrí una ventana nueva: el instalador de Claude Code dejó el PATH pero esta sesión no lo tomó. Para ver cómo quedó: Select-String -Path $HOME\\centonara-seguimientos\\.env -Pattern \'^CLAUDE_BIN=\'",
       },
       {
         id: "windows-device-id",
