@@ -299,6 +299,104 @@ async def test_cualquier_cosa_que_no_sea_real_exactamente_no_envia(modo: str) ->
 
 
 # ---------------------------------------------------------------------------
+# ⚠️ El orden del paso 1: navegar primero, preguntar por la sesión después
+# ---------------------------------------------------------------------------
+#
+# La causa principal de la corrida fallida del 27/08: la página del navegador
+# dedicado nace sin navegar (about:blank), y ahí no hay ni QR ni lista de
+# chats. Preguntar por la sesión antes de abrir devolvía SESION_CAIDA con la
+# sesión perfectamente sana — y como se abortaba sin navegar, los tres
+# reintentos morían igual.
+
+
+async def test_navega_antes_de_preguntar_por_la_sesion() -> None:
+    pagina = pagina_con(chat_normal())
+    assert not pagina.navegada
+    assert not await pagina.sesion_iniciada(), "sin navegar, la sesión no se ve"
+
+    resultado = await mandar(pagina)
+
+    assert resultado.ok, "con la sesión sana el envío tiene que salir"
+    assert pagina.navegada, "el motor navegó antes de decidir"
+
+
+async def test_el_qr_a_la_vista_es_sesion_caida() -> None:
+    """La sesión caída de verdad se reporta DESPUÉS de navegar, no antes."""
+    pagina = pagina_con(chat_normal(), sesion=False)
+
+    resultado = await mandar(pagina)
+
+    assert resultado.codigo == "SESION_CAIDA"
+    assert pagina.navegada, "se navegó antes de declarar la sesión caída"
+    assert pagina.enviados == []
+
+
+async def test_una_pagina_que_no_carga_es_timeout_y_no_frena_la_corrida() -> None:
+    """Red lenta o Chrome recién abierto: transitorio. TIMEOUT reintenta;
+    SELECTOR_ROTO habría frenado la corrida entera por una demora."""
+    pagina = pagina_con(chat_normal(), carga=False)
+
+    resultado = await mandar(pagina)
+
+    assert resultado.codigo == "TIMEOUT"
+    assert resultado.codigo != "SELECTOR_ROTO"
+    assert pagina.enviados == []
+
+
+# ---------------------------------------------------------------------------
+# La búsqueda del chat es por nombre (D34)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_chat_se_busca_por_nombre() -> None:
+    """Los contactos reales están agendados por nombre: buscar el E.164 no
+    encuentra nada. La identidad la sigue decidiendo el número (paso 6)."""
+    pagina = pagina_con({"Marcelo Fernández": Chat(nombre="Marcelo Fernández", telefono=MARCELO)})
+
+    resultado = await mandar(pagina)
+
+    assert resultado.ok
+    assert pagina.enviados == [(MARCELO, TEXTO)]
+
+
+async def test_si_el_nombre_no_trae_nada_se_prueba_con_el_numero() -> None:
+    """Un chat renombrado o con emojis: el número queda de red de seguridad."""
+    pagina = pagina_con(chat_normal())  # las claves son números
+
+    assert (await mandar(pagina)).ok
+
+
+async def test_sin_nombre_se_busca_directo_por_numero() -> None:
+    pagina = pagina_con(chat_normal())
+
+    assert (await mandar(pagina, contacto_nombre="")).ok
+
+
+async def test_un_homonimo_abierto_por_nombre_no_recibe_nada() -> None:
+    """⚠️ Buscar por nombre hace más probable abrir el chat de un homónimo.
+
+    No afloja nada: la comparación por número (R1) lo aborta igual.
+    """
+    pagina = pagina_con({"Ferretería Sur": Chat(nombre="Ferretería Sur", telefono=OTRO)})
+
+    resultado = await mandar(pagina, contacto_id=MARCELO, contacto_nombre="Ferretería Sur")
+
+    assert resultado.codigo == "CONTACTO_NO_COINCIDE"
+    assert pagina.enviados == []
+    assert not pagina.escribio_algo
+
+
+async def test_el_chat_no_abre_dice_que_se_busco() -> None:
+    pagina = pagina_con({})
+
+    resultado = await mandar(pagina)
+
+    assert resultado.codigo == "CHAT_NO_ABRE"
+    assert resultado.detalle["buscado"] == "Marcelo Fernández"
+    assert resultado.detalle["motivo"] == "sin_resultados"
+
+
+# ---------------------------------------------------------------------------
 # Cuando la página se rompe
 # ---------------------------------------------------------------------------
 

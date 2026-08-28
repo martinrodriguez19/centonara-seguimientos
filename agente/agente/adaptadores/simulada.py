@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from agente.adaptadores.pagina import ErrorDeSelector
+from agente.adaptadores.pagina import ErrorDeSelector, PaginaNoCargo
 
 
 @dataclass
@@ -44,6 +44,7 @@ class PaginaSimulada:
         sesion: bool = True,
         selector_roto: bool = False,
         confirma: bool = True,
+        carga: bool = True,
     ) -> None:
         # La clave es lo que se busca. Puede no coincidir con el teléfono real
         # del chat, y ese desajuste es el escenario que importa.
@@ -51,6 +52,14 @@ class PaginaSimulada:
         self._sesion = sesion
         self._selector_roto = selector_roto
         self._confirma = confirma
+        #  `carga=False` simula la página que no termina de cargar: red lenta,
+        #  Chrome recién abierto. `abrir_whatsapp` lanza `PaginaNoCargo`.
+        self._carga = carga
+        #  Como la página real: nace sin navegar (about:blank), y ahí no hay ni
+        #  QR ni lista de chats. Preguntar por la sesión antes de abrir tiene
+        #  que dar `False` — es el orden equivocado que causó el 27/08, y los
+        #  tests lo aseveran gracias a esto.
+        self.navegada: bool = False
 
         self.abierto: Chat | None = None
         self.campo: str = ""
@@ -61,13 +70,17 @@ class PaginaSimulada:
     # -- Lo que pide el Protocol ---------------------------------------------
 
     async def sesion_iniciada(self) -> bool:
-        return self._sesion
+        return self.navegada and self._sesion
 
     async def abrir_whatsapp(self) -> None:
         self._quejarse_si_esta_roto()
+        if not self._carga:
+            raise PaginaNoCargo("ni la lista de chats ni el QR aparecieron")
+        self.navegada = True
 
     async def buscar_contacto(self, identificador: str) -> bool:
         self._quejarse_si_esta_roto()
+        self.motivo_no_abrio: str | None = None
         chat = self.chats.get(identificador)
         if chat is None:
             self.motivo_no_abrio = "sin_resultados"

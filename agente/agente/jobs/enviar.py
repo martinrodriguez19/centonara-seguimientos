@@ -8,8 +8,8 @@ error llega a alguien.
 por un motivo, y moverlos convierte una garantía en una intención:
 
     0. El destino está en la lista permitida        (R4)
-    1. Abrir WhatsApp Web
-    2. Buscar el contacto y abrir el chat
+    1. Abrir WhatsApp Web — navegar PRIMERO, preguntar por la sesión después
+    2. Buscar el contacto y abrir el chat (por nombre, D34)
     3. No es un grupo
     4. LEER el header del chat abierto
     5. RESOLVER el número a E.164
@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from agente.adaptadores.pagina import ErrorDeSelector, Pagina
+from agente.adaptadores.pagina import ErrorDeSelector, Pagina, PaginaNoCargo
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -102,6 +102,12 @@ async def enviar(
             texto=texto,
             modo=modo,
         )
+    except PaginaNoCargo as error:
+        # La página no terminó de cargar: red lenta, Chrome recién abierto.
+        # Transitorio — se reporta como TIMEOUT (reintentable, con su propio
+        # tope), no como SELECTOR_ROTO, que frenaría la corrida entera.
+        log.warning("pagina_no_cargo", error=str(error))
+        return Resultado(False, "TIMEOUT", {"motivo": str(error)})
     except ErrorDeSelector as error:
         # El DOM cambió. No es este envío el que falló: van a fallar todos.
         log.error("selector_roto", error=str(error))
@@ -127,13 +133,27 @@ async def _secuencia(
     pagina: Pagina, *, contacto_id: str, contacto_nombre: str, texto: str, modo: str
 ) -> Resultado:
     # ---- 1. WhatsApp Web abierto y con sesión -------------------------------
+    #
+    # ⚠️ NAVEGAR PRIMERO, preguntar después. La página del navegador dedicado
+    # nace en about:blank, y ahí no hay ni QR ni lista de chats: preguntar por
+    # la sesión antes de abrir devolvía SESION_CAIDA con la sesión sana — y como
+    # se abortaba sin navegar, los tres reintentos morían igual (27/08).
+    await pagina.abrir_whatsapp()
     if not await pagina.sesion_iniciada():
         return Resultado(False, "SESION_CAIDA", {"detalle": "pide escanear el código"})
-    await pagina.abrir_whatsapp()
 
     # ---- 2. El chat ---------------------------------------------------------
-    if not await pagina.buscar_contacto(contacto_id):
-        detalle: dict[str, Any] = {"contacto_id": contacto_id}
+    #
+    # Se busca por NOMBRE, no por número (D34): los contactos reales están
+    # agendados por nombre y buscar el E.164 devolvía cero resultados. Qué chat
+    # se abre nunca fue la garantía de identidad — la garantía es el paso 6.
+    termino = contacto_nombre.strip() or contacto_id
+    abierto = await pagina.buscar_contacto(termino)
+    if not abierto and termino != contacto_id:
+        #  El nombre no trajo nada (renombrado, emoji): el número, por si acaso.
+        abierto = await pagina.buscar_contacto(contacto_id)
+    if not abierto:
+        detalle: dict[str, Any] = {"contacto_id": contacto_id, "buscado": termino}
         # "La búsqueda no trajo nada" y "hubo filas pero ninguna abrió" son
         # fallas distintas; que el reporte lo diga evita diagnosticar por logs.
         if motivo := getattr(pagina, "motivo_no_abrio", None):

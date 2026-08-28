@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from agente.adaptadores.pagina import ErrorDeSelector
+from agente.adaptadores.pagina import ErrorDeSelector, PaginaNoCargo
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -55,6 +55,10 @@ async def resolver(pagina, *, contactos: list[str]) -> Resultado:
         await pagina.abrir_whatsapp()
         if not await pagina.sesion_iniciada():
             return Resultado(False, "SESION_CAIDA", {"motivo": "WhatsApp Web está pidiendo el QR"})
+    except PaginaNoCargo as error:
+        #  Transitorio: la página no terminó de cargar. Reintenta como TIMEOUT
+        #  en vez de frenar la corrida entera con SELECTOR_ROTO.
+        return Resultado(False, "TIMEOUT", {"motivo": str(error), "contactos": []})
     except ErrorDeSelector as error:
         #  `contactos` vacío y presente: el backend lee siempre la misma forma.
         return Resultado(False, "SELECTOR_ROTO", {"motivo": str(error), "contactos": []})

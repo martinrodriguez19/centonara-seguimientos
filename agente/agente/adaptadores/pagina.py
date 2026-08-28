@@ -29,16 +29,38 @@ class ErrorDeSelector(Exception):
     """
 
 
+class PaginaNoCargo(Exception):
+    """WhatsApp Web no terminó de cargar: ni el QR ni la lista aparecieron.
+
+    Se distingue de `ErrorDeSelector` a propósito, porque las consecuencias son
+    opuestas. `SELECTOR_ROTO` frena la corrida entera —el DOM cambió para
+    todos—; una página que no cargó es red lenta, un Chrome recién abierto, una
+    pestaña suspendida: transitorio, y el job se reintenta como `TIMEOUT`.
+    Confundirlos convierte una demora en un freno total, o un DOM roto en
+    reintentos inútiles.
+    """
+
+
 @runtime_checkable
 class Pagina(Protocol):
     """WhatsApp Web, reducido a lo que hace falta para mandar un mensaje."""
 
     async def abrir_whatsapp(self) -> None:
-        """Deja la lista de chats a la vista. Lanza si pide QR."""
+        """Navega si hace falta y deja la página decidida: lista de chats o QR.
+
+        **Se llama antes que cualquier otra pregunta**, incluida
+        `sesion_iniciada` — sobre una página sin navegar no hay ni QR ni lista,
+        y preguntar por la sesión ahí devuelve un "sesión caída" falso.
+        Lanza `PaginaNoCargo` si no aparece ninguna de las dos cosas.
+        """
         ...
 
     async def sesion_iniciada(self) -> bool:
-        """¿Está la sesión activa, o pide escanear el código?"""
+        """¿Está la sesión activa, o pide escanear el código?
+
+        Presupone `abrir_whatsapp()` ya corrido: es quien garantiza que la
+        página está en WhatsApp Web y decidida entre el QR y la lista.
+        """
         ...
 
     async def buscar_contacto(self, identificador: str) -> bool:

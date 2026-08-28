@@ -24,7 +24,7 @@ from types import FrameType
 
 from pydantic import ValidationError
 
-from agente import __version__, diagnostico, sonda
+from agente import __version__, diagnostico, sonda, vigia_sesion
 from agente.bucle import Bucle, latir
 from agente.cliente import Cliente
 from agente.config import CARPETA_AGENTE, Configuracion, Modo, obtener_configuracion
@@ -553,6 +553,11 @@ def _abrir_pagina(config: Configuracion):
     carpeta de datos propia y su propia sesión de WhatsApp, vinculada con
     `--vincular`. El Chrome del vendedor no se toca, y no hay ningún puerto.
 
+    ⚠️ La página que devuelve `conectar_perfil` NO está navegada (about:blank):
+    quien la lleva a WhatsApp Web es `abrir_whatsapp()`, el primer paso de la
+    secuencia de envío. Meter un `goto` acá duplicaría la navegación y acoplaría
+    la conexión a WhatsApp.
+
     Playwright y el navegador se arrancan una vez y quedan vivos mientras viva
     el agente: abrir y cerrar por cada mensaje costaría más que el mensaje. Si
     alguien cierra la ventana, el próximo envío la vuelve a abrir.
@@ -593,6 +598,11 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             navegador_dir=config.navegador_dir,
         )
 
+    # Una sola forma de abrir la página dedicada, compartida entre el ejecutor
+    # y la vigía de sesión: las dos tienen que ver el MISMO navegador
+    # persistente, no abrir dos.
+    abrir_pagina = None if modo == "simulado" else _abrir_pagina(config)
+
     trabajo = Bucle(
         cliente,
         version=__version__,
@@ -606,7 +616,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             # ganarle al entorno, que es para lo único que existe esa opción.
             modo=modo,
             diagnosticar=diagnosticar,
-            abrir_pagina=None if modo == "simulado" else _abrir_pagina(config),
+            abrir_pagina=abrir_pagina,
             # El Chrome del vendedor, donde vive la extensión que usa `LISTAR`.
             # En simulado no se toca ningún navegador.
             asegurar_navegador=None if modo == "simulado" else _asegurar_navegador(config),
@@ -622,8 +632,15 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
 
     threading.Thread(target=vigilar_apagado, daemon=True).start()
 
+    tareas = [trabajo.arrancar(), latir(cliente, trabajo.estado, parar=fin)]
+    if abrir_pagina is not None:
+        # La vigía de la sesión dedicada (D24): revisa al arrancar y cada unas
+        # horas, y el latido lleva el resultado al panel. En simulado no hay
+        # navegador que mirar.
+        tareas.append(vigia_sesion.vigilar(abrir_pagina, trabajo.estado, parar=fin))
+
     try:
-        await asyncio.gather(trabajo.arrancar(), latir(cliente, trabajo.estado, parar=fin))
+        await asyncio.gather(*tareas)
     finally:
         await cliente.cerrar()
         log.info("agente_detenido", jobs=trabajo.estado.jobs_hechos)

@@ -42,7 +42,7 @@ from __future__ import annotations
 import re
 
 from agente.adaptadores import selectores
-from agente.adaptadores.pagina import ErrorDeSelector
+from agente.adaptadores.pagina import ErrorDeSelector, PaginaNoCargo
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -56,6 +56,12 @@ ESPERA_CORTA_MS = 3_000
 # más que una lectura suelta: 3 s contra un WhatsApp Web con red lenta producía
 # `CHAT_NO_ABRE` espurios — chats que existían y no llegaban a dibujarse.
 ESPERA_BUSQUEDA_MS = 8_000
+# Cuánto tiene que quedarse quieta la lista de resultados para darla por
+# filtrada, cuando ninguna fila matchea lo buscado (pasa al buscar por número:
+# la fila muestra el nombre agendado). Sin esto, el primer wait se satisfacía
+# con las filas VIEJAS de la lista de chats —el selector matchea el mismo
+# contenedor— y se clickeaban resultados de antes de que WhatsApp filtrara.
+QUIETUD_DE_RESULTADOS_MS = 700
 
 # ⚠️ Seleccionar todo NO es `Control+A` en macOS: es `Cmd+A`. Y macOS es donde
 # esto va a correr.
@@ -83,35 +89,58 @@ class PaginaWhatsApp:
     # -- Sesión ---------------------------------------------------------------
 
     async def abrir_whatsapp(self) -> None:
-        """Deja la lista de chats a la vista.
+        """Navega si hace falta y deja la página decidida: lista de chats o QR.
 
-        **Si ya está a la vista, no navega.** Una corrida manda varios mensajes
-        seguidos y esto se llama antes de cada uno: recargar WhatsApp Web cada
-        vez tarda, tira abajo el estado de la interfaz, y multiplica las chances
-        de agarrar la página a medio cargar.
+        **Si la lista ya está a la vista, no navega.** Una corrida manda varios
+        mensajes seguidos y esto se llama antes de cada uno: recargar WhatsApp
+        Web cada vez tarda, tira abajo el estado de la interfaz, y multiplica
+        las chances de agarrar la página a medio cargar.
 
-        La condición es la lista de chats presente y no la URL: es lo que de
-        verdad importa, y no se rompe si WhatsApp cambia de ruta.
+        ⚠️ El navegador dedicado entrega la página **sin navegar** (about:blank):
+        éste es el único lugar que la lleva a WhatsApp Web. Preguntar por la
+        sesión antes de esto devolvía `SESION_CAIDA` con la sesión sana — la
+        causa principal de la corrida fallida del 27/08.
+
+        Tres salidas, cada una con su consecuencia:
+          - la lista apareció → listo;
+          - el QR apareció → retorna igual, y `sesion_iniciada()` lo va a decir
+            (`SESION_CAIDA`, reintentable — quizá alguien vincula);
+          - ninguno en `ESPERA_MS` → `PaginaNoCargo` (transitorio, reintenta
+            como `TIMEOUT`). **No** `ErrorDeSelector`: eso frenaría la corrida
+            entera por una página lenta.
         """
         if await self._page.query_selector(selectores.LISTA_DE_CHATS.css) is None:
             await self._page.goto(selectores.URL, wait_until="domcontentloaded")
 
         try:
-            await self._page.wait_for_selector(
-                selectores.LISTA_DE_CHATS.css, timeout=self._espera, state="attached"
-            )
+            await self._esperar_qr_o_lista(self._espera)
         except Exception as error:
-            raise ErrorDeSelector(f"no apareció {selectores.LISTA_DE_CHATS.que_busca}") from error
+            raise PaginaNoCargo(
+                f"ni {selectores.LISTA_DE_CHATS.que_busca} ni {selectores.QR.que_busca} "
+                "aparecieron: la página no terminó de cargar"
+            ) from error
 
     async def sesion_iniciada(self) -> bool:
         """`False` si la página pide escanear el código.
 
-        Se pregunta por el QR y no por la lista de chats: el QR aparece rápido y
-        su ausencia, con la lista presente, es la señal de que hay sesión.
+        Espera a que la página se decida en vez de mirar una foto instantánea:
+        durante un "Conectando…" o un reload no hay ni QR ni lista por un
+        momento, y responder `False` ahí era un `SESION_CAIDA` espurio.
+
+        Con la lista presente, la ausencia del QR es la señal de que hay sesión.
         """
+        try:
+            await self._esperar_qr_o_lista(min(self._espera, ESPERA_BUSQUEDA_MS))
+        except Exception:
+            return False
         if await self._page.query_selector(selectores.QR.css) is not None:
             return False
         return await self._page.query_selector(selectores.LISTA_DE_CHATS.css) is not None
+
+    async def _esperar_qr_o_lista(self, timeout_ms: float) -> None:
+        """Hasta que la página muestre la lista de chats o el QR, lo que llegue."""
+        combinado = f"{selectores.LISTA_DE_CHATS.css}, {selectores.QR.css}"
+        await self._page.wait_for_selector(combinado, timeout=timeout_ms, state="attached")
 
     # -- Abrir el chat ---------------------------------------------------------
 
@@ -136,9 +165,39 @@ class PaginaWhatsApp:
         await self._page.keyboard.press("Delete")
         await buscador.press_sequentially(identificador, delay=20)
 
+        # ⚠️ El selector de resultados matchea el MISMO contenedor que la lista
+        # de chats de siempre: un "apareció una fila" se satisface al instante
+        # con las filas viejas, antes de que WhatsApp filtre — y el loop de abajo
+        # clickeaba chats que no tenían nada que ver con lo buscado. La señal de
+        # que la búsqueda terminó es una fila que DIGA lo buscado; y si ninguna
+        # lo dice (buscar por número muestra el nombre agendado), que la lista
+        # haya dejado de cambiar por un momento.
+        await self._page.evaluate("() => { window.__resultados_de_busqueda = undefined; }")
         try:
-            await self._page.wait_for_selector(
-                selectores.RESULTADO_DE_BUSQUEDA.css, timeout=ESPERA_BUSQUEDA_MS
+            await self._page.wait_for_function(
+                """([css, termino, quietudMs]) => {
+                    const norm = (s) => (s || '')
+                        .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+                        .toLowerCase().trim();
+                    const filas = Array.from(document.querySelectorAll(css));
+                    if (filas.length === 0) return false;
+                    const buscado = norm(termino);
+                    if (buscado && filas.some(f => norm(f.innerText).includes(buscado))) {
+                        return true;
+                    }
+                    const foto = filas.map(f => f.innerText).join('\\u0000');
+                    const ahora = Date.now();
+                    const estado = window.__resultados_de_busqueda
+                        || (window.__resultados_de_busqueda = {});
+                    if (estado.foto !== foto) {
+                        estado.foto = foto;
+                        estado.desde = ahora;
+                        return false;
+                    }
+                    return ahora - estado.desde >= quietudMs;
+                }""",
+                arg=[selectores.RESULTADO_DE_BUSQUEDA.css, identificador, QUIETUD_DE_RESULTADOS_MS],
+                timeout=ESPERA_BUSQUEDA_MS,
             )
         except Exception:
             log.info("contacto_sin_resultados", identificador=identificador)
@@ -168,11 +227,16 @@ class PaginaWhatsApp:
         # chat es, lo sigue decidiendo la comparación de identidad (R1).
         for i in range(cantidad):
             fila = filas.nth(i)
+            #  La primera candidata espera más (S2.5): con red lenta, 3 s para
+            #  leer y clickear producía `CHAT_NO_ABRE` de chats que existían.
+            #  Las siguientes mantienen la espera corta para no pagar seis
+            #  timeouts largos en el caso patológico.
+            espera_fila = ESPERA_BUSQUEDA_MS if i == 0 else ESPERA_CORTA_MS
             try:
-                texto_fila = ((await fila.inner_text(timeout=ESPERA_CORTA_MS)) or "").strip()
+                texto_fila = ((await fila.inner_text(timeout=espera_fila)) or "").strip()
                 if not texto_fila:
                     continue
-                await fila.click(timeout=ESPERA_CORTA_MS)
+                await fila.click(timeout=espera_fila)
             except Exception:
                 #  La fila se redibujó o desapareció entre leerla y clickearla.
                 continue
