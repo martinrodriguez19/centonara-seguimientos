@@ -82,7 +82,7 @@ aparezca el caso, no antes.
 | G3 | Texto válido: no vacío, sin placeholders, ≤ largo máximo | 600 car. | ✅ | ✅ | `DESCARTADO` / `rechazado` |
 | G4 | Topes: por máquina por día, y por corrida | 20 / 25 | ✅ | ✅ | no encola |
 | G5 | Anti-duplicado por contacto | 7 días | ✅ | — | `DESCARTADO` / `rechazado` |
-| G6 | Ventana horaria y días hábiles | 09–19, L–V, **hora de Argentina** | ✅ | ✅ | no envía |
+| G6 | Ventana horaria y días hábiles — **sólo el envío real** (D37) | 09–19, L–V, **hora de Argentina** | ✅ | ✅ | no envía |
 | G7 | Pausa global o vendedor pausado (kill switch) | — | ✅ | ✅ | `423` |
 | G8 | Campo de escritura vacío antes de escribir | — | — | ✅ | `CAMPO_NO_VACIO` |
 
@@ -114,6 +114,13 @@ El triage no bloquea, **aparta**. La mayoría de los mensajes sale sin tocar nad
 
 Cualquiera → `RETENIDO`. Ninguna → `EN_ESPERA`.
 
+> **Revisado por D36 (28/08): para los borradores automáticos, el triage informa pero ya no
+> retiene.** Las señales se calculan y quedan visibles en la tarjeta del panel, pero el borrador
+> se deja igual en el chat — la revisión humana pasa al vendedor, que lo ve antes de mandarlo a
+> mano. `RETENIDO` sigue existiendo para `sin_contexto` (no hay texto que dejar) y la retención
+> por tanda queda sólo en `validacion.validar_corrida`, hoy fuera del circuito normal. Es un
+> riesgo asumido a pedido del cliente y está anotado en la decisión, con lo que lo revertiría.
+
 > Había una quinta señal, `CHAT_NO_COMERCIAL`, que apartaba los chats sin palabras "comerciales"
 > en el resumen. Se eliminó (D29): los vendedores usan estas líneas sólo para trabajo, y la
 > división comercial/personal por palabras apartaba chats legítimos.
@@ -143,7 +150,7 @@ bloquee la línea de trabajo de una persona.
 | Pausa entre envíos | aleatoria, 45–180 s | Los patrones regulares son lo que dispara bloqueos, no el volumen |
 | Orden de la lista | aleatorizado | Que no sea siempre el mismo recorrido |
 | Ventana horaria | 09:00–19:00, hábiles | Comportamiento plausible |
-| Canario | los 3 primeros, después 10 min de espera | Si los 3 fallan, frena antes de romper 17 más |
+| Canario | los 3 primeros **de cada máquina**, después 10 min de espera (D35) | Si los 3 de una Mac fallan, se frena esa Mac antes de romper 17 más — las demás siguen |
 
 **La pausa nunca es fija.** Un `sleep(60)` en el código de envío es un bug, no una simplificación.
 Se implementa con `disponible_desde` escalonado en la cola, no bloqueando un hilo.

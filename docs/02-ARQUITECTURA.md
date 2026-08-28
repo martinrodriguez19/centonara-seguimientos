@@ -318,10 +318,18 @@ de `ALLOWED_VARS` del MVP, ahora con esquemas.
 | `CHAT_NO_ABRE` | sí | No se pudo abrir |
 | `SELECTOR_ROTO` | **frena la corrida** | El DOM cambió. Todos los siguientes fallan igual |
 | `SIN_CONFIRMAR` | **nunca** | Se apretó enviar y no apareció en el hilo. Alerta |
-| `SESION_CAIDA` | sí | WhatsApp Web pide QR |
+| `SESION_CAIDA` | sí | WhatsApp Web pide QR — **con el QR a la vista**, no antes de navegar |
+| `TIMEOUT` | sí (tope 2) | La página no terminó de cargar (`PaginaNoCargo`): red lenta, Chrome recién abierto |
 
 Reintentar un envío que abortó por identidad incorrecta es la forma exacta de convertir un aborto
 correcto en un error real. Por eso la columna del medio no es decorativa.
+
+Dos matices que salieron de la corrida fallida del 27/08: el motor **navega primero y pregunta
+por la sesión después** (el orden inverso daba `SESION_CAIDA` con la sesión sana, sobre la
+página sin navegar), y el chat se busca **por nombre** con fallback al número (D34) — la
+identidad la sigue decidiendo la comparación por número del paso 6. Y desde D35 el canario
+frena **por máquina**, no la corrida entera: el kill switch global queda para `SELECTOR_ROTO`
+y el botón del panel.
 
 ### 4.2 Endpoints del panel
 
@@ -337,7 +345,7 @@ Sin correo saliente, sin magic links, sin proveedor externo.
 | `PATCH` | `/api/mensajes/{id}` | Editar el texto. Revalida todo |
 | `POST` | `/api/mensajes/{id}/veto` | `DESCARTADO`, motivo `vetado` |
 | `POST` | `/api/mensajes/{id}/liberar` | `RETENIDO` → `EN_ESPERA` |
-| `POST` | `/api/corridas/{id}/enviar` | Pasa los `EN_ESPERA` a la cola, con jitter |
+| `POST` | `/api/corridas/{id}/enviar` | **Sólo el envío real** pasa por acá (D36): pasa los `EN_ESPERA` a la cola, con jitter. Los borradores se encadenan solos al terminar cada `REDACTAR` |
 | `POST` | `/api/sistema/pausa` | **Kill switch.** Los jobs dejan de entregarse |
 | `GET` | `/api/historial` | Buscable por contacto |
 | `POST` `PATCH` `DELETE` | `/api/vendedores` | Alta, baja y edición de máquinas |

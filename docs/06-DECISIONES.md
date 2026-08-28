@@ -90,6 +90,10 @@ el triage, que aparta los casos donde un error cuesta caro.
 **Qué la revertiría.** Que el dueño pida que salga solo. Se implementa con un temporizador
 configurable, pero apagado por defecto.
 
+**Revisada por D36 (28/08):** para *dejar borradores* ya no hay segundo acto — la generación los
+deja sola en los chats, a pedido del cliente. El segundo acto explícito queda sólo para el Envío
+real, que no cambia.
+
 ---
 
 ### D5 — El envío es determinístico, no conducido por el modelo
@@ -612,6 +616,116 @@ factura.
 **Qué la revertiría.** Que con datos reales aparezcan borradores que siguen las indicaciones del
 dueño a costa de ignorar la conversación. Ahí se ajusta el prompt para que el resumen del chat
 recupere prioridad, no se vuelve a bajar el tope.
+
+---
+
+### D34 — ENVIAR busca el chat por nombre y verifica identidad por número
+
+**Contexto.** La corrida `6a90a09cb010ee9700c64a58` (27/08) falló con `CHAT_NO_ABRE` en chats que
+existían. El motor de envío buscaba el chat pasándole al buscador el `contacto_id` en E.164
+(`+549...`), pero los contactos reales están agendados por nombre y con formatos variados — el
+propio sistema lo sabe: es la razón por la que existe `RESOLVER`, que busca por nombre. Buscar por
+un número que WhatsApp no tiene indexado con ese formato devuelve cero resultados.
+
+**Opciones.** (a) Seguir buscando por número y normalizar formatos a ciegas. (b) Buscar por el
+nombre del contacto —que es como el chat existe en la lista— y dejar que la identidad la decida,
+como siempre, la comparación por número del paso 6.
+
+**Decisión: (b).** `ENVIAR` busca por `contacto_nombre` (que ya viaja en el payload), con
+fallback al número si el nombre viene vacío o no trae resultados.
+
+**Por qué no afloja la seguridad.** Qué chat se *abre* nunca fue la garantía de identidad; la
+garantía es R1: leer el header del chat abierto, resolver su número real y compararlo dígito a
+dígito contra el esperado. Un homónimo que abra el chat equivocado termina en
+`CONTACTO_NO_COINCIDE` — falla cerrada, como siempre. Además el triage ya retiene los nombres
+repetidos de una tanda.
+
+**Qué la revertiría.** Que en producción los nombres de los chats no coincidan con lo que trajo
+`LISTAR` (renombres, emojis) al punto de que la búsqueda por nombre falle más que la búsqueda por
+número. Los `detalle.motivo` de los jobs fallidos lo dirían con datos.
+
+---
+
+### D35 — El canario frena por máquina, no la corrida entera
+
+**Contexto.** `revisar_canario` evaluaba los 3 primeros `ENVIAR` de **toda** la corrida y, si
+fallaban, ponía el kill switch **global**. Con varias máquinas, los "3 primeros" suelen ser de la
+misma Mac (cada máquina escalona sus envíos desde el mismo instante): el 27/08 una sola Mac con
+problemas frenó el sistema entero, incluidas las máquinas que estaban enviando bien.
+
+**Opciones.** (a) Dejarlo global y documentarlo como costo. (b) Canario por máquina: los 3
+primeros envíos *de cada Mac*; si los 3 fallan, se frena *esa Mac*.
+
+**Decisión: (b).** Si los 3 primeros envíos de una máquina en la corrida fallan, esa máquina queda
+frenada (`frenado_por_canario_en`, la ven `esta_pausada` y el 423 del backend) y sus envíos
+pendientes esperan. La corrida pasa a `frenada` recién cuando ya no queda ninguna máquina
+avanzando (todas frenadas o sin jobs vivos). **Reanudar** la corrida suelta el freno de sus
+máquinas, y **cancelar** también lo limpia. El kill switch global queda para lo que es global:
+`SELECTOR_ROTO` (el DOM cambió para todos) y el botón del panel.
+
+**Qué la revertiría.** Que aparezca un modo de falla correlacionado entre máquinas que el canario
+por máquina detecte tarde (p. ej. un cambio de WhatsApp que no rompe selectores). Hasta ahora ese
+caso es exactamente `SELECTOR_ROTO`, que sigue frenando todo.
+
+---
+
+### D36 — La generación deja los borradores en los chats, sola *(revisa D4; extiende D30)*
+
+**Contexto.** El flujo eran dos pasos: generar plantillas, y después un segundo botón ("Dejar
+borradores") para escribirlas como borradores de WhatsApp. El cliente pidió un solo paso: que al
+generar, los borradores queden directamente en los chats, así el vendedor entra al día siguiente
+y ya los tiene arriba de todo. Decisión tomada con el dueño el 28/08, con los riesgos sobre la
+mesa.
+
+**Opciones.** (a) Encadenar al terminar la tanda: validar todo junto (guardrails + triage) y
+recién ahí escribir los limpios. (b) Por mensaje: apenas un `REDACTAR` vuelve, correr guardrails
+sobre ese mensaje y encolar su escritura, sin esperar la tanda ni retener por triage. (c) Dejar
+los dos pasos como estaban.
+
+**Decisión: (b), siempre activa.** Cada `REDACTAR` que vuelve limpio se convierte al instante en
+un `ENVIAR` en modo `prueba` (dejar borrador), espaciado y con canario por máquina. El botón
+"Dejar borradores" desaparece; el **Envío real no cambia**: sigue siendo un segundo acto explícito
+con su fricción (D4 queda revisada sólo para borradores).
+
+**Lo que se mantiene, porque es código y no preferencia (R3):** los guardrails corren por mensaje
+antes de encolar la escritura — G2 destino permitido, G3 texto, G4 topes, G5 anti-duplicado, G7
+pausa/consentimiento — y en el agente siguen R1 (identidad), R4 y G8, idénticos. `sin_contexto`
+sigue yendo a `RETENIDO`. Las señales de triage se calculan y se guardan **como información**
+visible en el panel, pero ya no retienen borradores.
+
+**Riesgos asumidos, explícitos.** (1) Se pierde la retención por triage para borradores: un
+seguimiento sobre un reclamo abierto puede quedar escrito en el chat — la red pasa a ser el
+vendedor, que ve el borrador antes de mandarlo a mano. (2) Se pierde `nombres_repetidos` de tanda
+completa — mitigado porque la identidad la decide R1 por número, no el nombre. (3) Un borrador que
+venza (D3) queda huérfano en el chat hasta que el vendedor lo borre. (4) Editar o vetar desde el
+panel no afecta lo ya escrito en WhatsApp.
+
+**Qué la revertiría.** Que los borradores sin triage produzcan un incidente real (un seguimiento
+sobre un reclamo mandado por un vendedor apurado), o que el dueño pida recuperar el control por
+tanda. El camino de vuelta es la opción (a): mismo encadenado, pero al final de la tanda y con el
+triage reteniendo.
+
+---
+
+### D37 — La ventana horaria no aplica a dejar borradores *(revisa el alcance de D26)*
+
+**Contexto.** `preparar_envios` verificaba la ventana G6 para cualquier modo. Con D36 los
+borradores se escriben al terminar cada redacción, que puede ser fuera del horario comercial — y
+un borrador no es un envío: no le llega nada al cliente hasta que el vendedor lo manda, en su
+horario.
+
+**Decisión: G6 se verifica sólo en modo `real`.** Dejar borradores corre a cualquier hora; el
+Envío real sigue rechazando fuera de ventana con `FueraDeVentana`, y la ventana sigue siendo
+editable desde el panel (D26).
+
+**Pendiente de la verificación empírica (Fase 0 del plan del 28/08):** confirmar en una Mac real
+que un borrador dejado por el navegador dedicado (D24, sesión aparte) se ve en el Chrome y/o el
+teléfono del vendedor. Si no se sincroniza, D36 y esta decisión se reabren: el mecanismo de
+entrega del borrador tendría que cambiar.
+
+**Qué la revertiría.** Que escribir borradores de madrugada dispare heurísticas de WhatsApp
+(actividad de autómata en la línea). No hay evidencia de eso hoy; si aparece, la ventana vuelve a
+aplicar también en modo `prueba`.
 
 ---
 
