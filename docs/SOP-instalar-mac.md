@@ -189,17 +189,27 @@ sistema no le encola ningún envío.
 
 En la misma tarjeta, **Activar**. Recién ahí empieza a tomar trabajo.
 
-## 3.3 — La primera corrida, sin enviar nada
+## 3.3 — La primera corrida: los borradores quedan en los chats
 
-En el panel, **Generar seguimientos**. Lo que va a pasar:
+En el panel, **Generar seguimientos**. Lo que va a pasar, **sin apretar nada
+más** (D36):
 
 1. El sistema lee los chats (unos minutos; se ve trabajar a Chrome solo).
 2. Para los contactos que están agendados con nombre, abre el chat y busca el
    número real — sin eso no se le puede escribir a nadie con seguridad.
-3. Redacta un mensaje por cada chat que valga la pena, y los deja en
-   **Revisar borradores**.
+3. Redacta un mensaje por cada chat que valga la pena.
+4. Y a cada mensaje que pasa las reglas lo escribe **como borrador dentro de su
+   chat**: abre la conversación, verifica que el número sea el correcto, deja el
+   texto escrito y **no aprieta enviar**. Van de a uno, con pausas al azar.
 
-Ahí se leen uno por uno. Se pueden editar, aprobar o descartar.
+Al día siguiente el vendedor entra a WhatsApp y los borradores están ahí
+arriba, listos para mandar con un click. **El sistema nunca envía solo.**
+
+En **Revisar borradores** del panel se ve cómo quedó todo: los que ya están en
+los chats, los que el sistema descartó y por qué, y los que necesitan una
+decisión. Las señales que aparecen en un borrador ya dejado —"habla de un
+reclamo", "menciona un precio"— son **información para el vendedor antes de
+mandarlo**, no un freno.
 
 Dos resultados que **parecen fallas y no lo son**:
 
@@ -210,32 +220,40 @@ Dos resultados que **parecen fallas y no lo son**:
   hablar —una conversación que fue sólo "ok, gracias"— y se negó a inventar.
   Se pueden escribir a mano ahí mismo, o descartar.
 
-## 3.4 — Dejar borradores, o enviar
+> Si el sistema está frenado con el botón rojo cuando termina la generación,
+> los borradores **esperan** en vez de descartarse. Al soltar el freno, el
+> botón **Revisar ahora** del panel los retoma.
 
-Cuando los borradores se ven bien, hay dos botones (D30):
+## 3.4 — El envío de verdad (opcional, y es otro botón)
 
-- **Dejar borradores**: el sistema abre cada chat, verifica el contacto,
-  escribe el mensaje y **no lo envía** — queda como borrador en el WhatsApp del
-  vendedor, que lo manda con un click cuando quiera. Ojo: mientras ese borrador
-  esté sin mandar, el sistema no vuelve a escribir en ese chat (lo detecta
-  ocupado y aborta, a propósito).
-- **Envío**: los manda **de a uno, con pausas al azar**, sólo a los números
-  permitidos, y frenando todo si los tres primeros fallan.
+Dejar borradores es el circuito normal: el vendedor manda a mano. El **Envío**
+es lo otro, y sigue siendo una decisión explícita de una persona: pide escribir
+la cantidad exacta de mensajes que van a salir.
+
+- Los manda **de a uno, con pausas al azar**, sólo a los números permitidos, y
+  dentro del horario configurado.
+- Si los tres primeros de una máquina fallan, esa máquina se frena sola y las
+  demás siguen (D35). El panel lo avisa con el botón para continuar al lado.
+
+⚠️ Un chat que ya tiene un borrador dejado **no acepta un envío después**: el
+sistema lo detecta ocupado y aborta, a propósito, para no pisar lo que el
+vendedor tenía escrito.
 
 ---
 
 # El día a día, una vez andando
 
-- **El vendedor no hace nada.** Prende la Mac y todo arranca solo. Si el agente
-  se cae, se vuelve a levantar solo.
-- **El responsable** entra al panel, aprieta *Generar seguimientos*, revisa los
-  borradores y manda los que le gustan.
+- **El vendedor** prende la Mac y todo arranca solo; si el agente se cae, se
+  vuelve a levantar solo. Su trabajo con el sistema es uno: a la mañana, mirar
+  los borradores que aparecieron en sus chats y mandar los que le sirven.
+- **El responsable** entra al panel, aprieta *Generar seguimientos* —
+  normalmente el día anterior — y después revisa cómo quedó.
 - **Tres cosas vencen cada tanto** y hay que rehacerlas. No son fallas:
 
 | Qué vence | Cómo se ve | Cómo se arregla |
 |---|---|---|
 | La sesión de WhatsApp del vendedor | Chrome pide el QR | Escanearlo de nuevo |
-| La sesión del navegador de envío | Un envío falla diciendo que no hay sesión | Correr el comando del paso 2.3 |
+| La sesión del navegador de envío | El panel avisa *"venció la sesión del motor"* — lo revisa solo, antes de que falle una corrida | Correr el comando del paso 2.3 (`RUNBOOK-revincular-whatsapp.md`) |
 | La sesión de Claude Code | Un error que dice *"la sesión de Claude Code venció"* | En la Terminal: `claude`, iniciar sesión, `/exit` |
 
 ---

@@ -78,15 +78,16 @@ export const grupos: Grupo[] = [
         queHace:
           "Abre el navegador dedicado del motor de envío para escanear el QR con el teléfono del vendedor. Es un navegador aparte del que usa todos los días: por eso el sistema nunca le toca las pestañas ni la sesión.",
         cuando:
-          "El instalador lo ofrece solo al final. Se corre a mano si en su momento se dijo que no, o cuando esa sesión vence y un envío falla diciendo que no hay sesión.",
-        aviso: "Hay que tener el teléfono del vendedor a mano: WhatsApp → Dispositivos vinculados.",
+          "El instalador lo ofrece solo al final. Se corre a mano si en su momento se dijo que no, y cuando el panel avisa que esa sesión venció — el agente la revisa al arrancar y cada unas horas, así que ahora se sabe antes de que falle una corrida y no después.",
+        aviso:
+          "Hay que tener el teléfono del vendedor a mano: WhatsApp → Dispositivos vinculados. Ojo con el límite de cuatro dispositivos por línea: si está lleno, hay que liberar uno, y no el del Chrome del vendedor —ahí trabaja— sin avisarle.",
       },
       {
         id: "diagnostico",
         titulo: "Qué le falta a esta máquina",
         comando: `${EN_EL_AGENTE} --diagnostico`,
         queHace:
-          "Corre los nueve chequeos, marca en rojo lo que hay que resolver y «n/a» lo que no aplica acá. No consulta al backend.",
+          "Corre los diez chequeos, marca en rojo lo que hay que resolver y «n/a» lo que no aplica acá. No consulta al backend ni abre ningún navegador: por eso la sesión de WhatsApp le sale siempre «n/a» — ésa la revisa el agente solo mientras corre, y lo que encuentra aparece en el panel.",
         cuando: "Es el primero que hay que correr cuando algo no anda. No cuesta nada y es instantáneo.",
       },
       {
@@ -94,9 +95,9 @@ export const grupos: Grupo[] = [
         titulo: "Probar que llega a WhatsApp Web",
         comando: `${EN_EL_AGENTE} --sonda`,
         queHace:
-          "Contesta las dos preguntas que el diagnóstico no puede: si la extensión tiene el permiso de sitio y si la sesión de WhatsApp está iniciada. Cuenta cuántos chats ve y nada más — no abre ninguna conversación ni lee ningún mensaje.",
+          "Contesta las dos preguntas que el diagnóstico no puede: si la extensión tiene el permiso de sitio y si la sesión de WhatsApp del Chrome del vendedor está iniciada. Cuenta cuántos chats ve y nada más — no abre ninguna conversación ni lee ningún mensaje.",
         cuando:
-          "Cuando el diagnóstico da todo verde y las corridas igual fallan. Es lo que distingue «falta el permiso de la extensión» de «venció el QR».",
+          "Cuando la generación falla y el diagnóstico da todo verde. Es lo que distingue «falta el permiso de la extensión» de «venció el QR». ⚠️ Mira la sesión del Chrome de todos los días, que es la que usa la lectura de chats; la del navegador que escribe es otra, y ésa la avisa el panel y se arregla con «Vincular».",
         aviso: "Abre el navegador y consume saldo de Claude. Tarda minutos, por eso no viene con el diagnóstico.",
       },
       {
@@ -340,15 +341,16 @@ export const grupos: Grupo[] = [
         titulo: "Los tests del backend",
         comando:
           "MONGO_URL_TESTS='mongodb://root:root-local@localhost:27017/?authSource=admin' uv run --directory backend pytest -q",
-        queHace: "Corre los 553 tests. Tiene que decir «553 passed».",
+        queHace: "Corre los 674 tests. Tiene que decir «674 passed».",
         aviso:
-          "Sin la variable, 242 tests se saltean en silencio y el resumen se lee como si estuviera todo verde. Va con el usuario root y no con app, porque cada test crea y borra su propia base. Si aparece «skipped», la variable no llegó.",
+          "Sin la variable, 343 tests se saltean en silencio y el resumen se lee como si estuviera todo verde. Va con el usuario root y no con app, porque cada test crea y borra su propia base. Si aparece «skipped», la variable no llegó.",
       },
       {
         id: "tests-agente",
         titulo: "Los tests del agente",
         comando: "uv run --directory agente pytest -q",
-        queHace: "Los 94 tests del agente. No necesitan base ni navegador.",
+        queHace:
+          "Los 267 tests del agente. No necesitan base, pero los del adaptador de WhatsApp corren sobre un Chromium de verdad: si falta, se saltean diciendo cómo bajarlo (uv run playwright install chromium).",
       },
       {
         id: "certificados",

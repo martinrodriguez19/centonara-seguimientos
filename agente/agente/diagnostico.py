@@ -1,7 +1,7 @@
-"""Los nueve chequeos que el agente corre sobre su propia máquina.
+"""Los diez chequeos que el agente corre sobre su propia máquina.
 
 Siete vienen del historial del MVP: son problemas que **ya ocurrieron** y que
-van a volver a ocurrir en cada instalación nueva. Dos son nuevos.
+van a volver a ocurrir en cada instalación nueva. Los otros son nuevos.
 
 La gracia no es que existan los chequeos: es que el panel pueda decir *qué*
 falta. En el MVP, los siete se manifestaban como un HTTP 502 mudo y había que

@@ -63,7 +63,7 @@ Si venías del plan viejo —14 documentos numerados, 8 sprints, 75 prompts— e
 | 20 guardrails duplicados | **8** | Los que cubren un modo de falla caro (D20) |
 | 12 estados de mensaje | **6 + un campo `motivo`** | Lo demás eran matices |
 | "El código de envío no existe hasta el sprint 4" | **Lista de destinos permitidos** | Misma garantía, sin impedir explorar (D21) |
-| Ventana de veto: la inacción envía | **Enviar es un segundo botón** | La inacción no manda nada (D4) |
+| Ventana de veto: la inacción envía | **Enviar es un segundo botón** | La inacción no manda nada (D4). Desde D36 eso vale para el envío real: los borradores se dejan solos en los chats, y ahí quien decide si algo sale es el vendedor |
 | Auth.js con magic links | **Una contraseña** | Entran una o dos personas (D22) |
 | Cron 08:00 y envío 13:00 | **Cuando el dueño aprieta el botón** | Es como lo va a usar |
 | Retener chats de más de 60 días | Se sacó esa señal del triage | Contradecía el criterio validado del MVP |

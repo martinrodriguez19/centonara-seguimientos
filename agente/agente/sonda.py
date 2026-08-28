@@ -1,6 +1,7 @@
 """La sonda: lo que el diagnóstico no puede contestar sin abrir el navegador.
 
-Dos de los nueve chequeos salen siempre en `n/a`, y no por pereza:
+Dos de los diez chequeos del diagnóstico salen siempre en `n/a`, y no por
+pereza:
 
 - `permiso_sitio` — la extensión tiene que tener habilitado `web.whatsapp.com`
   en **su propia** lista de sitios, que es una capa distinta del permiso de host
@@ -12,6 +13,12 @@ Dos de los nueve chequeos salen siempre en `n/a`, y no por pereza:
 Esto los contesta, con el **mismo camino que va a usar `LISTAR`**: headless,
 `--chrome`, el `deviceId` de esta máquina. Si la sonda pasa, `LISTAR` va a poder
 llegar a la página; si falla, dice cuál de los dos es.
+
+⚠️ **La sesión que mira acá es la del Chrome del vendedor**, la que usa la
+lectura de chats a través de la extensión. La del navegador dedicado que
+escribe (D24) es **otra**, y la revisa `vigia_sesion.py` mientras el agente
+corre. Confundirlas manda a diagnosticar la sesión equivocada: una se arregla
+escaneando el QR en el Chrome de todos los días, la otra con `--vincular`.
 
 **Por qué no está adentro de `--diagnostico`:** cuesta plata y tarda minutos. El
 diagnóstico se corre al arrancar el agente y en cada latido; esto se corre a
