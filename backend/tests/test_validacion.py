@@ -366,7 +366,7 @@ async def test_el_canario_abre_un_hueco_antes_del_resto(base) -> None:
 
 
 @sin_mongo
-async def test_no_se_encola_fuera_de_la_ventana(base) -> None:
+async def test_el_envio_real_no_se_encola_fuera_de_la_ventana(base) -> None:
     from app.core import corridas
 
     corrida_id = ObjectId()
@@ -378,7 +378,26 @@ async def test_no_se_encola_fuera_de_la_ventana(base) -> None:
 
     de_noche = MIERCOLES.replace(hour=23)
     with pytest.raises(corridas.FueraDeVentana):
-        await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=de_noche)
+        await corridas.preparar_envios(base, corrida_id, quien="panel", modo="real", ahora=de_noche)
+
+
+@sin_mongo
+async def test_dejar_borradores_no_mira_la_ventana(base) -> None:
+    """D37: un borrador no es un envío — no le llega nada al cliente hasta que
+    el vendedor lo mande, en su propio horario."""
+    from app.core import corridas
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {"_id": corrida_id, "modo": "prueba", "estado": "revision", "creada_en": MIERCOLES}
+    )
+    await borrador(base, corrida_id, 1)
+    await validacion.validar_corrida(base, corrida_id, ahora=MIERCOLES)
+
+    de_noche = MIERCOLES.replace(hour=23)
+    encolado = await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=de_noche)
+
+    assert encolado.mensajes == 1
 
 
 @sin_mongo
@@ -418,14 +437,29 @@ async def test_un_retenido_no_se_encola_hasta_que_alguien_lo_libere(base) -> Non
     ).mensajes == 1
 
 
+async def _maquina_frenada(base, maquina: str = "mac-rocio") -> bool:
+    vendedor = await base["vendedores"].find_one({"maquina": maquina})
+    return vendedor.get("frenado_por_canario_en") is not None
+
+
 @sin_mongo
-async def test_el_canario_fallido_frena_todo(base) -> None:
-    """Los tres primeros terminaron y ninguno salió bien: algo está roto."""
+async def test_el_canario_fallido_frena_la_maquina_y_no_el_sistema(base) -> None:
+    """D35: los tres primeros de ESTA Mac fallaron — se frena ella sola.
+
+    El 27/08 el canario global pausó el sistema entero por una sola máquina
+    rota; el kill switch global queda para SELECTOR_ROTO y el botón del panel.
+    """
     from app.core import cola, corridas
 
     corrida_id = ObjectId()
     await base["corridas"].insert_one(
-        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": MIERCOLES,
+        }
     )
     for n in range(6):
         await borrador(base, corrida_id, n)
@@ -441,8 +475,94 @@ async def test_el_canario_fallido_frena_todo(base) -> None:
             {"_id": job["_id"]}, {"$set": {"estado": str(cola.EstadoJob.FALLIDO)}}
         )
 
-    assert await corridas.revisar_canario(base, corrida_id) is True
-    assert await configuracion.esta_pausado(base) is True
+    assert await corridas.revisar_canario(base, corrida_id, maquina="mac-rocio") is True
+    assert await _maquina_frenada(base) is True
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedores.esta_pausada(vendedor, ahora=MIERCOLES) is True
+    assert await configuracion.esta_pausado(base) is False, "el kill switch global no se toca"
+
+    evento = await base["auditoria"].find_one({"que": "kill_switch"})
+    assert evento["detalle"]["alcance"] == "maquina"
+    assert evento["detalle"]["maquina"] == "mac-rocio"
+
+
+@sin_mongo
+async def test_con_la_unica_maquina_frenada_la_corrida_queda_frenada(base) -> None:
+    from app.core import cola, corridas
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": MIERCOLES,
+        }
+    )
+    for n in range(6):
+        await borrador(base, corrida_id, n)
+    await validacion.validar_corrida(base, corrida_id, ahora=MIERCOLES)
+    await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+    jobs = sorted(
+        await base["jobs"].find({"corrida_id": corrida_id}).to_list(None),
+        key=lambda j: j["disponible_desde"],
+    )
+    for job in jobs[: cola.CANARIO]:
+        await base["jobs"].update_one(
+            {"_id": job["_id"]}, {"$set": {"estado": str(cola.EstadoJob.FALLIDO)}}
+        )
+
+    await corridas.revisar_canario(base, corrida_id, maquina="mac-rocio")
+
+    assert (await base["corridas"].find_one({"_id": corrida_id}))["estado"] == "frenada"
+
+
+@sin_mongo
+async def test_una_maquina_frenada_no_arrastra_a_la_otra(base) -> None:
+    """D35: la Mac rota se frena; la que envía bien sigue enviando."""
+    from app.core import cola, corridas
+
+    await vendedores.dar_de_alta(base, maquina="mac-tomas", nombre="Tomás")
+    await base["vendedores"].update_one(
+        {"maquina": "mac-tomas"},
+        {"$set": {"activo": True, "acepto_condiciones_en": MIERCOLES}},
+    )
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio", "mac-tomas"],
+            "creada_en": MIERCOLES,
+        }
+    )
+    for n in range(4):
+        await borrador(base, corrida_id, n)
+    for n in range(4, 8):
+        await borrador(base, corrida_id, n, maquina="mac-tomas")
+    await validacion.validar_corrida(base, corrida_id, ahora=MIERCOLES)
+    await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+    de_rocio = sorted(
+        await base["jobs"].find({"corrida_id": corrida_id, "maquina": "mac-rocio"}).to_list(None),
+        key=lambda j: j["disponible_desde"],
+    )
+    for job in de_rocio[: cola.CANARIO]:
+        await base["jobs"].update_one(
+            {"_id": job["_id"]}, {"$set": {"estado": str(cola.EstadoJob.FALLIDO)}}
+        )
+
+    assert await corridas.revisar_canario(base, corrida_id, maquina="mac-rocio") is True
+
+    assert await _maquina_frenada(base, "mac-rocio") is True
+    assert await _maquina_frenada(base, "mac-tomas") is False
+    assert await configuracion.esta_pausado(base) is False
+    #  La otra Mac todavía tiene envíos vivos: la corrida sigue `enviando`.
+    assert (await base["corridas"].find_one({"_id": corrida_id}))["estado"] == "enviando"
 
 
 @sin_mongo
@@ -452,7 +572,13 @@ async def test_el_canario_con_uno_bueno_no_frena(base) -> None:
 
     corrida_id = ObjectId()
     await base["corridas"].insert_one(
-        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": MIERCOLES,
+        }
     )
     for n in range(6):
         await borrador(base, corrida_id, n)
@@ -467,8 +593,8 @@ async def test_el_canario_con_uno_bueno_no_frena(base) -> None:
     for job, estado in zip(jobs[: cola.CANARIO], estados, strict=True):
         await base["jobs"].update_one({"_id": job["_id"]}, {"$set": {"estado": str(estado)}})
 
-    assert await corridas.revisar_canario(base, corrida_id) is False
-    assert await configuracion.esta_pausado(base) is False
+    assert await corridas.revisar_canario(base, corrida_id, maquina="mac-rocio") is False
+    assert await _maquina_frenada(base) is False
 
 
 @sin_mongo
@@ -478,7 +604,13 @@ async def test_el_canario_no_decide_con_jobs_a_medias(base) -> None:
 
     corrida_id = ObjectId()
     await base["corridas"].insert_one(
-        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": MIERCOLES,
+        }
     )
     for n in range(6):
         await borrador(base, corrida_id, n)
@@ -493,8 +625,8 @@ async def test_el_canario_no_decide_con_jobs_a_medias(base) -> None:
         {"_id": jobs[0]["_id"]}, {"$set": {"estado": str(cola.EstadoJob.FALLIDO)}}
     )
 
-    assert await corridas.revisar_canario(base, corrida_id) is False
-    assert await configuracion.esta_pausado(base) is False
+    assert await corridas.revisar_canario(base, corrida_id, maquina="mac-rocio") is False
+    assert await _maquina_frenada(base) is False
 
 
 @sin_mongo
@@ -509,7 +641,13 @@ async def test_una_corrida_frenada_se_puede_reanudar(base) -> None:
 
     corrida_id = ObjectId()
     await base["corridas"].insert_one(
-        {"_id": corrida_id, "modo": "prueba", "estado": "enviando", "creada_en": MIERCOLES}
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": MIERCOLES,
+        }
     )
     for n in range(6):
         await borrador(base, corrida_id, n)
@@ -524,12 +662,14 @@ async def test_una_corrida_frenada_se_puede_reanudar(base) -> None:
         await base["jobs"].update_one(
             {"_id": job["_id"]}, {"$set": {"estado": str(cola.EstadoJob.FALLIDO)}}
         )
-    assert await corridas.revisar_canario(base, corrida_id) is True
+    assert await corridas.revisar_canario(base, corrida_id, maquina="mac-rocio") is True
+    assert await _maquina_frenada(base) is True
 
     await corridas.reanudar(base, corrida_id, quien="panel", ahora=MIERCOLES)
 
     assert (await base["corridas"].find_one({"_id": corrida_id}))["estado"] == "enviando"
     assert await configuracion.esta_pausado(base) is False
+    assert await _maquina_frenada(base) is False, "reanudar suelta el freno del canario (D35)"
     evento = await base["auditoria"].find_one({"que": "corrida_reanudada"})
     assert evento is not None and evento["quien"] == "panel"
 
@@ -574,6 +714,30 @@ async def test_cancelar_una_corrida_enviando_resuelve_los_mensajes(base) -> None
     finales = await base["mensajes"].find({"corrida_id": corrida_id}).to_list(None)
     assert {m["estado"] for m in finales} == {str(Estado.DESCARTADO)}
     assert {m["motivo"] for m in finales} == {str(Motivo.CANCELADO)}
+
+
+@sin_mongo
+async def test_cancelar_suelta_el_freno_del_canario(base) -> None:
+    """D35: cancelar ES la decisión que el freno estaba esperando. Sin esto la
+    Mac quedaría pausada para siempre después de cancelar la corrida."""
+    from app.core import corridas
+
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {
+            "_id": corrida_id,
+            "modo": "prueba",
+            "estado": "enviando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": MIERCOLES,
+        }
+    )
+    await vendedores.frenar_por_canario(base, "mac-rocio", ahora=MIERCOLES)
+    assert await _maquina_frenada(base) is True
+
+    await corridas.cancelar(base, corrida_id, quien="panel", ahora=MIERCOLES)
+
+    assert await _maquina_frenada(base) is False
 
 
 @sin_mongo

@@ -21,6 +21,8 @@ from uuid import uuid4
 import pytest
 
 from app.core.cola import (
+    CANARIO,
+    ESPERA_CANARIO_S,
     MAX_INTENTOS,
     PAUSA_ENTRE_ENVIOS,
     Codigo,
@@ -28,6 +30,7 @@ from app.core.cola import (
     JobDesconocido,
     Tipo,
     encolar,
+    encolar_envio_escalonado,
     encolar_envios,
     escalonar,
     pendientes,
@@ -446,6 +449,119 @@ async def test_encolar_envios_baraja_y_espacia(base) -> None:
     # Espaciado: ningún par sale al mismo tiempo.
     momentos = [j["disponible_desde"] for j in por_momento]
     assert len(set(momentos)) == 10
+
+
+# ---------------------------------------------------------------------------
+# Encolar de a uno (D36): el espaciado sin conocer la tanda
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_encolar_de_a_uno_el_primero_sale_enseguida(base) -> None:
+    from bson import ObjectId
+
+    corrida = ObjectId()
+    job_id = await encolar_envio_escalonado(
+        base, maquina="mac-1", corrida_id=corrida, payload={"n": 0}, ahora=AHORA
+    )
+
+    job = await base["jobs"].find_one({"_id": job_id})
+    assert job["tipo"] == Tipo.ENVIAR
+    assert job["disponible_desde"] == AHORA
+
+
+@sin_mongo
+async def test_encolar_de_a_uno_espacia_detras_del_ultimo(base) -> None:
+    """La pausa aleatoria de siempre, aunque la tanda no exista como momento."""
+    from bson import ObjectId
+
+    corrida = ObjectId()
+    await encolar_envio_escalonado(
+        base, maquina="mac-1", corrida_id=corrida, payload={"n": 0}, ahora=AHORA
+    )
+    segundo = await encolar_envio_escalonado(
+        base,
+        maquina="mac-1",
+        corrida_id=corrida,
+        payload={"n": 1},
+        aleatorio=random.Random(7),
+        ahora=AHORA,
+    )
+
+    job = await base["jobs"].find_one({"_id": segundo})
+    delta = (job["disponible_desde"] - AHORA).total_seconds()
+    assert PAUSA_ENTRE_ENVIOS[0] <= delta <= PAUSA_ENTRE_ENVIOS[1]
+
+
+@sin_mongo
+async def test_encolar_de_a_uno_abre_el_hueco_del_canario(base) -> None:
+    """Los tres primeros de la máquina, y después los diez minutos de mirar."""
+    from bson import ObjectId
+
+    corrida = ObjectId()
+    for n in range(CANARIO + 1):
+        await encolar_envio_escalonado(
+            base,
+            maquina="mac-1",
+            corrida_id=corrida,
+            payload={"n": n},
+            aleatorio=random.Random(n),
+            ahora=AHORA,
+        )
+
+    momentos = sorted(
+        j["disponible_desde"]
+        for j in await base["jobs"].find({"corrida_id": corrida}).to_list(None)
+    )
+    salto = (momentos[CANARIO] - momentos[CANARIO - 1]).total_seconds()
+    assert salto >= ESPERA_CANARIO_S
+
+
+@sin_mongo
+async def test_encolar_de_a_uno_nunca_programa_en_el_pasado(base) -> None:
+    """Si el último programado ya pasó —una redacción tardó—, se arranca de ahora."""
+    from bson import ObjectId
+
+    corrida = ObjectId()
+    await encolar_envio_escalonado(
+        base, maquina="mac-1", corrida_id=corrida, payload={"n": 0}, ahora=AHORA
+    )
+
+    mucho_despues = AHORA + timedelta(hours=2)
+    segundo = await encolar_envio_escalonado(
+        base, maquina="mac-1", corrida_id=corrida, payload={"n": 1}, ahora=mucho_despues
+    )
+
+    job = await base["jobs"].find_one({"_id": segundo})
+    assert job["disponible_desde"] >= mucho_despues
+
+
+@sin_mongo
+async def test_encolar_de_a_uno_no_mira_los_envios_de_otra_maquina(base) -> None:
+    """Cada agente tiene su propia cola y su propio ritmo."""
+    from bson import ObjectId
+
+    corrida = ObjectId()
+    for n in range(3):
+        await encolar_envio_escalonado(
+            base, maquina="mac-1", corrida_id=corrida, payload={"n": n}, ahora=AHORA
+        )
+    de_otra = await encolar_envio_escalonado(
+        base, maquina="mac-2", corrida_id=corrida, payload={"n": 0}, ahora=AHORA
+    )
+
+    job = await base["jobs"].find_one({"_id": de_otra})
+    assert job["disponible_desde"] == AHORA, "mac-2 no espera detrás de mac-1"
+
+
+@sin_mongo
+async def test_encolar_de_a_uno_rechaza_una_pausa_dada_vuelta(base) -> None:
+    from bson import ObjectId
+
+    with pytest.raises(ValueError):
+        await encolar_envio_escalonado(
+            base, maquina="mac-1", corrida_id=ObjectId(), payload={}, pausa=(180, 45)
+        )
 
 
 @sin_mongo

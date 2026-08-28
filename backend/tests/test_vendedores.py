@@ -94,6 +94,28 @@ def test_sin_consentimiento_no_se_le_encolan_envios() -> None:
     assert vendedores.puede_enviar({"acepto_condiciones_en": AHORA})
 
 
+def test_una_maquina_frenada_por_el_canario_esta_pausada() -> None:
+    """D35: el freno del canario cuenta como pausa y no vence solo."""
+    maquina = {"activo": True, "pausado_hasta": None, "frenado_por_canario_en": AHORA}
+    assert vendedores.esta_pausada(maquina, ahora=AHORA)
+    #  Ni un día después: lo suelta una persona (reanudar o cancelar), no el reloj.
+    assert vendedores.esta_pausada(maquina, ahora=AHORA + timedelta(days=1))
+
+
+@sin_mongo
+async def test_frenar_y_soltar_el_canario_de_una_maquina(base) -> None:
+    await vendedores.dar_de_alta(base, maquina="mac-uno", nombre="Uno")
+    await base["vendedores"].update_one({"maquina": "mac-uno"}, {"$set": {"activo": True}})
+
+    await vendedores.frenar_por_canario(base, "mac-uno", ahora=AHORA)
+    frenada = await base["vendedores"].find_one({"maquina": "mac-uno"})
+    assert vendedores.esta_pausada(frenada, ahora=AHORA)
+
+    assert await vendedores.soltar_freno_de_canario(base, ["mac-uno", "mac-inexistente"]) == 1
+    suelta = await base["vendedores"].find_one({"maquina": "mac-uno"})
+    assert not vendedores.esta_pausada(suelta, ahora=AHORA)
+
+
 # ---------------------------------------------------------------------------
 # Alta, baja y autenticación — con base
 # ---------------------------------------------------------------------------

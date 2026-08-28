@@ -4,14 +4,17 @@ El sistema **no se despierta solo**. No hay cron, no hay temporizador: si nadie
 aprieta el botón, no pasa nada. Eso es una característica, no una limitación —
 el dueño sabe siempre por qué salieron mensajes hoy.
 
-Y enviar es un **segundo** acto explícito. La corrida genera borradores y se
-detiene ahí; nada sale por inacción. El plan anterior tenía una ventana de veto
-donde no hacer nada equivalía a aprobar, que era la confusión más probable de
-toda la interfaz.
+**Enviar de verdad es un segundo acto explícito.** Nada le llega a un cliente
+por inacción. Los *borradores*, en cambio, se dejan solos (D36): cada redacción
+que pasa los guardrails se escribe como borrador de WhatsApp apenas vuelve —
+el vendedor los encuentra en sus chats al día siguiente, y quien decide si algo
+sale sigue siendo una persona: él, chat por chat, o el dueño con el botón de
+Envío.
 """
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -322,6 +325,12 @@ async def cancelar(base, corrida_id: ObjectId, *, quien: str, ahora: datetime | 
         {"_id": corrida_id},
         {"$set": {"estado": str(EstadoCorrida.CANCELADA), "terminada_en": momento}},
     )
+    # D35: cancelar también suelta los frenos del canario de esta corrida. Sin
+    # esto, una Mac frenada quedaría pausada para siempre después de cancelar —
+    # el freno esperaba una decisión, y cancelar ES la decisión.
+    from app.core import vendedores
+
+    await vendedores.soltar_freno_de_canario(base, list(corrida.get("maquinas", [])))
     await auditoria.registrar(
         base,
         que=auditoria.Que.CORRIDA_CANCELADA,
@@ -366,6 +375,11 @@ async def reanudar(
         {"$set": {"estado": str(EstadoCorrida.ENVIANDO)}},
     )
     await configuracion.pausar(base, pausado=False, quien=quien)
+    # D35: el canario frena por máquina. Reanudar es "ya lo miré": las Macs de
+    # esta corrida que el canario frenó vuelven a tomar sus envíos pendientes.
+    from app.core import vendedores
+
+    await vendedores.soltar_freno_de_canario(base, list(corrida.get("maquinas", [])))
     await auditoria.registrar(
         base,
         que=auditoria.Que.CORRIDA_REANUDADA,
@@ -424,15 +438,34 @@ async def preparar_envios(
         raise Pausado("el sistema está pausado")
 
     # La ventana horaria se verifica ACÁ y no al validar: generar a las ocho de
-    # la noche está bien, enviar no. Es el único momento en que la pregunta
-    # "¿es hora de mandar?" tiene sentido.
-    fuera = guardrails.revisar_ventana(config.get("ventana", {}), ahora=momento)
-    if fuera:
-        raise FueraDeVentana(fuera.detalle)
+    # la noche está bien, enviar no. Y sólo para el envío REAL (D37): dejar un
+    # borrador tampoco es enviar — no le llega nada al cliente hasta que el
+    # vendedor lo mande, en su propio horario.
+    if modo == "real":
+        fuera = guardrails.revisar_ventana(config.get("ventana", {}), ahora=momento)
+        if fuera:
+            raise FueraDeVentana(fuera.detalle)
 
     listos = [
         m for m in await mensajes.de_la_corrida(base, corrida_id) if m["estado"] == Estado.EN_ESPERA
     ]
+
+    # Sin doble encolado: un EN_ESPERA cuyo envío ya está en la cola —lo puso
+    # el encadenado automático (D36), o un segundo click del botón— no se
+    # encola otra vez. Dos jobs para el mismo mensaje serían dos escrituras.
+    con_job_vivo = {
+        j["payload"].get("mensaje_id")
+        for j in await base["jobs"]
+        .find(
+            {
+                "corrida_id": corrida_id,
+                "tipo": str(cola.Tipo.ENVIAR),
+                "estado": {"$in": [str(cola.EstadoJob.PENDIENTE), str(cola.EstadoJob.TOMADO)]},
+            }
+        )
+        .to_list(None)
+    }
+    listos = [m for m in listos if str(m["_id"]) not in con_job_vivo]
     if not listos:
         return Encolado(jobs=[], mensajes=0, fuera_de_ventana=False)
 
@@ -484,20 +517,192 @@ class FueraDeVentana(Exception):
     """Se intentó enviar fuera del horario hábil."""
 
 
-async def revisar_canario(base, corrida_id: ObjectId, *, quien: str = "sistema") -> bool:
-    """¿Fallaron los primeros envíos? Si sí, frena todo.
+async def encadenar_borrador(
+    base, mensaje_id: ObjectId, *, quien: str, ahora: datetime | None = None
+) -> ObjectId | None:
+    """D36: una redacción limpia se convierte al instante en "dejar borrador".
+
+    Se llama por cada `REDACTAR` que vuelve, sin esperar la tanda ni un botón:
+    guardrails sobre ese mensaje → `EN_ESPERA` → un `ENVIAR` en modo `prueba`,
+    espaciado detrás de los que su máquina ya tiene. El vendedor entra al día
+    siguiente y los borradores están en sus chats.
+
+    Lo que se mantiene y lo que no, decidido con el dueño (28/08):
+
+    - **Los guardrails son código y corren igual** (R3): destino, texto, topes,
+      anti-duplicado. Una violación descarta, como en la validación por tanda.
+    - **G7 (pausa/consentimiento) no descarta: espera.** El mensaje queda en
+      `BORRADOR` — descartarlo tiraría una redacción pagada por un freno que es
+      transitorio. El botón "Revisar ahora" del panel lo retoma, o vence (D3).
+    - **El triage ya no retiene borradores.** Sus señales se calculan y se
+      guardan como información visible en el panel; la revisión humana es el
+      vendedor, que ve el borrador antes de mandarlo a mano.
+
+    Devuelve el job encolado, o `None` si este mensaje no siguió. Nunca lanza
+    por una carrera: si alguien más movió el mensaje, esa decisión gana.
+    """
+    from app.core import cola, guardrails, mensajes, triage
+    from app.core.estados import Estado, Motivo, TransicionInvalida
+
+    momento = ahora or datetime.now(UTC)
+
+    mensaje = await base["mensajes"].find_one({"_id": mensaje_id})
+    if mensaje is None or mensaje["estado"] != str(Estado.BORRADOR):
+        # `sin_contexto` ya está en RETENIDO; un duplicado no existe. Nada que hacer.
+        return None
+    corrida_id = mensaje["corrida_id"]
+
+    config = await configuracion.obtener(base)
+    vendedor = await base["vendedores"].find_one({"maquina": mensaje["maquina"]})
+
+    violaciones = await guardrails.revisar(
+        base,
+        contacto_id=mensaje["contacto_id"],
+        texto=mensaje["texto"],
+        maquina=mensaje["maquina"],
+        config=config,
+        vendedor=vendedor,
+        verificar_ventana=False,
+        ahora=momento,
+    )
+    frenos = [v for v in violaciones if v.guardrail is guardrails.Guardrail.PAUSA]
+    defectos = [v for v in violaciones if v.guardrail is not guardrails.Guardrail.PAUSA]
+
+    # La otra mitad de G4: el tope por corrida, contado sobre lo ya aprobado.
+    aprobados = await base["mensajes"].count_documents(
+        {
+            "corrida_id": corrida_id,
+            "estado": {
+                "$in": [
+                    str(Estado.EN_ESPERA),
+                    str(Estado.ENVIANDO),
+                    str(Estado.ENVIADO),
+                    str(Estado.BORRADOR_DEJADO),
+                ]
+            },
+        }
+    )
+    if sin_lugar := guardrails.cabe_en_la_corrida(aprobados, config):
+        defectos.append(sin_lugar)
+
+    if defectos:
+        #  Si alguien más lo movió en el medio, su decisión gana (suppress).
+        with contextlib.suppress(TransicionInvalida, mensajes.CarreraDeEstados):
+            await mensajes.mover(
+                base,
+                mensaje_id,
+                Estado.DESCARTADO,
+                motivo=Motivo.RECHAZADO,
+                senales=[str(v.guardrail) for v in defectos],
+                quien=quien,
+                ahora=momento,
+            )
+        return None
+
+    if frenos:
+        log.info(
+            "encadenado_en_espera_de_freno",
+            mensaje=str(mensaje_id),
+            motivos=[v.detalle for v in frenos],
+        )
+        return None
+
+    # Señales de triage: información para el panel, no retención (D36). La de
+    # nombres repetidos se calcula contra lo que la corrida lleva hasta acá —
+    # la tanda completa ya no existe como momento.
+    todos = await mensajes.de_la_corrida(base, corrida_id)
+    repetidos = triage.nombres_repetidos(todos)
+    hallazgos = triage.evaluar(
+        texto=mensaje["texto"],
+        resumen=mensaje.get("resumen_ultimo", ""),
+        contacto_id=mensaje["contacto_id"],
+        contacto_nombre=mensaje.get("contacto_nombre", ""),
+        quien_hablo_ultimo=mensaje.get("quien_hablo_ultimo", "contacto"),
+        config=config,
+        ya_le_escribimos=await mensajes.le_escribimos_hace_poco(
+            base,
+            mensaje["contacto_id"],
+            dias=config.get("dias_anti_duplicado", 7),
+            ahora=momento,
+        ),
+        nombre_repetido=_nombre_esta_repetido(mensaje, repetidos),
+    )
+
+    try:
+        await mensajes.mover(
+            base,
+            mensaje_id,
+            Estado.EN_ESPERA,
+            senales=[str(h.senal) for h in hallazgos],
+            ahora=momento,
+        )
+    except (TransicionInvalida, mensajes.CarreraDeEstados):
+        return None
+
+    job = await cola.encolar_envio_escalonado(
+        base,
+        maquina=mensaje["maquina"],
+        corrida_id=corrida_id,
+        payload={
+            "mensaje_id": str(mensaje_id),
+            "contacto_id": mensaje["contacto_id"],
+            "contacto_nombre": mensaje.get("contacto_nombre", ""),
+            "texto": mensaje["texto"],
+            "modo": "prueba",
+        },
+        pausa=tuple(config.get("pausa_entre_envios_s", [45, 180])),
+        ahora=momento,
+    )
+
+    # La corrida pasa a `enviando` con el primer borrador encolado. La escritura
+    # condicional hace que sólo el primero gane la carrera y audite una vez.
+    arranque = await base["corridas"].update_one(
+        {
+            "_id": corrida_id,
+            "estado": {"$in": [str(EstadoCorrida.GENERANDO), str(EstadoCorrida.REVISION)]},
+        },
+        {"$set": {"estado": str(EstadoCorrida.ENVIANDO)}},
+    )
+    if arranque.modified_count:
+        await auditoria.registrar(
+            base,
+            que=auditoria.Que.CORRIDA_DISPARADA,
+            quien=quien,
+            corrida_id=corrida_id,
+            detalle={"accion": "borradores_automaticos", "modo": "prueba"},
+            ahora=momento,
+        )
+        log.info("borradores_automaticos", corrida=str(corrida_id))
+
+    return job
+
+
+def _nombre_esta_repetido(mensaje: dict[str, Any], repetidos: set[str]) -> bool:
+    from app.core.triage import _sin_acentos
+
+    return _sin_acentos((mensaje.get("contacto_nombre") or "").strip()) in repetidos
+
+
+async def revisar_canario(
+    base, corrida_id: ObjectId, *, maquina: str, quien: str = "sistema"
+) -> bool:
+    """¿Fallaron los primeros envíos **de esta máquina**? Si sí, la frena (D35).
 
     Se llama después de cada `ENVIAR` que termina. Mientras los primeros
-    `CANARIO` jobs no hayan terminado todos, no decide nada: con uno solo
-    reportado no se puede distinguir mala suerte de sistema roto.
+    `CANARIO` jobs de la máquina no hayan terminado todos, no decide nada: con
+    uno solo reportado no se puede distinguir mala suerte de sistema roto.
 
-    Devuelve `True` si frenó.
+    Frena la Mac, no el sistema: el 27/08 el canario global pausó todo por los
+    fallos de una sola máquina, con las demás enviando bien. La corrida pasa a
+    `frenada` recién cuando ya no queda ninguna máquina avanzando.
+
+    Devuelve `True` si frenó la máquina.
     """
-    from app.core import cola
+    from app.core import cola, vendedores
 
     jobs = (
         await base["jobs"]
-        .find({"corrida_id": corrida_id, "tipo": str(cola.Tipo.ENVIAR)})
+        .find({"corrida_id": corrida_id, "tipo": str(cola.Tipo.ENVIAR), "maquina": maquina})
         .sort("disponible_desde", 1)
         .to_list(None)
     )
@@ -510,17 +715,57 @@ async def revisar_canario(base, corrida_id: ObjectId, *, quien: str = "sistema")
     if any(j["estado"] == cola.EstadoJob.LISTO for j in primeros):
         return False
 
-    # Los tres terminaron y ninguno salió bien.
-    await configuracion.pausar(base, pausado=True, quien=quien)
-    await base["corridas"].update_one(
-        {"_id": corrida_id}, {"$set": {"estado": str(EstadoCorrida.FRENADA)}}
-    )
+    # Los tres de esta máquina terminaron y ninguno salió bien.
+    await vendedores.frenar_por_canario(base, maquina)
     await auditoria.registrar(
         base,
         que=auditoria.Que.KILL_SWITCH,
         quien=quien,
         corrida_id=corrida_id,
-        detalle={"motivo": "canario_fallido", "revisados": cola.CANARIO},
+        detalle={
+            "motivo": "canario_fallido",
+            "revisados": cola.CANARIO,
+            "alcance": "maquina",
+            "maquina": maquina,
+        },
     )
-    log.error("canario_fallido", corrida=str(corrida_id), revisados=cola.CANARIO)
+    log.error("canario_fallido", corrida=str(corrida_id), maquina=maquina, revisados=cola.CANARIO)
+
+    await _frenar_corrida_si_nadie_avanza(base, corrida_id)
     return True
+
+
+async def _frenar_corrida_si_nadie_avanza(base, corrida_id: ObjectId) -> None:
+    """La corrida pasa a `frenada` cuando ninguna máquina puede seguir.
+
+    "Avanzando" = tiene envíos vivos (pendientes o tomados) y no está frenada
+    por su canario. Con una Mac frenada y otra terminando bien, la corrida
+    sigue `enviando`; cuando la última sana termina, queda `frenada` — con el
+    botón reanudar como salida (D31), que suelta los frenos.
+    """
+    from app.core import cola
+
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    if corrida is None or corrida.get("estado") != str(EstadoCorrida.ENVIANDO):
+        return
+
+    for nombre in corrida.get("maquinas", []):
+        vendedor = await base["vendedores"].find_one({"maquina": nombre})
+        if vendedor is None or vendedor.get("frenado_por_canario_en") is not None:
+            continue
+        vivos = await base["jobs"].count_documents(
+            {
+                "corrida_id": corrida_id,
+                "tipo": str(cola.Tipo.ENVIAR),
+                "maquina": nombre,
+                "estado": {"$in": [str(cola.EstadoJob.PENDIENTE), str(cola.EstadoJob.TOMADO)]},
+            },
+            limit=1,
+        )
+        if vivos:
+            return
+
+    await base["corridas"].update_one(
+        {"_id": corrida_id}, {"$set": {"estado": str(EstadoCorrida.FRENADA)}}
+    )
+    log.warning("corrida_frenada_por_canario", corrida=str(corrida_id))

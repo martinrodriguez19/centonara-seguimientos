@@ -877,3 +877,92 @@ async def test_reiniciar_el_barrido_borra_el_cursor(adentro, base, maquina_lista
 
     vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
     assert "barrido" not in vendedor
+
+
+# ---------------------------------------------------------------------------
+# "Revisar ahora" retoma el encadenado (D36)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_revisar_ahora_retoma_los_borradores_que_la_pausa_dejo(
+    adentro, base, maquina_lista
+) -> None:
+    """Kill switch durante la generación: los borradores esperaron en BORRADOR.
+    Al soltar la pausa, el botón los encadena — mismo circuito, con retraso."""
+    from bson import ObjectId
+
+    from app.core import mensajes as mensajes_mod
+
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {
+            "_id": corrida_id,
+            "tipo": "generacion",
+            "modo": "prueba",
+            "estado": "generando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": datetime.now(UTC),
+        }
+    )
+    esperando = await mensajes_mod.crear_borrador(
+        base,
+        corrida_id=corrida_id,
+        maquina="mac-rocio",
+        contacto_id="+5491144405036",
+        contacto_nombre="Marcelo",
+        texto="Hola Marcelo, ¿seguimos con lo pendiente?",
+    )
+    con_defecto = await mensajes_mod.crear_borrador(
+        base,
+        corrida_id=corrida_id,
+        maquina="mac-rocio",
+        contacto_id="+5491133445566",
+        contacto_nombre="Otro",
+        texto="Hola {nombre}",
+    )
+
+    respuesta = await adentro.post(f"/api/corridas/{corrida_id}/validar")
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo == {"encolados": 1, "descartados": 1, "en_pausa": 0}
+
+    assert (await base["mensajes"].find_one({"_id": esperando}))["estado"] == "EN_ESPERA"
+    assert (await base["mensajes"].find_one({"_id": con_defecto}))["estado"] == "DESCARTADO"
+    assert await base["jobs"].count_documents({"tipo": "ENVIAR"}) == 1
+
+
+@sin_mongo
+async def test_revisar_ahora_con_la_pausa_puesta_no_descarta_nada(
+    adentro, base, maquina_lista
+) -> None:
+    from bson import ObjectId
+
+    from app.core import mensajes as mensajes_mod
+
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    await configuracion.pausar(base, pausado=True, quien="prueba")
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one(
+        {
+            "_id": corrida_id,
+            "tipo": "generacion",
+            "modo": "prueba",
+            "estado": "generando",
+            "maquinas": ["mac-rocio"],
+            "creada_en": datetime.now(UTC),
+        }
+    )
+    mensaje_id = await mensajes_mod.crear_borrador(
+        base,
+        corrida_id=corrida_id,
+        maquina="mac-rocio",
+        contacto_id="+5491144405036",
+        contacto_nombre="Marcelo",
+        texto="Hola Marcelo, ¿seguimos?",
+    )
+
+    respuesta = await adentro.post(f"/api/corridas/{corrida_id}/validar")
+    assert respuesta.json() == {"encolados": 0, "descartados": 0, "en_pausa": 1}
+    assert (await base["mensajes"].find_one({"_id": mensaje_id}))["estado"] == "BORRADOR"

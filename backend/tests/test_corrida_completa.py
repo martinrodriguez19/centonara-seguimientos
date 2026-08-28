@@ -125,11 +125,18 @@ async def reportar(http, token: str, job_id: str, **cuerpo) -> None:
 
 
 @sin_mongo
-async def test_de_apretar_el_boton_a_borradores_listos(http, base, maquina) -> None:
-    """El recorrido entero, por los endpoints.
+async def test_de_apretar_el_boton_a_borradores_en_los_chats(http, base, maquina) -> None:
+    """El recorrido entero, por los endpoints — el flujo de un paso (D36).
 
-    panel -> LISTAR -> N REDACTAR -> borradores -> EN_ESPERA
+    panel -> LISTAR -> N REDACTAR -> (encadenado) ENVIAR prueba -> BORRADOR_DEJADO
+
+    Nadie aprieta un segundo botón: cada redacción limpia se encola sola para
+    quedar como borrador en el chat.
     """
+    #  Sin pausas entre envíos: el test no puede adelantar el reloj del
+    #  endpoint, y lo que se prueba es el circuito, no el espaciado (que tiene
+    #  sus propios tests en test_cola).
+    await configuracion.actualizar(base, {"pausa_entre_envios_s": [0, 0]})
     disparo = await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=10)
     corrida_id = disparo.corrida_id
 
@@ -148,10 +155,11 @@ async def test_de_apretar_el_boton_a_borradores_listos(http, base, maquina) -> N
     pendientes = await base["jobs"].count_documents({"tipo": str(cola.Tipo.REDACTAR)})
     assert pendientes == 2
 
-    # 4. El agente los va tomando y reportando el texto redactado. En el medio
-    #    aparece el RESOLVER del chat sin teléfono: acá el panel de contacto
-    #    tampoco lo mostró, así que vuelve null y ese chat no se redacta.
+    # 4. El agente va tomando lo que sigue. En el medio aparece el RESOLVER del
+    #    chat sin teléfono, y —apenas cada texto se reporta— el ENVIAR en modo
+    #    prueba que el encadenado dejó listo: doce pasos, sin apretar enviar.
     textos = {}
+    dejados = []
     while (siguiente := await tomar(http, maquina.token)) is not None:
         if siguiente["tipo"] == "RESOLVER":
             assert siguiente["payload"]["contactos"] == ["Pintureria Sur"]
@@ -170,6 +178,17 @@ async def test_de_apretar_el_boton_a_borradores_listos(http, base, maquina) -> N
                 },
             )
             continue
+        if siguiente["tipo"] == "ENVIAR":
+            assert siguiente["payload"]["modo"] == "prueba", "el encadenado nunca envía de verdad"
+            dejados.append(siguiente["payload"]["contacto_id"])
+            await reportar(
+                http,
+                maquina.token,
+                siguiente["id"],
+                borrador=True,
+                raw=siguiente["payload"]["texto"],
+            )
+            continue
         assert siguiente["tipo"] == "REDACTAR"
         #  El payload no lleva teléfono: `REDACTAR` no envía nada.
         assert "contacto_id" not in siguiente["payload"]
@@ -184,17 +203,25 @@ async def test_de_apretar_el_boton_a_borradores_listos(http, base, maquina) -> N
         )
 
     assert len(textos) == 2
+    assert sorted(dejados) == sorted([PERMITIDO, OTRO_PERMITIDO])
 
-    # 5. Los borradores existen, con su destinatario puesto.
-    borradores = await base["mensajes"].find().to_list(None)
-    assert len(borradores) == 2
-    assert {m["estado"] for m in borradores} == {str(Estado.BORRADOR)}
-    assert {m["contacto_id"] for m in borradores} == {PERMITIDO, OTRO_PERMITIDO}
+    # 5. Los mensajes terminaron como borradores EN LOS CHATS, sin que nadie
+    #    apretara nada más que "generar".
+    finales = await base["mensajes"].find().to_list(None)
+    assert len(finales) == 2
+    assert {m["estado"] for m in finales} == {str(Estado.BORRADOR_DEJADO)}
 
-    # 6. Y la validación —que ya existía y no tenía a quién validar— los mueve.
+    # 6. La corrida quedó en enviando (lo puso el primer encadenado) y la
+    #    auditoría dice que fue el modo automático.
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    assert corrida["estado"] == "enviando"
+    evento = await base["auditoria"].find_one({"detalle.accion": "borradores_automaticos"})
+    assert evento is not None
+
+    # 7. Y la validación por tanda —que quedó como red manual— no tiene nada
+    #    que hacer: no quedó ningún BORRADOR.
     resultado = await validacion.validar_corrida(base, corrida_id)
-    assert resultado.total == 2
-    assert len(resultado.rechazados) == 0
+    assert resultado.total == 0
 
 
 @sin_mongo

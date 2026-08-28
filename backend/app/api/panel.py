@@ -388,19 +388,39 @@ async def ver_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
 
 @router.post("/corridas/{corrida_id}/validar")
 async def validar_corrida(corrida_id: str, _: Autenticado) -> dict[str, Any]:
-    """Pasa los borradores por los guardrails y el triage.
+    """Retoma el encadenado de los borradores que quedaron sin procesar (D36).
 
-    Lo dispara el panel cuando la generación termina. Devuelve cuántos quedaron
-    en cada grupo y la proporción retenida, que es el número con el que se
-    calibra el triage.
+    Lo normal es que no haya nada: cada redacción se encadena sola al volver.
+    Este botón es la red para lo que quedó en `BORRADOR` — el kill switch
+    estaba puesto, el encadenado se cayó en el medio. Cada uno pasa por los
+    mismos guardrails y termina encolado para dejarse como borrador, o
+    descartado, o esperando de nuevo si la pausa sigue.
     """
-    resultado = await validacion.validar_corrida(db.obtener_base(), _a_id(corrida_id))
-    return {
-        "en_espera": len(resultado.en_espera),
-        "retenidos": len(resultado.retenidos),
-        "rechazados": len(resultado.rechazados),
-        "proporcion_retenida": round(resultado.proporcion_retenida, 3),
-    }
+    base = db.obtener_base()
+    identificador = _a_id(corrida_id)
+    from app.core.estados import Estado
+
+    pendientes = [
+        m
+        for m in await mensajes.de_la_corrida(base, identificador)
+        if m["estado"] == str(Estado.BORRADOR)
+    ]
+
+    encolados = 0
+    descartados = 0
+    en_pausa = 0
+    for mensaje in pendientes:
+        job = await corridas.encadenar_borrador(base, mensaje["_id"], quien="panel")
+        if job is not None:
+            encolados += 1
+        elif (await base["mensajes"].find_one({"_id": mensaje["_id"]}))["estado"] == str(
+            Estado.BORRADOR
+        ):
+            en_pausa += 1
+        else:
+            descartados += 1
+
+    return {"encolados": encolados, "descartados": descartados, "en_pausa": en_pausa}
 
 
 @router.get("/corridas/{corrida_id}/mensajes")

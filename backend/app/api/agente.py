@@ -252,7 +252,11 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
     # traduce esa decisión al estado del mensaje.
     if job["tipo"] == cola.Tipo.ENVIAR:
         await _resolver_mensaje(base, job, cuerpo, reporte, maquina["maquina"])
-        await corridas.revisar_canario(base, job["corrida_id"], quien=maquina["maquina"])
+        # D35: el canario se evalúa por máquina — la que reporta es la que se
+        # revisa, y si sus tres primeros fallaron se frena ella sola.
+        await corridas.revisar_canario(
+            base, job["corrida_id"], maquina=maquina["maquina"], quien=maquina["maquina"]
+        )
 
     # El resto de la cadena de generacion. Va despues de `cola.reportar` a
     # proposito: si esto falla, el job ya quedo cerrado con su `raw`, y lo que se
@@ -264,7 +268,16 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
         await _encolar_desde_resolver(base, job, cuerpo)
 
     if cuerpo.ok and job["tipo"] == cola.Tipo.REDACTAR:
-        await generacion.guardar_borrador(base, job=job, detalle=cuerpo.detalle)
+        mensaje_id = await generacion.guardar_borrador(base, job=job, detalle=cuerpo.detalle)
+        # D36: la redacción limpia se deja como borrador en el chat sin esperar
+        # a nadie. Nunca rompe el reporte del agente: el borrador ya está
+        # guardado, y lo que se pierde es el paso siguiente — el botón
+        # "Revisar ahora" del panel lo retoma.
+        if mensaje_id is not None:
+            try:
+                await corridas.encadenar_borrador(base, mensaje_id, quien=maquina["maquina"])
+            except Exception as error:
+                log.error("encadenado_fallo", mensaje=str(mensaje_id), error=str(error)[:300])
 
     if reporte.frena_corrida:
         # El DOM de WhatsApp cambió: los envíos siguientes tienen exactamente el

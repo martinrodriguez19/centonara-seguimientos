@@ -96,6 +96,7 @@ async def dar_de_alta(
                 "token_hash": hashear(token),
                 "activo": False,
                 "pausado_hasta": None,
+                "frenado_por_canario_en": None,
                 "tope_diario": tope_diario,
                 "acepto_condiciones_en": None,
                 "ultimo_latido": None,
@@ -219,17 +220,48 @@ async def registrar_barrido(
 def esta_pausada(vendedor: dict[str, Any], *, ahora: datetime | None = None) -> bool:
     """¿Esta máquina está pausada ahora mismo?
 
-    Dos formas de estarlo: `activo: False` (nunca se activó, o se apagó desde el
-    panel) y `pausado_hasta` en el futuro (el vendedor apretó "pausar por hoy"
-    en su barra de menú).
-
-    Las dos existen porque son de personas distintas: la primera es del dueño,
-    la segunda del vendedor sobre su propia máquina.
+    Tres formas de estarlo, de tres actores distintos: `activo: False` (el
+    dueño, desde el panel), `pausado_hasta` en el futuro (el vendedor, desde su
+    barra de menú), y `frenado_por_canario_en` (el sistema: los tres primeros
+    envíos de esta Mac en una corrida fallaron — D35). El freno del canario no
+    vence solo: lo suelta reanudar o cancelar la corrida, porque lo que hace
+    falta es que alguien mire, no que pase el tiempo.
     """
     if not vendedor.get("activo"):
         return True
+    if vendedor.get("frenado_por_canario_en") is not None:
+        return True
     hasta = vendedor.get("pausado_hasta")
     return hasta is not None and hasta > (ahora or datetime.now(UTC))
+
+
+async def frenar_por_canario(base, maquina: str, *, ahora: datetime | None = None) -> None:
+    """El canario de esta máquina falló: sus envíos no siguen (D35).
+
+    Frena **esta Mac**, no el sistema: las demás máquinas de la corrida siguen
+    con las suyas. El kill switch global queda para lo que es global —
+    `SELECTOR_ROTO` y el botón del panel.
+    """
+    await base["vendedores"].update_one(
+        {"maquina": maquina},
+        {"$set": {"frenado_por_canario_en": ahora or datetime.now(UTC)}},
+    )
+    log.warning("maquina_frenada_por_canario", maquina=maquina)
+
+
+async def soltar_freno_de_canario(base, maquinas: list[str]) -> int:
+    """Suelta el freno del canario de estas máquinas. Devuelve cuántas soltó.
+
+    Lo llaman reanudar y cancelar una corrida: en los dos casos una persona ya
+    miró, que es lo que el freno estaba esperando.
+    """
+    resultado = await base["vendedores"].update_many(
+        {"maquina": {"$in": maquinas}, "frenado_por_canario_en": {"$ne": None}},
+        {"$set": {"frenado_por_canario_en": None}},
+    )
+    if resultado.modified_count:
+        log.info("frenos_de_canario_soltados", maquinas=resultado.modified_count)
+    return resultado.modified_count
 
 
 def puede_enviar(vendedor: dict[str, Any]) -> bool:

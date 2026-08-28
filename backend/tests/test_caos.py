@@ -169,16 +169,14 @@ async def test_dos_maquinas_no_se_roban_trabajo(base) -> None:
 
 
 @sin_mongo
-async def test_encolar_los_envios_dos_veces_no_manda_todo_dos_veces(base) -> None:
+async def test_encolar_los_envios_dos_veces_no_encola_dos_jobs(base) -> None:
     """El dueño aprieta enviar, no ve respuesta, y aprieta de nuevo.
 
-    Los mensajes siguen en EN_ESPERA hasta que un agente los tome, así que la
-    segunda vez los vuelve a encolar — pero el índice único sobre la clave de
-    idempotencia impide que el mismo texto al mismo contacto exista dos veces, y
-    el anti-duplicado impide que una corrida nueva lo repita.
-
-    Lo que este test fija es el comportamiento real, para que si alguna vez
-    cambia sea a propósito.
+    Un `EN_ESPERA` cuyo envío sigue vivo en la cola no se vuelve a encolar: dos
+    jobs para el mismo mensaje serían dos escrituras en el mismo chat. Antes el
+    doble click sí re-encolaba y el segundo job rebotaba recién contra la
+    máquina de estados; se cambió a propósito con el encadenado automático
+    (D36), que hace normal que un mensaje esté encolado sin que nadie apriete.
     """
     from app.core import corridas
 
@@ -188,10 +186,11 @@ async def test_encolar_los_envios_dos_veces_no_manda_todo_dos_veces(base) -> Non
     segunda = await corridas.preparar_envios(base, corrida_id, quien="panel", ahora=AHORA)
 
     assert primera.mensajes == 3
-    assert segunda.mensajes == 3, "todavía están en EN_ESPERA"
+    assert segunda.mensajes == 0, "sus envíos ya están en la cola"
+    assert await base["jobs"].count_documents({"tipo": str(cola.Tipo.ENVIAR)}) == 3
 
-    # Pero un agente sólo puede llevarse cada mensaje una vez: el primero que lo
-    # tome lo mueve a ENVIANDO y el segundo job se queda sin nada que hacer.
+    # Y aunque un job doble existiera, un agente sólo puede llevarse cada
+    # mensaje una vez: el primero lo mueve a ENVIANDO y el resto rebota.
     despues = AHORA + timedelta(days=1)
     entregados = set()
     while (job := await cola.tomar(base, "mac-rocio", ahora=despues)) is not None:
@@ -200,8 +199,6 @@ async def test_encolar_los_envios_dos_veces_no_manda_todo_dos_veces(base) -> Non
             await mensajes.mover(base, mensaje_id, Estado.ENVIANDO)
             entregados.add(str(mensaje_id))
         except (TransicionInvalida, mensajes.CarreraDeEstados):
-            # Ya lo tomó el otro job. Es exactamente lo que tiene que pasar: el
-            # segundo intento rebota contra la máquina de estados.
             pass
 
     assert len(entregados) == 3, "cada mensaje se envió una sola vez"

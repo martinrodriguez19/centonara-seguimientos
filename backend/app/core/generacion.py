@@ -410,10 +410,13 @@ async def guardar_borrador(
 ) -> ObjectId | None:
     """Convierte el resultado de un `REDACTAR` en un mensaje.
 
-    Nace en `BORRADOR` y ahí se queda: quien lo mueve a `EN_ESPERA` o `RETENIDO`
-    es `validacion.validar_corrida()`, que corre sobre la tanda entera porque
-    necesita verla junta —dos contactos con el mismo nombre sólo se detectan
-    así—. La excepción es `sin_contexto`, que no tiene texto que validar.
+    Nace en `BORRADOR`. Quien lo mueve es `corridas.encadenar_borrador` (D36):
+    apenas esto devuelve, el llamador lo pasa por los guardrails y —limpio— lo
+    encola para quedar como borrador en el chat, sin esperar la tanda. La
+    validación por tanda (`validacion.validar_corrida`) sigue existiendo como
+    red manual: el botón "Revisar ahora" del panel, para lo que quedó en
+    `BORRADOR` por una pausa o un encadenado caído. La excepción es
+    `sin_contexto`, que no tiene texto que validar y va derecho a `RETENIDO`.
     """
     momento = ahora or datetime.now(UTC)
     contexto = job.get("contexto") or {}

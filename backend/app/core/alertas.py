@@ -173,10 +173,27 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
     corte = ahora - timedelta(minutes=MINUTOS_CAIDA)
 
     for vendedor in await base["vendedores"].find({}).to_list(None):
+        maquina = vendedor["maquina"]
+
+        # El freno del canario va ANTES del filtro de pausadas: una máquina
+        # frenada cuenta como pausada, y sin esto su alerta no existiría — la
+        # Mac quedaría muda justo cuando el sistema la frenó solo (D35).
+        if vendedor.get("frenado_por_canario_en") is not None:
+            alertas.append(
+                Alerta(
+                    Nivel.URGENTE,
+                    "maquina_frenada_por_canario",
+                    f"{vendedor.get('nombre') or maquina} se frenó sola",
+                    "Sus primeros envíos de la corrida fallaron, así que sus envíos "
+                    "pendientes no salen. Las demás máquinas siguen.",
+                    "Mirá por qué fallaron. Reanudar o cancelar la corrida suelta el freno.",
+                )
+            )
+            continue
+
         if vendedores.esta_pausada(vendedor, ahora=ahora):
             continue
 
-        maquina = vendedor["maquina"]
         latido = vendedor.get("ultimo_latido")
         caida = latido is None or latido < corte
 
@@ -200,6 +217,25 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
         fallando = sorted(
             n for n, estado in (vendedor.get("diagnostico") or {}).items() if estado == "falla"
         )
+
+        # La sesión dedicada vencida tiene alerta propia (D24): es la falla que
+        # nadie ve venir —una segunda sesión que el vendedor no mira— y tiene
+        # una acción concreta. Metida en la lista genérica de chequeos se
+        # perdería justo cuando más sirve: antes de encolar la corrida.
+        if "whatsapp_sesion" in fallando:
+            fallando.remove("whatsapp_sesion")
+            alertas.append(
+                Alerta(
+                    Nivel.URGENTE,
+                    "sesion_dedicada_vencida",
+                    f"Venció la sesión del motor de {vendedor.get('nombre') or maquina}",
+                    "El navegador que deja los borradores perdió su sesión: cualquier envío "
+                    "va a fallar con SESION_CAIDA hasta re-vincular.",
+                    "En esa Mac: correr el agente con --vincular y escanear el QR "
+                    "desde el teléfono del vendedor.",
+                )
+            )
+
         if fallando:
             alertas.append(
                 Alerta(

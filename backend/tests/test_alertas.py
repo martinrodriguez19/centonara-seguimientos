@@ -223,6 +223,52 @@ async def test_un_na_en_el_diagnostico_no_es_una_falla(base) -> None:
     assert "maquina_degradada" not in codigos(await alertas.revisar(base, ahora=AHORA))
 
 
+@sin_mongo
+async def test_la_sesion_dedicada_vencida_tiene_alerta_propia(base) -> None:
+    """D24: es la falla que nadie ve venir — una segunda sesión que el vendedor
+    no mira. Urgente, con la acción concreta, y sin duplicarse en la genérica."""
+    await vendedores.registrar_latido(
+        base, "mac-rocio", diagnostico={"whatsapp_sesion": "falla", "chrome": "ok"}, ahora=AHORA
+    )
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+    alerta = next(a for a in encontradas if a.codigo == "sesion_dedicada_vencida")
+
+    assert alerta.nivel is alertas.Nivel.URGENTE
+    assert "--vincular" in alerta.accion
+    assert "maquina_degradada" not in codigos(encontradas), "no se duplica en la genérica"
+
+
+@sin_mongo
+async def test_la_sesion_vencida_convive_con_otros_chequeos_caidos(base) -> None:
+    await vendedores.registrar_latido(
+        base,
+        "mac-rocio",
+        diagnostico={"whatsapp_sesion": "falla", "claude_bin": "falla"},
+        ahora=AHORA,
+    )
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+
+    assert "sesion_dedicada_vencida" in codigos(encontradas)
+    degradada = next(a for a in encontradas if a.codigo == "maquina_degradada")
+    assert "claude_bin" in degradada.detalle
+    assert "whatsapp_sesion" not in degradada.detalle
+
+
+@sin_mongo
+async def test_una_maquina_frenada_por_su_canario_alerta_aunque_este_pausada(base) -> None:
+    """D35: el freno cuenta como pausa, y las pausadas no alertan — salvo ésta.
+    Una Mac que el sistema frenó solo no puede quedar muda."""
+    await vendedores.frenar_por_canario(base, "mac-rocio", ahora=AHORA)
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+    alerta = next(a for a in encontradas if a.codigo == "maquina_frenada_por_canario")
+
+    assert alerta.nivel is alertas.Nivel.URGENTE
+    assert "reanudar" in alerta.accion.lower() or "cancelar" in alerta.accion.lower()
+
+
 # ---------------------------------------------------------------------------
 # El orden y la forma
 # ---------------------------------------------------------------------------

@@ -292,6 +292,71 @@ async def encolar_envios(
     ]
 
 
+async def encolar_envio_escalonado(
+    base,
+    *,
+    maquina: str,
+    corrida_id: ObjectId,
+    payload: dict[str, Any],
+    pausa: tuple[int, int] = PAUSA_ENTRE_ENVIOS,
+    canario: int = CANARIO,
+    espera_canario: float = ESPERA_CANARIO_S,
+    aleatorio: random.Random | None = None,
+    ahora: datetime | None = None,
+) -> ObjectId:
+    """Encola UN envío, detrás de los que la máquina ya tiene en la corrida.
+
+    Es `escalonar` para el flujo de a uno (D36): los borradores automáticos se
+    encolan a medida que cada `REDACTAR` vuelve, no en tanda, así que el
+    espaciado no se puede calcular de una vez. Las reglas son las mismas:
+
+    - el primero de la máquina sale enseguida;
+    - cada siguiente, una pausa aleatoria después del último programado —
+      nunca antes de `ahora`, por si el último ya pasó;
+    - después del enésimo (`canario`), el hueco grande para poder mirar.
+
+    El barajado de `encolar_envios` acá no existe ni hace falta: el orden ya lo
+    decide el orden impredecible en que las redacciones van terminando.
+    """
+    momento = _ahora(ahora)
+    dado = aleatorio or random.Random()
+    minimo, maximo = pausa
+    if minimo > maximo:
+        raise ValueError(f"pausa inválida: {pausa}")
+
+    previos = {
+        "corrida_id": corrida_id,
+        "maquina": maquina,
+        "tipo": str(Tipo.ENVIAR),
+    }
+    cuantos_previos = await base["jobs"].count_documents(previos)
+    ultimo = (
+        await base["jobs"].find(previos).sort("disponible_desde", -1).limit(1).to_list(1)
+        if cuantos_previos
+        else []
+    )
+
+    desde = momento
+    if ultimo:
+        desde = max(momento, ultimo[0]["disponible_desde"])
+
+    espera = 0.0
+    if cuantos_previos:
+        espera += dado.uniform(minimo, maximo)
+    if canario and cuantos_previos == canario:
+        espera += espera_canario
+
+    return await encolar(
+        base,
+        tipo=Tipo.ENVIAR,
+        maquina=maquina,
+        corrida_id=corrida_id,
+        payload=payload,
+        disponible_desde=desde + timedelta(seconds=espera),
+        ahora=momento,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tomar
 # ---------------------------------------------------------------------------
