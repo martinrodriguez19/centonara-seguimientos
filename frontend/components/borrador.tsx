@@ -47,6 +47,10 @@ export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: 
   });
 
   const descartado = mensaje.estado === "DESCARTADO";
+  // Un mensaje que ya está (o está quedando) en el chat no se toca desde acá
+  // (D36): editarlo o vetarlo no cambiaría lo escrito en WhatsApp — quedarían
+  // desincronizados, que es peor que no poder tocarlo.
+  const enElChat = mensaje.estado === "BORRADOR_DEJADO" || mensaje.estado === "ENVIANDO";
   // El backend devuelve 422 con los problemas si el texto editado viola algo.
   // Un humano también puede empeorar un mensaje.
   const problema = guardar.error instanceof ErrorDeApi ? guardar.error.message : null;
@@ -67,14 +71,29 @@ export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: 
             </Pildora>
           )}
           {descartado && <Pildora nivel="critico">{textos.revision.vetado}</Pildora>}
+          {mensaje.estado === "BORRADOR_DEJADO" && (
+            <Pildora nivel="ok">{textos.revision.enElChat}</Pildora>
+          )}
+          {mensaje.estado === "ENVIANDO" && (
+            <Pildora nivel="neutro" conIcono={false}>
+              {textos.revision.escribiendose}
+            </Pildora>
+          )}
         </div>
 
-        {/* ⚠️ Por qué se apartó. Es lo único que convierte "revisá esto" en una
-            decisión que alguien puede tomar en cinco segundos. */}
+        {/* ⚠️ Por qué se apartó — o, para un borrador ya dejado, qué le llamó
+            la atención al sistema (D36: información, no un freno). Es lo único
+            que convierte "revisá esto" en una decisión de cinco segundos. */}
         {mensaje.senales.length > 0 && (
           <Aviso
             nivel={descartado ? "critico" : "atencion"}
-            titulo={descartado ? "Por qué no va a salir" : "Por qué lo apartamos"}
+            titulo={
+              descartado
+                ? "Por qué no va a salir"
+                : enElChat
+                  ? "Para tener en cuenta antes de mandarlo"
+                  : "Por qué lo apartamos"
+            }
             className="p-3"
           >
             <ul className="space-y-0.5">
@@ -134,7 +153,7 @@ export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: 
           <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm">{mensaje.texto}</p>
         )}
 
-        {!descartado && !editando && (
+        {!descartado && !enElChat && !editando && (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" onClick={() => setEditando(true)}>
               <Pencil className="size-4" aria-hidden />

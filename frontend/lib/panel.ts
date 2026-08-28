@@ -382,12 +382,13 @@ export const reanudarCorrida = (id: string) =>
 
 // --- Revisión de borradores ------------------------------------------------
 
+/** Retoma el encadenado de lo que quedó en BORRADOR (D36): lo normal es que
+ * no haya nada — cada redacción se encadena sola al volver. */
 export const validarCorrida = (id: string) =>
   pedir<{
-    en_espera: number;
-    retenidos: number;
-    rechazados: number;
-    proporcion_retenida: number;
+    encolados: number;
+    descartados: number;
+    en_pausa: number;
   }>(`/corridas/${id}/validar`, conCuerpo("POST"));
 
 export const traerMensajes = (id: string) => pedir<Revision>(`/corridas/${id}/mensajes`);
@@ -402,8 +403,9 @@ export const liberarMensaje = (id: string) =>
   pedir<{ ok: boolean }>(`/mensajes/${id}/liberar`, conCuerpo("POST"));
 
 /**
- * El segundo botón. Nada sale por inacción: esto es lo que pasa cuando una
- * persona miró y decidió.
+ * El botón del envío REAL. Nada sale por inacción: esto es lo que pasa cuando
+ * una persona miró y decidió. Los borradores ya no pasan por acá (D36): se
+ * dejan solos en los chats al generar.
  *
  * `modo` es "prueba" por defecto en el backend también: para que algo salga de
  * verdad hay que decirlo en los dos lados.

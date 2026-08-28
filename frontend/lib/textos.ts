@@ -113,7 +113,7 @@ export const textos = {
       `hasta ${chats} chats ${maquinas === 1 ? "" : "cada una"}`.trim() +
       ". Tarda unos minutos y tiene costo por chat leído.",
     generarConfirmarNota:
-      "Sólo se redactan borradores de los números que estén en destinos permitidos. Nada se envía todavía.",
+      "Sólo se redactan borradores de los números que estén en destinos permitidos, y los que pasan las reglas quedan directamente como borradores en el WhatsApp de cada vendedor. Nada se envía: los manda cada vendedor.",
     generarConfirmar: "Generar",
     revisarBorradores: "Revisar borradores",
   },
@@ -180,7 +180,14 @@ export const textos = {
     retenidos: "Necesitan tu decisión",
     retenidosAyuda:
       "Algo llamó la atención en estos chats. Miralos antes de que salgan.",
-    listos: "Listos para salir",
+    // D36: los borradores se dejan solos en los chats al generar. Este grupo
+    // es informativo — lo hecho, no lo pendiente.
+    dejados: "Ya están en los chats",
+    dejadosAyuda:
+      "El sistema los escribió como borradores en el WhatsApp de cada vendedor. Los manda cada vendedor, chat por chat; las señales que veas son información, no un freno.",
+    listos: "Listos para el envío real",
+    listosAyuda:
+      "Liberados o pendientes de envío. Salen recién cuando aprietes Envío.",
     descartados: "No van a salir",
     descartadosAyuda: "El sistema los frenó. No hay nada que decidir.",
 
@@ -190,6 +197,8 @@ export const textos = {
     vetar: "Frenar",
     liberar: "Liberar",
     vetado: "Frenado",
+    enElChat: "En el chat",
+    escribiendose: "Escribiéndose…",
 
     // El botón dice el número: "enviar" a secas no deja claro cuántos salen.
     enviar: (cuantos: number) =>
@@ -199,15 +208,11 @@ export const textos = {
     enviarAyuda:
       "Salen espaciados, en orden aleatorio. Los primeros tres salen y el sistema espera diez minutos antes de soltar el resto.",
 
-    // --- Los dos modos de envío (D30) -------------------------------------
+    // --- El envío real (D36 dejó un solo botón) ---------------------------
     //
-    // La ambigüedad más cara que puede tener esta pantalla es no saber si lo
-    // que salió fue de verdad. Por eso el modo se dice ANTES de apretar, en el
-    // propio botón, y DESPUÉS en la confirmación.
-    modoTitulo: "¿Qué querés hacer con ellos?",
-    modoPrueba: "Dejar borradores",
-    modoPruebaDetalle:
-      "Hace todo el recorrido —abre el chat, verifica el contacto, escribe el texto— pero no aprieta enviar: el mensaje queda como borrador en el WhatsApp de cada vendedor, listo para mandarlo con un click.",
+    // "Dejar borradores" ya no es un botón: los borradores se dejan solos en
+    // los chats al terminar cada redacción. Lo único que sigue pidiendo una
+    // decisión es el envío REAL, y su fricción no se toca.
     modoReal: "Envío",
     modoRealDetalle:
       "Los mensajes salen de la línea de cada vendedor y llegan a los contactos. No se puede deshacer.",
@@ -222,11 +227,8 @@ export const textos = {
     enviarRealBoton: (cuantos: number) =>
       cuantos === 1 ? "Enviar 1 mensaje" : `Enviar ${cuantos} mensajes`,
 
-    // Y el resultado también dice el modo: "se encolaron 3 mensajes" sin más
+    // El resultado dice que fue DE VERDAD: "se encolaron 3 mensajes" sin más
     // deja al operador sin saber qué acaba de hacer.
-    enviadoPrueba: (cuantos: number) =>
-      `${cuantos === 1 ? "1 mensaje va" : `${cuantos} mensajes van`} a quedar como ` +
-      "borradores en el WhatsApp de cada vendedor. Nada se envía: los manda cada vendedor.",
     enviadoReal: (cuantos: number) =>
       `Se encolaron ${cuantos} ${cuantos === 1 ? "mensaje" : "mensajes"} para salir de verdad.`,
 

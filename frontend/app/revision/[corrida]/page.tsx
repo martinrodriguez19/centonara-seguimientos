@@ -17,27 +17,25 @@ import {
   validarCorrida,
   type Mensaje,
 } from "@/lib/panel";
-import { Enviar, type Modo } from "@/components/enviar";
+import { Enviar } from "@/components/enviar";
 import { textos } from "@/lib/textos";
 
 /**
  * La pantalla donde el dueño revisa una corrida.
  *
- * El orden de arriba abajo es el orden de lo que hay que hacer:
+ * Desde D36 los borradores se dejan solos en los chats al generar, así que el
+ * orden de arriba abajo pasó a ser: lo que necesita una decisión (retenidos),
+ * lo que ya está hecho (borradores dejados), lo que espera un envío real
+ * (listos), y lo que no va a salir (descartados).
  *
- *   1. Los retenidos, que necesitan una decisión
- *   2. Los listos, que se pueden mirar por arriba
- *   3. Los descartados, que están ahí sólo para que nadie se pregunte a dónde
- *      fueron a parar
- *
- * Y abajo los dos botones de enviar, que dicen **cuántos** van a salir y **en
- * qué modo**. "Enviar" a secas no deja claro si son tres o treinta, ni si
- * llegan a alguien.
+ * Abajo queda un solo botón: el Envío real, que sigue siendo un segundo acto
+ * explícito con su fricción. Dice **cuántos** van a salir — "enviar" a secas
+ * no deja claro si son tres o treinta.
  */
 export default function Revision({ params }: { params: Promise<{ corrida: string }> }) {
   const { corrida } = use(params);
   const clienteQuery = useQueryClient();
-  const [enviado, setEnviado] = useState<{ cuantos: number; modo: Modo } | null>(null);
+  const [enviado, setEnviado] = useState<number | null>(null);
 
   const revision = useQuery({
     queryKey: ["mensajes", corrida],
@@ -55,9 +53,9 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
   });
 
   const enviar = useMutation({
-    mutationFn: (modo: Modo) => enviarCorrida(corrida, modo),
+    mutationFn: () => enviarCorrida(corrida, "real"),
     onSuccess: (resultado) => {
-      setEnviado({ cuantos: resultado.mensajes, modo: resultado.modo as Modo });
+      setEnviado(resultado.mensajes);
       void clienteQuery.invalidateQueries({ queryKey: ["mensajes", corrida] });
       void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
     },
@@ -81,6 +79,12 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
   const mensajes = revision.data.mensajes;
   const retenidos = mensajes.filter((m) => m.estado === "RETENIDO");
   const listos = mensajes.filter((m) => m.estado === "EN_ESPERA");
+  //  Camino a estar en el chat, o ya ahí (D36). Se muestran juntos: para el
+  //  dueño la diferencia entre "escribiéndose" y "escrito" es cuestión de
+  //  minutos y no pide ninguna decisión.
+  const dejados = mensajes.filter(
+    (m) => m.estado === "BORRADOR_DEJADO" || m.estado === "ENVIANDO",
+  );
   const descartados = mensajes.filter((m) => m.estado === "DESCARTADO");
   const sinValidar = mensajes.filter((m) => m.estado === "BORRADOR");
 
@@ -125,8 +129,22 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
         />
       )}
 
+      {dejados.length > 0 && (
+        <Grupo
+          titulo={textos.revision.dejados}
+          ayuda={textos.revision.dejadosAyuda}
+          mensajes={dejados}
+          corrida={corrida}
+        />
+      )}
+
       {listos.length > 0 && (
-        <Grupo titulo={textos.revision.listos} mensajes={listos} corrida={corrida} />
+        <Grupo
+          titulo={textos.revision.listos}
+          ayuda={textos.revision.listosAyuda}
+          mensajes={listos}
+          corrida={corrida}
+        />
       )}
 
       {descartados.length > 0 && (
@@ -138,17 +156,12 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
         />
       )}
 
-      {/* El segundo acto explícito. Nada de esto sale por inacción. */}
+      {/* El envío REAL sigue siendo un segundo acto explícito (D36 no lo
+          toca): nada le llega a un cliente por inacción. */}
       <div className="sticky bottom-0 space-y-2 border-t bg-background/95 py-4 backdrop-blur">
         {enviado !== null ? (
           <p className="text-sm">
-            {/* ⚠️ El resultado dice el MODO. "Se encolaron 3 mensajes" a secas
-                deja al operador sin saber si acaba de escribirle a un cliente
-                real: es la ambigüedad más cara que puede tener esta pantalla. */}
-            {enviado.modo === "real"
-              ? textos.revision.enviadoReal(enviado.cuantos)
-              : textos.revision.enviadoPrueba(enviado.cuantos)}{" "}
-            {enviado.modo === "real" && textos.revision.enviarAyuda}
+            {textos.revision.enviadoReal(enviado)} {textos.revision.enviarAyuda}
           </p>
         ) : listos.length === 0 ? (
           <p className="text-sm text-muted-foreground">{textos.revision.nadaQueEnviar}</p>
@@ -160,7 +173,7 @@ export default function Revision({ params }: { params: Promise<{ corrida: string
               // cerrada. Fallar cerrado también acá (regla R2).
               destinosPermitidos={estado.data?.destinos_permitidos ?? 0}
               enviando={enviar.isPending}
-              onEnviar={(modo) => enviar.mutate(modo)}
+              onEnviar={() => enviar.mutate()}
             />
             {enviar.error instanceof ErrorDeApi && (
               <p className="text-sm text-destructive">{enviar.error.message}</p>

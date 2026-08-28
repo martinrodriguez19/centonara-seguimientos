@@ -1,25 +1,20 @@
 "use client";
 
-import { Send, ShieldCheck } from "lucide-react";
+import { Send } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { textos } from "@/lib/textos";
 
-export type Modo = "prueba" | "real";
-
 /**
- * Los dos botones de envío, con la fricción repartida según lo que cuesta.
+ * El botón de Envío real, con su fricción intacta.
  *
- * **Dejar borradores** (D30) es un click: hace todo el recorrido menos apretar
- * enviar, y el mensaje queda como borrador en el WhatsApp de cada vendedor.
- * Ponerle fricción sólo lograría que se use menos, que es lo contrario de lo
- * que conviene.
- *
- * **Envío** pide escribir la cantidad de mensajes que van a salir. Es la
- * misma fricción que ya usa liberar retenidos en lote, y por el mismo motivo:
- * escribir el número obliga a leerlo. Un `confirm()` se acepta sin mirar, y
- * esta es exactamente la acción que alguien apurado haría sin mirar.
+ * El de "Dejar borradores" ya no existe (D36): los borradores se dejan solos
+ * en los chats al terminar cada redacción — nadie tiene que apretar nada para
+ * eso. Lo único que sigue necesitando una persona es el envío REAL, y ése no
+ * afloja: pide escribir la cantidad de mensajes que van a salir. Escribir el
+ * número obliga a leerlo; un `confirm()` se acepta sin mirar, y esta es
+ * exactamente la acción que alguien apurado haría sin mirar.
  *
  * Y con la lista de destinos vacía no se ofrece siquiera: R4 dice que vacía
  * significa a nadie, así que un envío real no alcanzaría a nadie. La pantalla
@@ -34,7 +29,7 @@ export function Enviar({
   cuantos: number;
   destinosPermitidos: number;
   enviando: boolean;
-  onEnviar: (modo: Modo) => void;
+  onEnviar: () => void;
 }) {
   const [confirmacion, setConfirmacion] = useState("");
   const [abierto, setAbierto] = useState(false);
@@ -59,7 +54,7 @@ export function Enviar({
           <Button
             variant="destructive"
             disabled={confirmacion !== String(cuantos) || enviando}
-            onClick={() => onEnviar("real")}
+            onClick={() => onEnviar()}
           >
             <Send className="size-4" aria-hidden />
             {enviando ? textos.revision.enviando : textos.revision.enviarRealBoton(cuantos)}
@@ -80,37 +75,21 @@ export function Enviar({
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm font-medium">{textos.revision.modoTitulo}</p>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-        <div className="flex-1 space-y-1">
-          <Button size="lg" disabled={enviando} onClick={() => onEnviar("prueba")}>
-            <ShieldCheck className="size-4" aria-hidden />
-            {enviando ? textos.revision.enviando : textos.revision.modoPrueba}
-          </Button>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            {textos.revision.modoPruebaDetalle}
-          </p>
-        </div>
-
-        <div className="flex-1 space-y-1">
-          <Button
-            size="lg"
-            variant="destructive"
-            disabled={enviando || !puedeEnviarDeVerdad}
-            onClick={() => setAbierto(true)}
-          >
-            <Send className="size-4" aria-hidden />
-            {textos.revision.modoReal}
-          </Button>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            {puedeEnviarDeVerdad
-              ? textos.revision.modoRealDetalle
-              : textos.revision.modoRealSinDestinos}
-          </p>
-        </div>
-      </div>
+    <div className="space-y-1">
+      <Button
+        size="lg"
+        variant="destructive"
+        disabled={enviando || !puedeEnviarDeVerdad}
+        onClick={() => setAbierto(true)}
+      >
+        <Send className="size-4" aria-hidden />
+        {textos.revision.modoReal}
+      </Button>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        {puedeEnviarDeVerdad
+          ? textos.revision.modoRealDetalle
+          : textos.revision.modoRealSinDestinos}
+      </p>
     </div>
   );
 }
