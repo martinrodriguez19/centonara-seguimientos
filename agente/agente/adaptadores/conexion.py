@@ -149,7 +149,10 @@ async def conectar_perfil(
         # ni al `.env` ni a la variable. Pasó en la primera instalación Windows.
         if chrome_bin:
             raise NoHayNavegador(
-                f"CHROME_BIN apunta a {chrome_bin!r} y con eso no se pudo abrir un "
+                # Comillas a mano y no `!r`: en Windows el repr duplica las
+                # barras de la ruta —C:\\Users\\...— y eso es ilegible justo
+                # para quien tiene que ir a corregir esa línea del .env.
+                f"CHROME_BIN apunta a '{chrome_bin}' y con eso no se pudo abrir un "
                 "navegador. Si esa ruta no es un Chrome, corregila o dejala vacía "
                 "en el .env —vacía busca el Chrome del sistema—. Ojo que CLAUDE_BIN "
                 "y CHROME_BIN son dos variables distintas."
