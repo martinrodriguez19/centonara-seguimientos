@@ -254,16 +254,18 @@ def _chrome(ruta_claude: str) -> Chequeo:
 def _whatsapp_sesion() -> Chequeo:
     """Si WhatsApp Web pide QR, no se puede leer ni enviar nada.
 
-    Verificarlo requiere abrir el navegador, que es trabajo de la fase 3. Hasta
-    entonces, `n/a`.
+    Acá siempre da `n/a`: verificarlo requiere abrir el navegador dedicado, y
+    este módulo es síncrono y barato a propósito. Quien lo verifica de verdad
+    es la **vigía** (`vigia_sesion.py`): al arrancar y cada unas horas abre la
+    página, pregunta por la sesión, y reemplaza este chequeo con `con_chequeo` —
+    el latido lleva ese resultado al panel.
 
-    ⚠️ Cuando exista, importa más de lo que parece: con la opción de perfil
-    dedicado de Playwright, ésta es una **segunda** sesión vinculada a la línea
-    del vendedor, y él no la ve en ningún lado. Si se cae, nadie se entera salvo
-    por este chequeo.
+    ⚠️ Importa más de lo que parece: con el perfil dedicado (D24), ésta es una
+    **segunda** sesión vinculada a la línea del vendedor, y él no la ve en
+    ningún lado. Si se cae, nadie se entera salvo por este chequeo.
     """
     return Chequeo(
-        "whatsapp_sesion", Estado.NO_APLICA, "necesita abrir la página: lo verifica `--sonda`"
+        "whatsapp_sesion", Estado.NO_APLICA, "lo revisa la vigía al arrancar y cada unas horas"
     )
 
 
@@ -308,6 +310,21 @@ def _permisos_macos() -> Chequeo:
         Estado.NO_APLICA,
         "por implementar en F5.1, con la primera Mac",
     )
+
+
+def con_chequeo(diagnostico: Diagnostico, chequeo: Chequeo) -> Diagnostico:
+    """Un diagnóstico con un chequeo reemplazado por su versión más fresca.
+
+    Lo usa la vigía de la sesión dedicada: el diagnóstico completo es caro de
+    correr y casi todo no cambia; lo único que ella averiguó de nuevo es un
+    chequeo. Si el nombre no estaba —un diagnóstico vacío de arranque—, se
+    agrega en vez de perderse.
+    """
+    if any(c.nombre == chequeo.nombre for c in diagnostico.chequeos):
+        chequeos = tuple(chequeo if c.nombre == chequeo.nombre else c for c in diagnostico.chequeos)
+    else:
+        chequeos = (*diagnostico.chequeos, chequeo)
+    return Diagnostico(chequeos)
 
 
 # ---------------------------------------------------------------------------
