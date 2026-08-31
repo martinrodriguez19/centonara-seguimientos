@@ -9,7 +9,7 @@ por un motivo, y moverlos convierte una garantía en una intención:
 
     0. El destino está en la lista permitida        (R4)
     1. Abrir WhatsApp Web — navegar PRIMERO, preguntar por la sesión después
-    2. Buscar el contacto y abrir el chat (por nombre, D34)
+    2. Abrir el chat — en cascada, del escalón de siempre al más caro
     3. No es un grupo
     4. LEER el header del chat abierto
     5. RESOLVER el número a E.164
@@ -30,13 +30,21 @@ un mensaje comercial llegue al chat equivocado. Porque alguien lo va a leer así
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
+from agente.adaptadores.cascada import en_cascada
 from agente.adaptadores.pagina import ErrorDeSelector, Pagina, PaginaNoCargo
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
+
+# Cuántas veces pasó cada contacto por este proceso. Es el gate del escalón
+# caro (A8, la URL directa que recarga la página): los baratos corren desde la
+# primera pasada; el caro recién a partir de la segunda. Vive en memoria a
+# propósito — el job no trae el número de intento, y los tres reintentos del
+# backend vuelven al mismo proceso, que es lo único que hace falta contar.
+_pasadas_por_contacto: dict[str, int] = {}
 
 
 @dataclass(frozen=True)
@@ -94,33 +102,46 @@ async def enviar(
     if not _destino_permitido(destinos_permitidos, contacto_id):
         return Resultado(False, "DESTINO_NO_PERMITIDO", {"contacto_id": contacto_id})
 
+    # El registro de las cascadas: qué escalón resolvió cada cosa. Viaja en el
+    # `detalle` del reporte —en éxito y en fallo— y queda persistido en el
+    # documento del job: es lo que después permite ver en producción cuál
+    # escalón funcionó de verdad, y promoverlo a primera opción.
+    cascadas: dict[str, Any] = {}
+    pasada = _pasadas_por_contacto[contacto_id] = _pasadas_por_contacto.get(contacto_id, 0) + 1
+
     try:
-        return await _secuencia(
+        resultado = await _secuencia(
             pagina,
             contacto_id=contacto_id,
             contacto_nombre=contacto_nombre,
             texto=texto,
             modo=modo,
+            cascadas=cascadas,
+            pasada=pasada,
         )
     except PaginaNoCargo as error:
         # La página no terminó de cargar: red lenta, Chrome recién abierto.
         # Transitorio — se reporta como TIMEOUT (reintentable, con su propio
         # tope), no como SELECTOR_ROTO, que frenaría la corrida entera.
         log.warning("pagina_no_cargo", error=str(error))
-        return Resultado(False, "TIMEOUT", {"motivo": str(error)})
+        resultado = Resultado(False, "TIMEOUT", {"motivo": str(error)})
     except ErrorDeSelector as error:
         # El DOM cambió. No es este envío el que falló: van a fallar todos.
         log.error("selector_roto", error=str(error))
-        return Resultado(False, "SELECTOR_ROTO", {"error": str(error)})
+        resultado = Resultado(False, "SELECTOR_ROTO", {"error": str(error)})
     except Exception as error:
         # Nada se traga en silencio, y nada sigue de largo. Lo que no sabemos
         # manejar termina el envío sin escribir.
         log.error("envio_reventó", error=str(error), tipo=type(error).__name__)
-        return Resultado(
+        resultado = Resultado(
             False,
             "ERROR_INESPERADO",
             {"excepcion": type(error).__name__, "mensaje": str(error)[:500]},
         )
+
+    if cascadas:
+        resultado = replace(resultado, detalle={**resultado.detalle, "cascadas": cascadas})
+    return resultado
 
 
 def _destino_permitido(permitidos: list[str] | None, contacto_id: str) -> bool:
@@ -130,7 +151,14 @@ def _destino_permitido(permitidos: list[str] | None, contacto_id: str) -> bool:
 
 
 async def _secuencia(
-    pagina: Pagina, *, contacto_id: str, contacto_nombre: str, texto: str, modo: str
+    pagina: Pagina,
+    *,
+    contacto_id: str,
+    contacto_nombre: str,
+    texto: str,
+    modo: str,
+    cascadas: dict[str, Any],
+    pasada: int = 1,
 ) -> Resultado:
     # ---- 1. WhatsApp Web abierto y con sesión -------------------------------
     #
@@ -142,22 +170,61 @@ async def _secuencia(
     if not await pagina.sesion_iniciada():
         return Resultado(False, "SESION_CAIDA", {"detalle": "pide escanear el código"})
 
-    # ---- 2. El chat ---------------------------------------------------------
+    # ---- 2. El chat, en cascada (A) -----------------------------------------
     #
     # Se busca por NOMBRE, no por número (D34): los contactos reales están
     # agendados por nombre y buscar el E.164 devolvía cero resultados. Qué chat
     # se abre nunca fue la garantía de identidad — la garantía es el paso 6.
+    #
+    # Los dos primeros escalones son literalmente lo que ya se hacía; los demás
+    # (`CHAT_NO_ABRE` del 28/08) corren sólo cuando el anterior devolvió «no
+    # pude», del más barato al más caro. Ninguno saltea los pasos 3 a 7:
+    # una cascada que insiste más en abrir chats sube el riesgo de abrir el
+    # equivocado, y la comparación de identidad es justo lo que lo contiene.
     termino = contacto_nombre.strip() or contacto_id
-    abierto = await pagina.buscar_contacto(termino)
-    if not abierto and termino != contacto_id:
+    #  El motivo de cada escalón que dijo «no pude», a mano para el reporte:
+    #  "la búsqueda no trajo nada" y "hubo filas pero ninguna abrió" son fallas
+    #  distintas, y sin esto diagnosticarlas exige ir a los logs de la Mac.
+    motivos: dict[str, str] = {}
+
+    def anotando(nombre: str, buscar):
+        async def correr():
+            abrio = await buscar()
+            if not abrio and (motivo := getattr(pagina, "motivo_no_abrio", None)):
+                motivos[nombre] = motivo
+            return abrio
+
+        return correr
+
+    estrategias = [("A1_nombre", lambda: pagina.buscar_contacto(termino))]
+    if termino != contacto_id:
         #  El nombre no trajo nada (renombrado, emoji): el número, por si acaso.
-        abierto = await pagina.buscar_contacto(contacto_id)
+        estrategias.append(("A2_numero", lambda: pagina.buscar_contacto(contacto_id)))
+    estrategias += [
+        ("A3_fila_verificada", lambda: pagina.buscar_verificado(termino, contacto_id)),
+        ("A4_sin_filtros", lambda: pagina.buscar_limpiando_filtros(termino)),
+        ("A5_tipeo_alternativo", lambda: pagina.buscar_tipeando_distinto(termino)),
+        ("A6_teclado", lambda: pagina.buscar_con_teclado(termino)),
+        ("A7_otra_ancla", lambda: pagina.buscar_con_otra_ancla(termino)),
+    ]
+    if pasada >= 2:
+        #  El escalón CARO: recarga la página. Se reserva para la segunda
+        #  pasada del contacto — la primera agota los baratos, que cuestan
+        #  segundos; si el backend reintenta, ya vale la pena pagar el reload.
+        estrategias.append(("A8_url_directa", lambda: pagina.abrir_por_url(contacto_id)))
+
+    abierto = await en_cascada(
+        "abrir_chat",
+        [(nombre, anotando(nombre, buscar)) for nombre, buscar in estrategias],
+        registro=cascadas,
+    )
     if not abierto:
         detalle: dict[str, Any] = {"contacto_id": contacto_id, "buscado": termino}
-        # "La búsqueda no trajo nada" y "hubo filas pero ninguna abrió" son
-        # fallas distintas; que el reporte lo diga evita diagnosticar por logs.
-        if motivo := getattr(pagina, "motivo_no_abrio", None):
-            detalle["motivo"] = motivo
+        #  El titular es el de la ruta principal (A1), que es la que se venía
+        #  reportando; el resto queda al lado, escalón por escalón.
+        if motivos:
+            detalle["motivo"] = next(iter(motivos.values()))
+            detalle["motivos"] = motivos
         return Resultado(False, "CHAT_NO_ABRE", detalle)
 
     # ---- 3. Un grupo nunca ---------------------------------------------------
@@ -175,6 +242,10 @@ async def _secuencia(
 
     # ---- 5. El número --------------------------------------------------------
     encontrado = await pagina.resolver_numero()
+    #  La cascada B corre adentro de `resolver_numero`; qué escalón leyó el
+    #  número viaja en el reporte igual que los de apertura.
+    if escalon := getattr(pagina, "ultimo_escalon_numero", None):
+        cascadas["leer_numero"] = {"gano": escalon}
     if encontrado is None:
         return Resultado(
             False,

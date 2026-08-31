@@ -7,7 +7,8 @@ número que la interfaz no muestra — todos son escenarios que hay que fabricar
 son justamente los que deciden si el sistema le escribe a la persona equivocada.
 
 Lo que esto NO es: un simulador fiel de WhatsApp. Es un doble que responde las
-ocho preguntas que hace `jobs/enviar.py`, y nada más.
+preguntas que hace `jobs/enviar.py` —incluidos los escalones de la cascada de
+apertura—, y nada más.
 """
 
 from __future__ import annotations
@@ -88,6 +89,69 @@ class PaginaSimulada:
         self.abierto = chat
         self.campo = chat.borrador_del_vendedor
         return True
+
+    # -- Los escalones alternativos de apertura (cascada A) -------------------
+    #
+    # En memoria no hay filtros de Business ni eventos de teclado: lo que estos
+    # dobles preservan es el CONTRATO — cuándo dicen que sí, cuándo que no — y
+    # el que importa de verdad es `buscar_verificado`, que sólo abre si el chat
+    # contiene lo buscado. Los demás se comportan como la búsqueda de siempre.
+
+    async def buscar_verificado(self, termino: str, numero: str | None = None) -> bool:
+        self._quejarse_si_esta_roto()
+        self.motivo_no_abrio = None
+        chat = self.chats.get(termino)
+        if chat is None and numero is not None:
+            chat = self.chats.get(numero)
+        if chat is None:
+            self.motivo_no_abrio = "sin_resultados"
+            return False
+        #  La exigencia de A3: la "fila" (el nombre del chat, o su teléfono en
+        #  dígitos) tiene que contener lo buscado. Si no, «no está».
+        if not self._fila_contiene(chat, termino) and not (
+            numero and self._fila_contiene(chat, numero)
+        ):
+            self.motivo_no_abrio = "ninguna_fila_contiene_lo_buscado"
+            return False
+        self.abierto = chat
+        self.campo = chat.borrador_del_vendedor
+        return True
+
+    def _fila_contiene(self, chat: Chat, buscado: str) -> bool:
+        digitos_buscados = "".join(c for c in buscado if c.isdigit())
+        if len(digitos_buscados) >= 6:
+            digitos_fila = "".join(c for c in (chat.telefono or "") if c.isdigit())
+            if digitos_buscados in digitos_fila:
+                return True
+        return buscado.lower().strip() in chat.nombre.lower()
+
+    async def buscar_limpiando_filtros(self, termino: str) -> bool:
+        return await self.buscar_contacto(termino)
+
+    async def buscar_tipeando_distinto(self, termino: str) -> bool:
+        return await self.buscar_contacto(termino)
+
+    async def buscar_con_teclado(self, termino: str) -> bool:
+        return await self.buscar_contacto(termino)
+
+    async def buscar_con_otra_ancla(self, termino: str) -> bool:
+        return await self.buscar_contacto(termino)
+
+    async def abrir_por_url(self, numero: str) -> bool:
+        self._quejarse_si_esta_roto()
+        self.motivo_no_abrio = None
+        digitos = "".join(c for c in numero if c.isdigit())
+        if not digitos:
+            self.motivo_no_abrio = "sin_numero_para_url"
+            return False
+        for chat in self.chats.values():
+            if digitos == "".join(c for c in (chat.telefono or "") if c.isdigit()):
+                self.abierto = chat
+                self.campo = chat.borrador_del_vendedor
+                return True
+        #  Como el cartel de «no está en WhatsApp» de la página real.
+        self.motivo_no_abrio = "numero_sin_whatsapp"
+        return False
 
     async def leer_header(self) -> str | None:
         self._quejarse_si_esta_roto()

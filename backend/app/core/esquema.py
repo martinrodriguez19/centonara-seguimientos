@@ -135,6 +135,23 @@ COLECCIONES: tuple[Coleccion, ...] = (
                 claves=(("terminado_en", ASCENDING),),
                 expira_en_segundos=RETENCION_JOBS_DIAS * DIA,
             ),
+            # G4 — un solo ENVIAR VIVO por mensaje. Cierra la ventana entre el
+            # encadenado automático y el botón de envío (dos jobs para el mismo
+            # mensaje): en modo borrador lo tapaba `CAMPO_NO_VACIO`; en modo
+            # real no había red. "Vivo" = `terminado_en` sigue en null — al
+            # terminar (listo o fallido) el job sale del índice, y reenviar un
+            # mensaje que falló sigue siendo posible. Regla de negocio como
+            # restricción de la base: un `if` en el código se saltea con una
+            # condición de carrera, un índice único no.
+            Indice(
+                claves=(("payload.mensaje_id", ASCENDING),),
+                unico=True,
+                parcial={
+                    "tipo": "ENVIAR",
+                    "payload.mensaje_id": {"$exists": True},
+                    "terminado_en": {"$type": "null"},
+                },
+            ),
         ),
     ),
     Coleccion(

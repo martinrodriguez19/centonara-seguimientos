@@ -81,3 +81,24 @@ async def test_sin_contactos_es_un_error_explicito() -> None:
 
     assert not resultado.ok
     assert resultado.codigo == "ERROR_INESPERADO"
+
+
+async def test_no_abre_una_fila_que_no_contiene_el_nombre_buscado() -> None:
+    """⚠️ La regla A3: `RESOLVER` no tiene la comparación de identidad que
+    protege a `ENVIAR`. Si ninguna fila contiene el nombre, la respuesta es
+    `null` — no el número del primer chat de la lista, que quedaría guardado
+    como el del contacto y podría hacer pasar la verificación de un envío
+    posterior contra el chat de otra persona."""
+    #  El buscador devuelve UN resultado, pero es otro chat: la clave con la
+    #  que se encuentra no coincide con lo que la fila muestra.
+    doble = PaginaSimulada(
+        {"Corralón San Justo": Chat(nombre="Corralón Villegas", telefono="+54 9 11 9999-0000")}
+    )
+
+    resultado = await resolver(doble, contactos=["Corralón San Justo"])
+
+    assert resultado.ok
+    assert resultado.detalle["contactos"] == [
+        {"nombre": "Corralón San Justo", "telefono": None, "motivo": "chat_no_abre"}
+    ]
+    assert doble.abierto is None, "no tiene que haber abierto ningún chat"

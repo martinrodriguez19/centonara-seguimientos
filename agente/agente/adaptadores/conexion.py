@@ -49,6 +49,7 @@ camino normal lo usa.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -111,7 +112,7 @@ async def conectar_cdp(playwright, *, puerto: int = PUERTO_CDP):
 
 
 async def conectar_perfil(
-    playwright, *, carpeta: Path, chrome_bin: str = "", headless: bool = False
+    playwright, *, carpeta: Path, chrome_bin: str = "", headless: bool = False, canal: str = ""
 ):
     """**La opción elegida (D24).** Un Chrome aparte, con carpeta propia.
 
@@ -136,6 +137,11 @@ async def conectar_perfil(
 
     ejecutable = Path(chrome_bin) if chrome_bin else navegador.encontrar_chrome()
     extras = {"executable_path": str(ejecutable)} if ejecutable and ejecutable.exists() else {}
+    if canal:
+        #  Escalón D3: pedirle a Playwright el canal («chrome») en vez de una
+        #  ruta. Cubre la Mac vieja y el Windows con CHROME_BIN mal apuntado —
+        #  Playwright resuelve solo dónde está el Chrome del sistema.
+        extras = {"channel": canal}
     try:
         contexto = await playwright.chromium.launch_persistent_context(
             str(carpeta), headless=headless, **extras
@@ -163,7 +169,65 @@ async def conectar_perfil(
     log.info(
         "conectado_con_perfil_propio",
         carpeta=str(carpeta),
-        chrome=str(ejecutable) if extras else "chromium de playwright",
+        chrome=(canal or str(ejecutable)) if extras else "chromium de playwright",
         headless=headless,
     )
+    return pagina
+
+
+# Cuánto se espera antes del segundo intento (D2). Cubre el lock de perfil de
+# Chromium: dos aperturas casi simultáneas —la vigía de sesión arrancando su
+# primera revisión mientras el bucle toma un job— y la segunda muere contra el
+# `SingletonLock` de la primera. Unos segundos después, el que ganó ya lo tiene
+# abierto y esta llamada se engancha o falla por otro motivo real.
+ESPERA_REINTENTO_S = 5.0
+
+
+async def conectar_con_alternativas(
+    playwright, *, carpeta: Path, chrome_bin: str = "", headless: bool = False
+):
+    """La cascada D: el perfil dedicado, con alternativas detrás.
+
+    D1. `conectar_perfil` tal como está hoy — el primer escalón, intacto.
+    D2. Esperar unos segundos y reintentar (el lock de perfil de Chromium).
+    D3. El Chrome del sistema por `channel="chrome"` — cubre la Mac vieja y el
+        Windows con `CHROME_BIN` mal apuntado.
+
+    El escalón que ganó queda en el log (`cascada_resuelta cascada=abrir_navegador`).
+    Si los tres fallan, `NoHayNavegador` con el último error: el agente reporta
+    y no escribe nada, igual que siempre.
+    """
+    from agente.adaptadores.cascada import en_cascada
+
+    async def d2() -> object:
+        await asyncio.sleep(ESPERA_REINTENTO_S)
+        return await conectar_perfil(
+            playwright, carpeta=carpeta, chrome_bin=chrome_bin, headless=headless
+        )
+
+    registro: dict = {}
+    pagina = await en_cascada(
+        "abrir_navegador",
+        [
+            (
+                "D1_perfil_de_siempre",
+                lambda: conectar_perfil(
+                    playwright, carpeta=carpeta, chrome_bin=chrome_bin, headless=headless
+                ),
+            ),
+            ("D2_esperar_y_reintentar", d2),
+            (
+                "D3_canal_chrome",
+                lambda: conectar_perfil(
+                    playwright, carpeta=carpeta, headless=headless, canal="chrome"
+                ),
+            ),
+        ],
+        registro=registro,
+    )
+    if pagina is None:
+        raise NoHayNavegador(
+            f"ningún escalón pudo abrir el navegador dedicado en {carpeta} "
+            f"(intentados: {registro.get('abrir_navegador', {}).get('intentadas')})"
+        )
     return pagina

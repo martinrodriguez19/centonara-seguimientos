@@ -103,9 +103,22 @@ async def resolver(pagina, *, contactos: list[str]) -> Resultado:
 
 
 async def _uno(pagina, nombre: str) -> dict[str, Any]:
-    """Un contacto: su número, o el motivo por el que no."""
-    if not await pagina.buscar_contacto(nombre):
-        log.info("resolver_chat_no_abre", nombre=nombre[:60])
+    """Un contacto: su número, o el motivo por el que no.
+
+    ⚠️ Abre con `buscar_verificado` y no con `buscar_contacto`, y no es una
+    optimización: acá la fila verificada (A3) es LA REGLA, no un escalón
+    opcional. `RESOLVER` no tiene la comparación de identidad que protege a
+    `ENVIAR` — el número que se lea acá queda guardado como el del contacto, y
+    puede hacer pasar la verificación de un envío posterior contra el chat de
+    otra persona. Si ninguna fila contiene el nombre buscado, la respuesta
+    correcta es `None`, no el número del primer chat de la lista.
+    """
+    if not await pagina.buscar_verificado(nombre):
+        log.info(
+            "resolver_chat_no_abre",
+            nombre=nombre[:60],
+            motivo=getattr(pagina, "motivo_no_abrio", None),
+        )
         return {"nombre": nombre, "telefono": None, "motivo": "chat_no_abre"}
 
     if await pagina.es_grupo():

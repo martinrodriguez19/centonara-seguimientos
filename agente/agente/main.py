@@ -568,20 +568,29 @@ def _abrir_pagina(config: Configuracion):
     from agente.adaptadores.whatsapp_web import PaginaWhatsApp
 
     estado: dict[str, object] = {}
+    # ⚠️ Una apertura a la vez. La vigía de sesión arranca su primera revisión
+    # a la vez que el bucle puede estar tomando un job: dos
+    # `launch_persistent_context` simultáneos sobre la MISMA carpeta de perfil
+    # chocan contra el lock de Chromium y el segundo muere. El lock no modifica
+    # nada de la apertura — sólo impide la carrera.
+    candado = asyncio.Lock()
 
     async def abrir():
-        if "playwright" not in estado:
-            estado["playwright"] = await async_playwright().start()
+        async with candado:
+            if "playwright" not in estado:
+                estado["playwright"] = await async_playwright().start()
 
-        pagina = estado.get("pagina")
-        if pagina is None or pagina.is_closed():
-            pagina = await conexion.conectar_perfil(
-                estado["playwright"],
-                carpeta=conexion.carpeta_dedicada(config.navegador_dir),
-                chrome_bin=config.chrome_bin,
-            )
-            estado["pagina"] = pagina
-        return PaginaWhatsApp(pagina)
+            pagina = estado.get("pagina")
+            if pagina is None or pagina.is_closed():
+                # La cascada D: el perfil de siempre, y si no pudo, esperar y
+                # reintentar (el lock de perfil) o el canal "chrome" del sistema.
+                pagina = await conexion.conectar_con_alternativas(
+                    estado["playwright"],
+                    carpeta=conexion.carpeta_dedicada(config.navegador_dir),
+                    chrome_bin=config.chrome_bin,
+                )
+                estado["pagina"] = pagina
+            return PaginaWhatsApp(pagina)
 
     return abrir
 

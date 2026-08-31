@@ -27,6 +27,7 @@ from typing import Any
 
 from bson import ObjectId
 from pymongo import ASCENDING, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.logging import obtener_logger
 
@@ -199,7 +200,30 @@ async def encolar(
         "tomado_en": None,
         "terminado_en": None,
     }
-    resultado = await base["jobs"].insert_one(documento)
+    try:
+        resultado = await base["jobs"].insert_one(documento)
+    except DuplicateKeyError:
+        # G4: ya hay un ENVIAR vivo para este mensaje — la carrera entre el
+        # encadenado automático y el botón del panel, que el índice único
+        # parcial convierte en un no-op. Se devuelve el job que ganó: para el
+        # llamador es lo mismo, el mensaje tiene su envío en la cola.
+        vivo = await base["jobs"].find_one(
+            {
+                "tipo": str(tipo),
+                "payload.mensaje_id": (payload or {}).get("mensaje_id"),
+                "terminado_en": None,
+            }
+        )
+        log.warning(
+            "envio_duplicado_evitado",
+            mensaje=(payload or {}).get("mensaje_id"),
+            job_vivo=str(vivo["_id"]) if vivo else None,
+        )
+        if vivo is None:
+            #  El que ganó terminó en el medio: reintentar una vez alcanza.
+            resultado = await base["jobs"].insert_one(documento)
+            return resultado.inserted_id
+        return vivo["_id"]
     return resultado.inserted_id
 
 

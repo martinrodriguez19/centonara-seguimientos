@@ -64,6 +64,27 @@ def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+async def mensaje_en_espera(base, *, texto: str = "hola") -> ObjectId:
+    """Un mensaje real, listo para que su ENVIAR se entregue.
+
+    Desde G3 un `ENVIAR` sólo se entrega si su mensaje existe y está EN_ESPERA:
+    un `mensaje_id` inventado ya no alcanza para probar la entrega.
+    """
+    from app.core import mensajes
+    from app.core.estados import Estado
+
+    mensaje_id = await mensajes.crear_borrador(
+        base,
+        corrida_id=ObjectId(),
+        maquina="mac-rocio",
+        contacto_id="+5491123231151",
+        contacto_nombre="Corralón",
+        texto=texto,
+    )
+    await mensajes.mover(base, mensaje_id, Estado.EN_ESPERA)
+    return mensaje_id
+
+
 # ---------------------------------------------------------------------------
 # Autenticación
 # ---------------------------------------------------------------------------
@@ -325,7 +346,7 @@ async def test_el_enviar_entregado_trae_los_destinos_vigentes(
         tipo=cola.Tipo.ENVIAR,
         maquina="mac-rocio",
         payload={
-            "mensaje_id": str(ObjectId()),
+            "mensaje_id": str(await mensaje_en_espera(base)),
             "contacto_id": "+5491123231151",
             "contacto_nombre": "Corralón",
             "texto": "hola",
@@ -404,7 +425,7 @@ async def test_lo_vigente_se_lee_al_entregar_y_no_al_encolar(cliente, base, maqu
         tipo=cola.Tipo.ENVIAR,
         maquina="mac-rocio",
         payload={
-            "mensaje_id": str(ObjectId()),
+            "mensaje_id": str(await mensaje_en_espera(base)),
             "contacto_id": "+5491123231151",
             "contacto_nombre": "Corralón",
             "texto": "hola",

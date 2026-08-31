@@ -7,14 +7,17 @@ verdad. **No prueba que WhatsApp Web se vea así hoy**: eso sólo se sabe corrie
 `--verificar-selectores` contra una sesión real, que es lo que respalda la fecha
 de `selectores.VERIFICADO`. Cuando esa pasada encuentra un cambio, esta página
 se actualiza para imitar la estructura nueva — pasó con el buscador, que dejó
-de ser un `contenteditable`.
+de ser un `contenteditable`, y con el subtítulo del grupo, que perdió el
+atributo `title` (por eso acá los participantes van en el TEXTO).
 
 Que la distinción esté clara importa: alguien podría mirar estos tests en verde y
 concluir que el envío funciona. Lo que funciona es la lógica.
 
 La página imita lo mínimo para que la secuencia de doce pasos tenga sentido:
 buscar filtra, hacer click abre, el campo acepta texto, y enviar agrega el
-mensaje al hilo.
+mensaje al hilo. Y desde las cascadas, también los escenarios que las disparan:
+la barra de filtros de Business (`con_filtro_de_etiqueta`), el teléfono que no
+está en el span esperado (`telefono_fuera_del_span`) y la apertura por teclado.
 """
 
 from __future__ import annotations
@@ -36,6 +39,9 @@ class ChatFalso:
     #  Lo que el vendedor dejó escrito sin mandar.
     borrador: str = ""
     salientes: list[str] = field(default_factory=list)
+    #  El teléfono está en el drawer pero NO en el span que el selector espera
+    #  (el escenario del escalón B3: barrer el texto del panel entero).
+    telefono_fuera_del_span: bool = False
 
 
 def html(
@@ -43,8 +49,14 @@ def html(
     *,
     con_sesion: bool = True,
     sin_campo_de_texto: bool = False,
+    con_filtro_de_etiqueta: bool = False,
 ) -> str:
-    """La página. `sin_campo_de_texto` simula que WhatsApp cambió el DOM."""
+    """La página. `sin_campo_de_texto` simula que WhatsApp cambió el DOM.
+
+    `con_filtro_de_etiqueta` simula WhatsApp Business con una etiqueta activa:
+    la búsqueda no devuelve NADA hasta que se clickea el botón «Todos» — el
+    escenario del escalón A4 y de la máquina que más avanzó el 28/08.
+    """
     datos = json.dumps(
         [
             {
@@ -54,6 +66,7 @@ def html(
                 "grupo": c.es_grupo,
                 "borrador": c.borrador,
                 "salientes": c.salientes,
+                "fueraDelSpan": c.telefono_fuera_del_span,
             }
             for c in chats
         ]
@@ -67,13 +80,21 @@ def html(
     campo = (
         "" if sin_campo_de_texto else '<div contenteditable="true" data-tab="10" id="campo"></div>'
     )
+    filtros = (
+        '<div id="filtros"><button id="all-filter">Todos</button>'
+        '<button id="label_item_1">Clientes</button></div>'
+        if con_filtro_de_etiqueta
+        else ""
+    )
 
     return f"""<!doctype html>
 <html><body>
   <!-- El panel lateral, como lo mostró la radiografía del 25/8/2026: el
        buscador es un <input> común (ya no un contenteditable), con el
-       data-tab="3" de siempre, arriba de la lista. -->
+       data-tab="3" de siempre, arriba de la lista. La barra de filtros sólo
+       existe en la variante Business (radiografía del 28/08). -->
   <div id="side">
+    {filtros}
     <input type="text" role="textbox" data-tab="3" id="buscador">
     <div id="pane-side">
       <div id="resultados"></div>
@@ -85,7 +106,7 @@ def html(
     <header data-testid="conversation-header">
       <span dir="auto" title="" id="titulo"
             data-testid="conversation-info-header-chat-title"></span>
-      <div role="button"><span id="subtitulo" title=""></span></div>
+      <div role="button"><span dir="auto" id="subtitulo"></span></div>
     </header>
     <div id="hilo"></div>
     <footer>
@@ -97,11 +118,15 @@ def html(
   <!-- El panel de datos del contacto, que se abre al clickear el título. -->
   <div data-testid="chat-info-drawer" id="panel" style="display:none">
     <span dir="auto" id="panel-telefono"></span>
+    <div id="panel-notas"></div>
   </div>
 
 <script>
 const CHATS = {datos};
 let abierto = null;
+// Con una etiqueta activa, la búsqueda queda acotada a ese subconjunto — acá,
+// al conjunto vacío, que es el peor caso y el que reproduce el 28/08.
+let filtroActivo = {json.dumps(con_filtro_de_etiqueta)};
 
 const $ = (id) => document.getElementById(id);
 
@@ -110,7 +135,7 @@ $('buscador').addEventListener('input', () => {{
   const q = ($('buscador').value || '').trim().toLowerCase();
   const cont = $('resultados');
   cont.innerHTML = '';
-  if (!q) return;
+  if (!q || filtroActivo) return;
   // La primera fila es un título de sección que no abre nada, como en la
   // aplicación real: la grilla mete "Chats" / "Contactos" antes de los
   // resultados, y clickearla no hace nada. El adaptador tiene que saltearla.
@@ -128,19 +153,36 @@ $('buscador').addEventListener('input', () => {{
   }});
 }});
 
+// Abrir con el teclado: Enter abre el primer resultado real, como WhatsApp.
+$('buscador').addEventListener('keydown', (e) => {{
+  if (e.key !== 'Enter') return;
+  const filas = Array.from(document.querySelectorAll('#resultados [role=listitem]'));
+  const primera = filas.find(f => f.onclick);
+  if (primera) primera.onclick();
+}});
+
+// El botón «Todos» de Business: saca la etiqueta y re-filtra.
+const todos = $('all-filter');
+if (todos) todos.addEventListener('click', () => {{
+  filtroActivo = false;
+  $('buscador').dispatchEvent(new Event('input'));
+}});
+
 function abrir(c) {{
   abierto = c;
   $('main').style.display = 'block';
   $('titulo').setAttribute('title', c.header);
   $('titulo').textContent = c.header;
 
-  // Un grupo se reconoce por el subtítulo con los participantes: la marca que
-  // busca el selector es la coma en el `title`.
-  $('subtitulo').setAttribute('title', c.grupo ? 'Vos, Juan, Marta' : '');
+  // Un grupo se reconoce por el subtítulo con los participantes. El `title`
+  // del span murió (radiografía del 25/08): los nombres van en el TEXTO.
+  $('subtitulo').textContent = c.grupo ? 'Vos, Juan, Marta' : 'en línea';
 
   if ($('campo')) $('campo').innerText = c.borrador || '';
   $('panel').style.display = 'none';
-  $('panel-telefono').textContent = c.telefono || '';
+  // B3: a veces el teléfono está en el drawer pero no en el span esperado.
+  $('panel-telefono').textContent = c.fueraDelSpan ? '' : (c.telefono || '');
+  $('panel-notas').textContent = c.fueraDelSpan ? ('Teléfono: ' + (c.telefono || '')) : '';
 
   const hilo = $('hilo');
   hilo.innerHTML = '';

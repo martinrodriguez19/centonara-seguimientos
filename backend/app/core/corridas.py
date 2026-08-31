@@ -706,13 +706,29 @@ async def revisar_canario(
         .sort("disponible_desde", 1)
         .to_list(None)
     )
-    primeros = jobs[: cola.CANARIO]
+    # Un job CANCELADO no dice nada del sistema: es una persona vetando un
+    # mensaje, o un mensaje que venció antes de entregarse (G3). Contarlo como
+    # fallo frenaría una máquina sana por una decisión del panel.
+    evaluables = [j for j in jobs if j.get("codigo") != str(cola.Codigo.CANCELADO)]
+    primeros = evaluables[: cola.CANARIO]
 
     if len(primeros) < cola.CANARIO:
         return False
     if any(j["estado"] not in (cola.EstadoJob.LISTO, cola.EstadoJob.FALLIDO) for j in primeros):
         return False
     if any(j["estado"] == cola.EstadoJob.LISTO for j in primeros):
+        return False
+
+    # G1 — el piso de reanudación. Si los tres evaluados terminaron ANTES del
+    # último `soltar_freno` de esta máquina, ya se miraron: son exactamente los
+    # fallos por los que alguien apretó reanudar. Volver a frenar por ellos es
+    # el loop freno→soltar→freno para siempre — ocurre incluso con los
+    # selectores arreglados, porque los jobs viejos no cambian.
+    vendedor = await base["vendedores"].find_one({"maquina": maquina})
+    piso = (vendedor or {}).get("freno_soltado_en")
+    if piso is not None and all(
+        j.get("terminado_en") is not None and j["terminado_en"] < piso for j in primeros
+    ):
         return False
 
     # Los tres de esta máquina terminaron y ninguno salió bien.

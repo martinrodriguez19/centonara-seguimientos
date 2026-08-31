@@ -1,7 +1,10 @@
 """Lo que el motor de envío necesita de un navegador. Nada más.
 
-Ocho operaciones. Playwright las implementa contra WhatsApp Web real, y una
-página falsa las implementa en memoria para los tests.
+Playwright implementa estas operaciones contra WhatsApp Web real, y una página
+falsa las implementa en memoria para los tests. Desde el plan de cascadas, la
+apertura del chat son varios escalones (`buscar_*`, `abrir_por_url`): el motor
+los prueba en orden y el primero que abre gana — ninguno exime de la
+comparación de identidad ni del chequeo de campo vacío.
 
 **Por qué existe esta costura.** No es una abstracción por si algún día
 cambiamos de canal — eso sería inventar trabajo. Es porque el paso más
@@ -64,7 +67,46 @@ class Pagina(Protocol):
         ...
 
     async def buscar_contacto(self, identificador: str) -> bool:
-        """Busca y abre el chat. `False` si no aparece ninguno."""
+        """Busca y abre el chat. `False` si no aparece ninguno.
+
+        Es el primer escalón de la cascada de apertura: los de abajo corren
+        sólo cuando éste (y los anteriores en la lista) devolvieron `False`.
+        Ningún escalón exime de lo que sigue después de abrir — la comparación
+        de identidad por número y el campo vacío corren igual para todos.
+        """
+        ...
+
+    async def buscar_verificado(self, termino: str, numero: str | None = None) -> bool:
+        """A3: sólo clickea filas cuyo texto CONTENGA lo buscado.
+
+        Dígito a dígito cuando lo buscado es un número. Si ninguna fila lo
+        contiene, `False` — «no está», nunca un click a ciegas. En `RESOLVER`
+        no es un escalón opcional sino la regla: ahí no existe la comparación
+        de identidad que protege a `ENVIAR`, y un número mal resuelto queda
+        guardado como el del contacto.
+        """
+        ...
+
+    async def buscar_limpiando_filtros(self, termino: str) -> bool:
+        """A4: en WhatsApp Business, volver el filtro a «Todos» y rebuscar."""
+        ...
+
+    async def buscar_tipeando_distinto(self, termino: str) -> bool:
+        """A5: otra forma de escribir el término, para cuando el texto entra
+        al buscador pero no dispara el filtrado."""
+        ...
+
+    async def buscar_con_teclado(self, termino: str) -> bool:
+        """A6: abrir el primer resultado con el teclado, sin selector de lista."""
+        ...
+
+    async def buscar_con_otra_ancla(self, termino: str) -> bool:
+        """A7: las filas por anclas alternativas, logueando cuál devolvió."""
+        ...
+
+    async def abrir_por_url(self, numero: str) -> bool:
+        """A8: el chat por URL directa, sin buscador. Recarga la página, y con
+        un número sin WhatsApp detecta el cartel de error y devuelve `False`."""
         ...
 
     async def leer_header(self) -> str | None:

@@ -192,8 +192,21 @@ async def proximo_job(maquina: Maquina):
     # va a escribir a una persona. Es el único momento del sistema en que
     # corresponde marcar el mensaje como ENVIANDO — y por eso está pegado a la
     # entrega y no en otro lado.
-    if job is not None and job["tipo"] == cola.Tipo.ENVIAR:
-        await _marcar_enviando(base, job)
+    #
+    # G3: si el mensaje YA NO está en espera —alguien lo vetó desde el panel, o
+    # venció— el job no se entrega: se cierra como CANCELADO y el agente recibe
+    # un 204. Entregarlo igual dejaba que un mensaje vetado se escribiera lo
+    # mismo, contradiciendo el propio docstring de `_marcar_enviando`.
+    es_enviar = job is not None and job["tipo"] == cola.Tipo.ENVIAR
+    if es_enviar and not await _marcar_enviando(base, job):
+        await cola.reportar(
+            base,
+            job["_id"],
+            ok=False,
+            codigo=cola.Codigo.CANCELADO,
+            detalle={"motivo": "el mensaje ya no estaba en espera al entregar el job"},
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     if job is None:
         # Un `Response` crudo y no `None`: con `response_model` puesto, FastAPI
@@ -387,13 +400,12 @@ async def _encolar_desde_resolver(base, job: dict[str, Any], cuerpo: ResultadoJo
     )
 
 
-async def _marcar_enviando(base, job: dict[str, Any]) -> None:
+async def _marcar_enviando(base, job: dict[str, Any]) -> bool:
     """El agente tomó el envío. Si el mensaje ya no está listo, no se manda.
 
     Puede pasar: entre que se encoló y que el agente lo tomó, alguien lo vetó
-    desde el panel o venció. El job se descarta en silencio y el agente recibe
-    un payload que no va a usar — es preferible a mandar algo que una persona
-    decidió frenar.
+    desde el panel o venció. Devuelve `False` y el llamador descarta el job —
+    el agente recibe un 204 en vez de un payload que no debía usar (G3).
     """
     from bson import ObjectId
 
@@ -401,12 +413,15 @@ async def _marcar_enviando(base, job: dict[str, Any]) -> None:
 
     mensaje_id = job["payload"].get("mensaje_id")
     if not mensaje_id:
-        return
+        #  Un ENVIAR sin mensaje asociado no tiene estado que custodiar.
+        return True
 
     try:
         await mensajes.mover(base, ObjectId(mensaje_id), Estado.ENVIANDO)
     except (TransicionInvalida, mensajes.CarreraDeEstados, mensajes.MensajeDesconocido) as error:
         log.warning("envio_ya_no_corresponde", job=str(job["_id"]), motivo=str(error))
+        return False
+    return True
 
 
 async def _resolver_mensaje(base, job, cuerpo: ResultadoJob, reporte, maquina: str) -> None:

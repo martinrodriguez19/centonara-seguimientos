@@ -40,6 +40,7 @@ eso no contamina la parte que sí se puede terminar.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from agente.adaptadores import selectores
 from agente.adaptadores.pagina import ErrorDeSelector, PaginaNoCargo
@@ -154,24 +155,48 @@ class PaginaWhatsApp:
         reporte distinga "la búsqueda no trajo resultados" de "hubo filas pero
         ninguna abrió el chat que decía ser" — antes los dos eran el mismo
         `CHAT_NO_ABRE` genérico y diagnosticarlo exigía ir a los logs de la Mac.
+
+        Es el **primer escalón** de la cascada de apertura: los demás
+        (`buscar_verificado`, `buscar_limpiando_filtros`, ...) reusan estas
+        mismas piezas y corren sólo cuando éste devolvió `False`.
         """
         self.motivo_no_abrio: str | None = None
-        buscador = await self._exigir(selectores.BUSCADOR)
+        await self._tipear_en_buscador(identificador)
 
-        #  Se limpia antes de escribir: si quedó una búsqueda anterior, los
-        #  resultados serían de otro contacto y se abriría el chat equivocado.
+        if not await self._esperar_filtrado(identificador):
+            log.info("contacto_sin_resultados", identificador=identificador)
+            self.motivo_no_abrio = "sin_resultados"
+            return False
+
+        filas = self._page.locator(selectores.RESULTADO_DE_BUSQUEDA.css)
+        return await self._abrir_desde_filas(filas)
+
+    async def _tipear_en_buscador(self, identificador: str) -> None:
+        """Limpia el buscador y tipea el término, tecla por tecla.
+
+        Se limpia antes de escribir: si quedó una búsqueda anterior, los
+        resultados serían de otro contacto y se abriría el chat equivocado.
+        """
+        #  Y se limpia también lo leído de la fila anterior (B5): un valor viejo
+        #  acá sería un número de OTRO contacto esperando a que alguien lo lea.
+        self.numero_de_la_fila: str | None = None
+        buscador = await self._exigir(selectores.BUSCADOR)
         await buscador.click(timeout=self._espera)
         await self._page.keyboard.press(SELECCIONAR_TODO)
         await self._page.keyboard.press("Delete")
         await buscador.press_sequentially(identificador, delay=20)
 
-        # ⚠️ El selector de resultados matchea el MISMO contenedor que la lista
-        # de chats de siempre: un "apareció una fila" se satisface al instante
-        # con las filas viejas, antes de que WhatsApp filtre — y el loop de abajo
-        # clickeaba chats que no tenían nada que ver con lo buscado. La señal de
-        # que la búsqueda terminó es una fila que DIGA lo buscado; y si ninguna
-        # lo dice (buscar por número muestra el nombre agendado), que la lista
-        # haya dejado de cambiar por un momento.
+    async def _esperar_filtrado(self, identificador: str) -> bool:
+        """¿La lista terminó de filtrarse? `False` si no dio señales a tiempo.
+
+        ⚠️ El selector de resultados matchea el MISMO contenedor que la lista
+        de chats de siempre: un "apareció una fila" se satisface al instante
+        con las filas viejas, antes de que WhatsApp filtre — y el loop de
+        apertura clickeaba chats que no tenían nada que ver con lo buscado. La
+        señal de que la búsqueda terminó es una fila que DIGA lo buscado; y si
+        ninguna lo dice (buscar por número muestra el nombre agendado), que la
+        lista haya dejado de cambiar por un momento.
+        """
         await self._page.evaluate("() => { window.__resultados_de_busqueda = undefined; }")
         try:
             await self._page.wait_for_function(
@@ -200,31 +225,40 @@ class PaginaWhatsApp:
                 timeout=ESPERA_BUSQUEDA_MS,
             )
         except Exception:
-            log.info("contacto_sin_resultados", identificador=identificador)
-            self.motivo_no_abrio = "sin_resultados"
             return False
+        return True
 
-        # ⚠️ Locators y no handles, y cada fila protegida. WhatsApp redibuja la
-        # lista de resultados mientras se la mira: un handle agarrado hace medio
-        # segundo puede estar "not attached to the DOM" al clickearlo — mató al
-        # primer RESOLVER real, en el segundo contacto del lote. El locator se
-        # re-resuelve en el momento del click, y si la fila igual desapareció,
-        # se prueba la siguiente en vez de reventar el job entero.
-        filas = self._page.locator(selectores.RESULTADO_DE_BUSQUEDA.css)
+    async def _abrir_desde_filas(self, filas, *, exigir_que_contenga: str | None = None) -> bool:
+        """Clickea filas hasta que una abra su chat. `False` si ninguna.
+
+        ⚠️ Locators y no handles, y cada fila protegida. WhatsApp redibuja la
+        lista de resultados mientras se la mira: un handle agarrado hace medio
+        segundo puede estar "not attached to the DOM" al clickearlo — mató al
+        primer RESOLVER real, en el segundo contacto del lote. El locator se
+        re-resuelve en el momento del click, y si la fila igual desapareció,
+        se prueba la siguiente en vez de reventar el job entero.
+
+        ⚠️ La primera fila no siempre es un chat: la lista nueva es una grilla
+        y las primeras filas pueden ser títulos de sección ("Chats",
+        "Contactos") que no abren nada — pasó en la primera verificación real.
+
+        Y "apareció un encabezado" no alcanza como señal de que abrió: en el
+        segundo mensaje de una corrida ya hay un chat abierto de antes, y su
+        encabezado viejo haría pasar por buena a una fila muerta. La señal es
+        que el encabezado visible DIGA lo que decía la fila clickeada. Cuál
+        chat es, lo sigue decidiendo la comparación de identidad (R1).
+
+        `exigir_que_contenga` es el escalón A3: la fila tiene que CONTENER lo
+        buscado —dígito a dígito si lo buscado es un número, que formateado con
+        espacios y guiones hoy nunca matchea— o no se la clickea. Sin filas que
+        lo contengan, la respuesta es "no está", no un click a ciegas.
+        """
         cantidad = min(await filas.count(), 6)
         if cantidad == 0:
             self.motivo_no_abrio = "sin_resultados"
             return False
 
-        # ⚠️ La primera fila no siempre es un chat: la lista nueva es una grilla
-        # y las primeras filas pueden ser títulos de sección ("Chats",
-        # "Contactos") que no abren nada — pasó en la primera verificación real.
-        #
-        # Y "apareció un encabezado" no alcanza como señal de que abrió: en el
-        # segundo mensaje de una corrida ya hay un chat abierto de antes, y su
-        # encabezado viejo haría pasar por buena a una fila muerta. La señal es
-        # que el encabezado visible DIGA lo que decía la fila clickeada. Cuál
-        # chat es, lo sigue decidiendo la comparación de identidad (R1).
+        alguna_verificada = False
         for i in range(cantidad):
             fila = filas.nth(i)
             #  La primera candidata espera más (S2.5): con red lenta, 3 s para
@@ -236,6 +270,15 @@ class PaginaWhatsApp:
                 texto_fila = ((await fila.inner_text(timeout=espera_fila)) or "").strip()
                 if not texto_fila:
                     continue
+                if exigir_que_contenga is not None:
+                    if not _contiene_lo_buscado(texto_fila, exigir_que_contenga):
+                        continue
+                    alguna_verificada = True
+                #  B5: varias versiones llevan el identificador del contacto en
+                #  un atributo de la fila. Se lee ANTES de clickear —después la
+                #  fila puede no existir— y `resolver_numero` lo usa de último
+                #  escalón. Que falte es lo normal; no decide nada acá.
+                self.numero_de_la_fila = await self._numero_del_atributo(fila)
                 await fila.click(timeout=espera_fila)
             except Exception:
                 #  La fila se redibujó o desapareció entre leerla y clickearla.
@@ -260,9 +303,185 @@ class PaginaWhatsApp:
         # el motor lo reporta como CHAT_NO_ABRE y no escribe nada. Si lo que en
         # verdad pasa es que el DOM cambió, los selectores del chat abierto lo
         # van a decir con nombre propio en la próxima corrida que sí abra.
-        log.info("resultados_sin_chat", filas=cantidad)
-        self.motivo_no_abrio = "resultados_sin_chat"
+        if exigir_que_contenga is not None and not alguna_verificada:
+            log.info("ninguna_fila_contiene_lo_buscado", filas=cantidad)
+            self.motivo_no_abrio = "ninguna_fila_contiene_lo_buscado"
+        else:
+            log.info("resultados_sin_chat", filas=cantidad)
+            self.motivo_no_abrio = "resultados_sin_chat"
         return False
+
+    async def _numero_del_atributo(self, fila) -> str | None:
+        """El identificador `...@c.us` que algunas versiones ponen en la fila."""
+        try:
+            data_id = await fila.get_attribute("data-id", timeout=500)
+            if not data_id:
+                hijo = fila.locator(selectores.ATRIBUTO_DE_ID_EN_LA_FILA.css).first
+                if await hijo.count():
+                    data_id = await hijo.get_attribute("data-id", timeout=500)
+        except Exception:
+            return None
+        encontrado = _ID_DE_CHAT.search(data_id or "")
+        return f"+{encontrado.group(1)}" if encontrado else None
+
+    # -- Los escalones alternativos de apertura (cascada A) -------------------
+    #
+    # Corren sólo cuando `buscar_contacto` devolvió `False`, en el orden que
+    # arma `jobs/enviar.py`. Ninguno saltea lo que sigue después de abrir: la
+    # comparación de identidad por número y el campo vacío corren igual, para
+    # cualquier escalón. Abrir el chat nunca fue la garantía — la garantía es
+    # el paso 6 del motor.
+
+    async def buscar_verificado(self, termino: str, numero: str | None = None) -> bool:
+        """A3: igual que buscar, pero sólo clickea filas que CONTENGAN lo buscado.
+
+        Con `numero`, una fila también vale si sus dígitos contienen los del
+        número (la fila muestra `+54 9 11 4440-5036` y se busca
+        `+5491144405036`; comparar el texto crudo no matchea nunca).
+        Si ninguna fila contiene nada de eso, devuelve «no está» en vez de
+        clickear a ciegas: es el escalón que cierra el riesgo de abrir el chat
+        equivocado.
+        """
+        self.motivo_no_abrio = None
+        await self._tipear_en_buscador(termino)
+        #  Que la espera venza no corta: la exigencia de contención de abajo ya
+        #  protege contra clickear la lista sin filtrar.
+        await self._esperar_filtrado(termino)
+
+        filas = self._page.locator(selectores.RESULTADO_DE_BUSQUEDA.css)
+        if await self._abrir_desde_filas(filas, exigir_que_contenga=termino):
+            return True
+        if numero and numero != termino:
+            return await self._abrir_desde_filas(filas, exigir_que_contenga=numero)
+        return False
+
+    async def buscar_limpiando_filtros(self, termino: str) -> bool:
+        """A4: WhatsApp **Business** con un filtro o etiqueta activos.
+
+        La radiografía del 28/08 mostró `all-filter`, `additional-filters` y
+        catorce `label_item_*`: con un filtro puesto, la búsqueda queda acotada
+        a ese subconjunto y el contacto no aparece. Se clickea «Todos» y se
+        reintenta la búsqueda de siempre. En el WhatsApp común el botón no
+        existe y este escalón dice «no pude» sin tocar nada.
+        """
+        boton = self._page.locator(selectores.FILTRO_TODOS.css).first
+        try:
+            if await boton.count() == 0:
+                log.info("sin_barra_de_filtros")
+                return False
+            await boton.click(timeout=ESPERA_CORTA_MS)
+        except Exception:
+            log.info("filtro_todos_no_clickeable")
+            return False
+        return await self.buscar_contacto(termino)
+
+    async def buscar_tipeando_distinto(self, termino: str) -> bool:
+        """A5: el texto entra al buscador pero no dispara el filtrado.
+
+        Es exactamente el síntoma de la radiografía del 28/08: el `value` del
+        campo era correcto y la lista no se movía. En vez de
+        `press_sequentially`, `fill()` seguido de un `input`/`keyup`
+        despachados a mano — otra vía para que la aplicación se entere de que
+        el campo cambió.
+        """
+        self.motivo_no_abrio = None
+        self.numero_de_la_fila = None
+        buscador = await self._exigir(selectores.BUSCADOR)
+        await buscador.click(timeout=self._espera)
+        await self._page.keyboard.press(SELECCIONAR_TODO)
+        await self._page.keyboard.press("Delete")
+        try:
+            await buscador.fill(termino, timeout=ESPERA_CORTA_MS)
+        except Exception:
+            #  Un contenteditable puede rechazar fill(): se escribe por teclado
+            #  y quedan igual los eventos despachados a mano, que son el punto.
+            await buscador.press_sequentially(termino, delay=20)
+        await buscador.evaluate(
+            """(el) => {
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+            }"""
+        )
+
+        if not await self._esperar_filtrado(termino):
+            self.motivo_no_abrio = "sin_resultados"
+            return False
+        filas = self._page.locator(selectores.RESULTADO_DE_BUSQUEDA.css)
+        return await self._abrir_desde_filas(filas)
+
+    async def buscar_con_teclado(self, termino: str) -> bool:
+        """A6: abrir el primer resultado con ArrowDown + Enter.
+
+        No depende ni del selector de la lista ni del click: si el ancla de los
+        resultados es el problema, esto lo esquiva por completo. Qué chat abrió
+        lo decide después la comparación de identidad, como siempre.
+        """
+        self.motivo_no_abrio = None
+        await self._tipear_en_buscador(termino)
+        await self._esperar_filtrado(termino)
+        await self._page.keyboard.press("ArrowDown")
+        await self._page.keyboard.press("Enter")
+        try:
+            await self._page.wait_for_selector(
+                selectores.HEADER.css, timeout=ESPERA_BUSQUEDA_MS, state="visible"
+            )
+        except Exception:
+            self.motivo_no_abrio = "teclado_no_abrio"
+            return False
+        return True
+
+    async def buscar_con_otra_ancla(self, termino: str) -> bool:
+        """A7: las filas por sus anclas alternativas.
+
+        Cubre la hipótesis «el selector de resultados apunta a la lista general
+        en vez de a los resultados». Loguea cuántas filas devolvió cada ancla —
+        ese dato solo ya cierra la pregunta abierta del diagnóstico del 28/08.
+        """
+        self.motivo_no_abrio = None
+        await self._tipear_en_buscador(termino)
+        await self._esperar_filtrado(termino)
+
+        conteos = await selectores.sondear(self._page, selectores.RESULTADOS_ALTERNATIVOS)
+        log.info("anclas_alternativas_sondeadas", conteos=conteos)
+
+        filas = self._page.locator(selectores.RESULTADOS_ALTERNATIVOS.css)
+        return await self._abrir_desde_filas(filas)
+
+    async def abrir_por_url(self, numero: str) -> bool:
+        """A8: la URL `send?phone=`, sin buscador y sin lista.
+
+        El escalón más robusto y el más caro: recarga la página (lento) y con
+        un número que no está en WhatsApp muestra un cartel de error que hay
+        que detectar antes de dar el chat por abierto. `jobs/enviar.py` lo
+        habilita recién en la segunda pasada del contacto.
+        """
+        self.motivo_no_abrio = None
+        self.numero_de_la_fila = None
+        digitos = "".join(c for c in numero if c.isdigit())
+        if not digitos:
+            self.motivo_no_abrio = "sin_numero_para_url"
+            return False
+
+        await self._page.goto(
+            selectores.URL_ENVIAR_POR_NUMERO.format(numero=digitos),
+            wait_until="domcontentloaded",
+        )
+        combinado = f"{selectores.HEADER.css}, {selectores.AVISO_DE_URL_INVALIDA.css}"
+        try:
+            await self._page.wait_for_selector(combinado, timeout=self._espera, state="visible")
+        except Exception:
+            self.motivo_no_abrio = "url_no_abrio"
+            return False
+
+        aviso = await self._page.query_selector(selectores.AVISO_DE_URL_INVALIDA.css)
+        if aviso is not None:
+            #  «El número no está en WhatsApp» (u otro diálogo). Se cierra y se
+            #  reporta que no: dar esto por abierto sería escribir en el vacío.
+            log.info("url_directa_con_aviso", numero_digitos=len(digitos))
+            await self._page.keyboard.press("Escape")
+            self.motivo_no_abrio = "numero_sin_whatsapp"
+            return False
+        return True
 
     # -- Leer quién es --------------------------------------------------------
 
@@ -287,36 +506,41 @@ class PaginaWhatsApp:
     async def resolver_numero(self) -> str | None:
         """El teléfono del chat abierto, o `None`.
 
-        Dos caminos, en orden:
+        En cascada (B), de más barato a más caro:
 
-        1. El header ya muestra un número — pasa cuando el contacto no está
-           agendado.
-        2. Hay que abrir el panel del contacto y leerlo de ahí.
+        B1. El header ya muestra un número — el contacto no está agendado.
+        B2. Abrir el panel del contacto y leer el span con forma de teléfono.
+        B3. Si el span no matchea, barrer el TEXTO entero del panel con la
+            expresión de teléfono y quedarse con el ÚNICO candidato — con más
+            de uno, `None`, igual que hoy: falla cerrado.
+        B4. Si el panel no abre por el título, el botón de info del header.
+        B5. El identificador que la fila clickeada llevaba en su atributo — la
+            lectura más barata cuando está, y no abre ningún panel.
+
+        `ultimo_escalon_numero` queda cargado con el que resolvió, para que el
+        reporte lo lleve a Mongo.
 
         ⚠️ Si ninguno da un número reconocible, devuelve `None` y no intenta
         deducirlo del nombre ni de la búsqueda. Lo que sigue es la comparación
         de identidad (R1): un número aproximado acá es un mensaje a otra
         persona.
         """
+        self.ultimo_escalon_numero: str | None = None
+
+        # ---- B1: el header -------------------------------------------------
         header = await self.leer_header()
         if header and (numero := _numero_en(header)):
+            self.ultimo_escalon_numero = "B1_header"
             return numero
 
         #  Abrir el panel es la única forma de ver el teléfono de un contacto
         #  agendado. Es de sólo lectura: no toca la conversación.
-        try:
-            titulo = self._page.locator(selectores.TITULO_DEL_HEADER.css).first
-            if await titulo.count() == 0:
-                return None
-            await titulo.click(timeout=ESPERA_CORTA_MS)
-            await self._page.wait_for_selector(
-                selectores.PANEL_DE_CONTACTO.css, timeout=ESPERA_CORTA_MS
-            )
-        except Exception:
-            log.info("panel_de_contacto_no_abrio")
-            return None
+        abierto = await self._abrir_panel_de_contacto()
+        if not abierto:
+            return await self._numero_de_la_fila_clickeada()
 
         try:
+            # ---- B2: el span con forma de teléfono -------------------------
             telefonos = self._page.locator(selectores.TELEFONO_EN_EL_PANEL.css)
             for i in range(min(await telefonos.count(), 40)):
                 try:
@@ -325,8 +549,19 @@ class PaginaWhatsApp:
                     #  Ese span se redibujó: se sigue con el próximo.
                     continue
                 if numero := _numero_en(texto):
+                    self.ultimo_escalon_numero = "B2_span_del_panel"
                     return numero
-            return None
+
+            # ---- B3: el barrido del drawer entero --------------------------
+            #
+            # El selector del span no matcheó nada con forma de teléfono. Antes
+            # de rendirse, todo el texto del panel: si hay UN candidato, es. Con
+            # más de uno hay ambigüedad sobre a quién le escribiríamos, y la
+            # respuesta correcta es no saber (R2).
+            if numero := await self._numero_en_todo_el_panel():
+                self.ultimo_escalon_numero = "B3_barrido_del_panel"
+                return numero
+            return await self._numero_de_la_fila_clickeada()
         finally:
             # ⚠️ El panel abierto TAPA el campo de texto y se come los clicks:
             # sin esto, el `escribir()` siguiente muere esperando un click que
@@ -334,9 +569,82 @@ class PaginaWhatsApp:
             # Playwright reintentando 30 segundos contra el drawer.
             await self._page.keyboard.press("Escape")
 
+    async def _abrir_panel_de_contacto(self) -> bool:
+        """El drawer del contacto: por el título (hoy) o el botón de info (B4)."""
+        try:
+            titulo = self._page.locator(selectores.TITULO_DEL_HEADER.css).first
+            if await titulo.count():
+                await titulo.click(timeout=ESPERA_CORTA_MS)
+                await self._page.wait_for_selector(
+                    selectores.PANEL_DE_CONTACTO.css, timeout=ESPERA_CORTA_MS
+                )
+                return True
+        except Exception:
+            pass
+
+        # B4: el click sobre el nombre depende de un `data-testid` que puede
+        # haber cambiado; el header entero como botón es otra ancla.
+        try:
+            boton = self._page.locator(selectores.BOTON_DE_INFO_DEL_HEADER.css).first
+            if await boton.count() == 0:
+                log.info("panel_de_contacto_no_abrio")
+                return False
+            await boton.click(timeout=ESPERA_CORTA_MS)
+            await self._page.wait_for_selector(
+                selectores.PANEL_DE_CONTACTO.css, timeout=ESPERA_CORTA_MS
+            )
+            log.info("panel_abierto_por_boton_de_info")
+            return True
+        except Exception:
+            log.info("panel_de_contacto_no_abrio")
+            return False
+
+    async def _numero_en_todo_el_panel(self) -> str | None:
+        """B3: la expresión de teléfono sobre el texto completo del drawer."""
+        try:
+            panel = self._page.locator(selectores.PANEL_DE_CONTACTO.css).first
+            if await panel.count() == 0:
+                return None
+            texto = (await panel.inner_text(timeout=ESPERA_CORTA_MS)) or ""
+        except Exception:
+            return None
+        candidatos = {c.strip() for c in _TELEFONO.findall(texto)}
+        if len(candidatos) != 1:
+            return None
+        return candidatos.pop()
+
+    async def _numero_de_la_fila_clickeada(self) -> str | None:
+        """B5: el identificador que traía la fila de la lista, si lo traía.
+
+        Lo cargó `_abrir_desde_filas` ANTES de clickear, así que es de la fila
+        que abrió este chat — no una deducción. Cuando está, es la lectura más
+        barata; cuando no, `None` y el motor falla cerrado como siempre.
+        """
+        numero = getattr(self, "numero_de_la_fila", None)
+        if numero:
+            self.ultimo_escalon_numero = "B5_atributo_de_la_fila"
+        return numero
+
     async def es_grupo(self) -> bool:
-        """Un grupo nunca recibe un seguimiento comercial."""
-        return await self._page.query_selector(selectores.MARCA_DE_GRUPO.css) is not None
+        """Un grupo nunca recibe un seguimiento comercial.
+
+        Dos señales, en cascada: la marca de siempre (que depende de un
+        atributo `title` que la verificación del 25/08 declaró muerto en el
+        header, así que probablemente hoy no detecta nada), y el TEXTO del
+        subtítulo — en un grupo es la lista de participantes separados por
+        coma. Se exige la coma y que no parezca una línea de estado («últ. vez
+        hoy a las 12:30» lleva dos puntos, nunca coma).
+        """
+        if await self._page.query_selector(selectores.MARCA_DE_GRUPO.css) is not None:
+            return True
+        try:
+            subtitulo = self._page.locator(selectores.SUBTITULO_DEL_HEADER.css).first
+            if await subtitulo.count() == 0:
+                return False
+            texto = ((await subtitulo.inner_text(timeout=1_000)) or "").strip()
+        except Exception:
+            return False
+        return "," in texto and ":" not in texto
 
     # -- Escribir --------------------------------------------------------------
 
@@ -415,6 +723,16 @@ class PaginaWhatsApp:
         try:
             await loc.wait_for(state="attached", timeout=self._espera)
         except Exception as error:
+            # Cascada C: antes de reventar, cuánto devolvió cada opción del
+            # selector por separado. La próxima vez que WhatsApp mueva el DOM,
+            # el log dice qué ancla sobrevivió en vez de obligar a otra
+            # radiografía a mano.
+            try:
+                conteos = await selectores.sondear(self._page, selector)
+                log.info("selector_sondeado", que_busca=selector.que_busca, conteos=conteos)
+            except Exception:
+                #  El diagnóstico nunca tapa el error real.
+                pass
             raise ErrorDeSelector(f"no apareció {selector.que_busca}: {selector.css}") from error
         return loc
 
@@ -427,6 +745,31 @@ class PaginaWhatsApp:
 # porque sin él cualquier número de una conversación —un precio, una cantidad—
 # pasaría por teléfono.
 _TELEFONO = re.compile(r"\+\d[\d\s\-().]{6,}\d")
+
+# El identificador que algunas versiones ponen en el atributo de la fila:
+# `false_5491144405036@c.us`, `5491144405036@c.us`. El sufijo `@c.us` es de
+# contactos; los grupos llevan `@g.us` y NO se matchean a propósito.
+_ID_DE_CHAT = re.compile(r"(\d{6,})@c\.us")
+
+
+def _contiene_lo_buscado(texto_fila: str, buscado: str) -> bool:
+    """¿La fila contiene lo que se buscó? (escalón A3)
+
+    Texto contra texto, sin acentos ni mayúsculas. Cuando lo buscado es un
+    número, dígito a dígito: la fila muestra `+54 9 11 4440-5036` y se busca
+    `+5491144405036` — comparar los strings crudos no matchea nunca.
+    """
+    digitos_buscados = "".join(c for c in buscado if c.isdigit())
+    if digitos_buscados and len(digitos_buscados) >= 6:
+        digitos_fila = "".join(c for c in texto_fila if c.isdigit())
+        if digitos_buscados in digitos_fila:
+            return True
+    return _normalizar_texto(buscado) in _normalizar_texto(texto_fila)
+
+
+def _normalizar_texto(texto: str) -> str:
+    descompuesto = unicodedata.normalize("NFD", texto or "")
+    return "".join(c for c in descompuesto if not unicodedata.combining(c)).lower().strip()
 
 
 def _numero_en(texto: str) -> str | None:

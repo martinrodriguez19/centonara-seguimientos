@@ -37,6 +37,15 @@ def sin_configuracion_cacheada() -> None:
 
 
 @pytest.fixture(autouse=True)
+def sin_pasadas_acumuladas() -> None:
+    """El contador de pasadas del envío es por proceso a propósito (gate de
+    A8); entre tests sería un estado que se filtra de uno al otro."""
+    from agente.jobs import enviar
+
+    enviar._pasadas_por_contacto.clear()
+
+
+@pytest.fixture(autouse=True)
 def sin_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
     """Nada de leer el `.env` de la máquina de quien corre esto.
 

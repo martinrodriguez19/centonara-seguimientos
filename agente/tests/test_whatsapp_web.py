@@ -399,6 +399,105 @@ async def test_el_motor_no_escribe_a_un_destino_no_permitido(navegador) -> None:
     assert resultado.codigo == "DESTINO_NO_PERMITIDO"
 
 
+# ---------------------------------------------------------------------------
+# Los escalones de la cascada, sobre el adaptador real
+# ---------------------------------------------------------------------------
+
+
+async def test_a3_no_clickea_una_fila_que_no_contiene_lo_buscado(navegador) -> None:
+    """El escalón que cierra el riesgo de abrir el chat equivocado: buscar un
+    número muestra el nombre agendado en la fila, y sin la comparación de
+    dígitos eso es un click a ciegas."""
+    pagina = await abrir(navegador, [CORRALON])
+
+    #  La fila dice "Corralón San Justo": no contiene el número buscado.
+    assert await pagina.buscar_verificado("+5491123231151") is False
+    assert pagina.motivo_no_abrio == "ninguna_fila_contiene_lo_buscado"
+
+
+async def test_a3_abre_cuando_la_fila_si_contiene_el_nombre(navegador) -> None:
+    pagina = await abrir(navegador, [CORRALON])
+
+    assert await pagina.buscar_verificado("Corralón San Justo") is True
+    assert await pagina.leer_header() == "Corralón San Justo"
+
+
+async def test_a3_compara_digito_a_digito_cuando_la_fila_muestra_el_numero(navegador) -> None:
+    """La fila muestra `+54 9 11 3600-7586` y se busca `+5491136007586`:
+    comparar el texto crudo no matchea nunca; los dígitos sí."""
+    pagina = await abrir(navegador, [SIN_AGENDAR])
+
+    assert await pagina.buscar_verificado("+5491136007586") is True
+
+
+async def test_a4_limpia_el_filtro_de_business_y_encuentra(navegador) -> None:
+    """Con una etiqueta activa la búsqueda no devuelve nada — el escenario de
+    la máquina Business del 28/08. «Todos» primero, y la búsqueda de siempre."""
+    pagina = await abrir(navegador, [CORRALON], con_filtro_de_etiqueta=True)
+
+    assert await pagina.buscar_contacto("Corralón San Justo") is False
+    assert await pagina.buscar_limpiando_filtros("Corralón San Justo") is True
+    assert await pagina.leer_header() == "Corralón San Justo"
+
+
+async def test_a4_sin_barra_de_filtros_dice_no_pude_sin_tocar_nada(navegador) -> None:
+    """En el WhatsApp común el botón no existe: el escalón pasa de largo."""
+    pagina = await abrir(navegador, [CORRALON])
+
+    assert await pagina.buscar_limpiando_filtros("No Existe") is False
+
+
+async def test_a5_abre_despachando_los_eventos_a_mano(navegador) -> None:
+    pagina = await abrir(navegador, [CORRALON])
+
+    assert await pagina.buscar_tipeando_distinto("Corralón San Justo") is True
+    assert await pagina.leer_header() == "Corralón San Justo"
+
+
+async def test_a6_abre_con_el_teclado_sin_selector_de_lista(navegador) -> None:
+    pagina = await abrir(navegador, [CORRALON])
+
+    assert await pagina.buscar_con_teclado("Corralón San Justo") is True
+    assert await pagina.leer_header() == "Corralón San Justo"
+
+
+async def test_b3_el_barrido_del_panel_encuentra_el_telefono_fuera_del_span(navegador) -> None:
+    """El selector del span no matchea pero el drawer sí muestra el número."""
+    escondido = ChatFalso(
+        id="+5491123231151",
+        header="Corralón San Justo",
+        telefono_en_panel="+54 9 11 2323-1151",
+        telefono_fuera_del_span=True,
+    )
+    pagina = await abrir(navegador, [escondido])
+    await pagina.buscar_contacto("+5491123231151")
+
+    assert await pagina.resolver_numero() == "+54 9 11 2323-1151"
+    assert pagina.ultimo_escalon_numero == "B3_barrido_del_panel"
+
+
+async def test_el_grupo_se_reconoce_por_el_texto_del_subtitulo(navegador) -> None:
+    """El `title` del subtítulo murió (25/08): los participantes van en el
+    texto, y la detección nueva los lee de ahí. Falla cerrado: un grupo no
+    detectado no resolvería número, pero uno detectado ni llega ahí."""
+    pagina = await abrir(navegador, [GRUPO])
+    await pagina.buscar_contacto("obra-centro")
+
+    assert await pagina.es_grupo() is True
+
+
+async def test_sondear_dice_cual_opcion_del_selector_devuelve(navegador) -> None:
+    """Cascada C: el día que WhatsApp mueva el DOM, el log dice qué ancla
+    sobrevivió en vez de obligar a otra radiografía a mano."""
+    from agente.adaptadores import selectores
+
+    pagina = await abrir(navegador, [CORRALON])
+    conteos = await selectores.sondear(pagina._page, selectores.BUSCADOR)
+
+    assert conteos["div[id='side'] input[data-tab='3']"] == 1
+    assert conteos["div[id='side'] div[contenteditable='true']"] == 0
+
+
 def test_el_atajo_de_seleccionar_todo_sirve_en_macos() -> None:
     """⚠️ `Control+A` no selecciona todo en macOS, y macOS es donde esto corre.
 

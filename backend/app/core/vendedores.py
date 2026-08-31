@@ -249,15 +249,27 @@ async def frenar_por_canario(base, maquina: str, *, ahora: datetime | None = Non
     log.warning("maquina_frenada_por_canario", maquina=maquina)
 
 
-async def soltar_freno_de_canario(base, maquinas: list[str]) -> int:
+async def soltar_freno_de_canario(
+    base, maquinas: list[str], *, ahora: datetime | None = None
+) -> int:
     """Suelta el freno del canario de estas máquinas. Devuelve cuántas soltó.
 
     Lo llaman reanudar y cancelar una corrida: en los dos casos una persona ya
     miró, que es lo que el freno estaba esperando.
+
+    `freno_soltado_en` queda anotado: es el piso de reanudación de
+    `revisar_canario` (G1). Sin él, los mismos tres jobs fallidos de ANTES de
+    soltar volvían a frenar la máquina apenas reportaba el siguiente envío —
+    el loop freno→soltar→freno de los logs del 28/08.
     """
     resultado = await base["vendedores"].update_many(
         {"maquina": {"$in": maquinas}, "frenado_por_canario_en": {"$ne": None}},
-        {"$set": {"frenado_por_canario_en": None}},
+        {
+            "$set": {
+                "frenado_por_canario_en": None,
+                "freno_soltado_en": ahora or datetime.now(UTC),
+            }
+        },
     )
     if resultado.modified_count:
         log.info("frenos_de_canario_soltados", maquinas=resultado.modified_count)

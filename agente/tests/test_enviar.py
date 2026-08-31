@@ -471,3 +471,97 @@ def test_el_error_de_selector_es_su_propio_tipo() -> None:
     """Se distingue de "no está": uno es un dato del mundo, el otro es que
     WhatsApp Web cambió y hay que frenar la corrida entera."""
     assert issubclass(ErrorDeSelector, Exception)
+
+
+# ---------------------------------------------------------------------------
+# La cascada de apertura (A)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_reporte_dice_que_escalon_abrio_el_chat() -> None:
+    """El registro de la cascada viaja en el detalle, también en éxito: es lo
+    que después permite promover el escalón ganador a primera opción."""
+    pagina = pagina_con(chat_normal())  # las claves son números: gana A2
+
+    resultado = await mandar(pagina)
+
+    assert resultado.ok
+    cascada = resultado.detalle["cascadas"]["abrir_chat"]
+    assert cascada["gano"] == "A2_numero"
+    assert cascada["intentadas"] == ["A1_nombre", "A2_numero"]
+
+
+async def test_cuando_nada_abre_el_registro_lo_dice_igual() -> None:
+    resultado = await mandar(pagina_con({}))
+
+    assert resultado.codigo == "CHAT_NO_ABRE"
+    cascada = resultado.detalle["cascadas"]["abrir_chat"]
+    assert cascada["gano"] is None
+    assert cascada["intentadas"][0] == "A1_nombre"
+
+
+async def test_la_url_directa_no_corre_en_la_primera_pasada() -> None:
+    """A8 recarga la página: es el escalón CARO y se reserva para la segunda
+    pasada del mismo contacto (los reintentos del backend)."""
+    #  El chat existe pero no se encuentra por búsqueda: sólo la URL lo abriría.
+    escondido = {"zzz": Chat(nombre="Otro Nombre", telefono=MARCELO)}
+
+    primera = await mandar(pagina_con(escondido))
+
+    assert primera.codigo == "CHAT_NO_ABRE"
+    assert "A8_url_directa" not in primera.detalle["cascadas"]["abrir_chat"]["intentadas"]
+
+    segunda = await mandar(pagina_con(escondido))
+
+    assert segunda.ok
+    assert segunda.detalle["cascadas"]["abrir_chat"]["gano"] == "A8_url_directa"
+
+
+async def test_a8_detecta_el_numero_que_no_esta_en_whatsapp() -> None:
+    """El cartel de error de `send?phone=` no es un chat abierto."""
+    await mandar(pagina_con({}))  # primera pasada: habilita el escalón caro
+    resultado = await mandar(pagina_con({}))
+
+    assert resultado.codigo == "CHAT_NO_ABRE"
+    assert resultado.detalle["motivos"]["A8_url_directa"] == "numero_sin_whatsapp"
+
+
+async def test_ningun_escalon_saltea_el_campo_ocupado() -> None:
+    """Las dos reglas que no se negocian corren igual para CUALQUIER escalón:
+    acá el chat lo abre A8 y el campo ocupado lo aborta lo mismo."""
+
+    def escondido():
+        return {
+            "zzz": Chat(
+                nombre="Otro Nombre", telefono=MARCELO, borrador_del_vendedor="estaba escribiendo"
+            )
+        }
+
+    await mandar(pagina_con(escondido()))  # primera pasada
+    resultado = await mandar(pagina_con(escondido()))
+
+    assert resultado.codigo == "CAMPO_NO_VACIO"
+    assert resultado.detalle["cascadas"]["abrir_chat"]["gano"] == "A8_url_directa"
+
+
+async def test_ningun_escalon_saltea_la_comparacion_de_identidad() -> None:
+    """Un chat abierto por un escalón tardío también pasa por el paso 6."""
+    #  A1 falla (la clave no es el nombre); la clave número abre por A2 un chat
+    #  cuyo teléfono real es OTRO: la comparación tiene que abortar.
+    pagina = pagina_con({MARCELO: Chat(nombre="Marcelo Fernández", telefono=OTRO)})
+
+    resultado = await mandar(pagina)
+
+    assert resultado.codigo == "CONTACTO_NO_COINCIDE"
+    assert resultado.detalle["cascadas"]["abrir_chat"]["gano"] == "A2_numero"
+    assert pagina.enviados == []
+    assert not pagina.escribio_algo
+
+
+async def test_el_motivo_titular_es_el_de_la_ruta_principal() -> None:
+    """El `motivo` que se venía reportando sigue siendo el de A1; los demás
+    quedan al lado, escalón por escalón."""
+    resultado = await mandar(pagina_con({}))
+
+    assert resultado.detalle["motivo"] == "sin_resultados"
+    assert resultado.detalle["motivos"]["A1_nombre"] == "sin_resultados"

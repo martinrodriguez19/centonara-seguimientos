@@ -109,6 +109,54 @@ RESULTADO_DE_BUSQUEDA = Selector(
     estructural=False,
 )
 
+# Anclas ALTERNATIVAS para los resultados (escalón A7 de la cascada). No
+# reemplazan a `RESULTADO_DE_BUSQUEDA`: se prueban sólo cuando la ruta de
+# siempre no abrió nada, y el log dice cuál devolvió filas — que es justo el
+# dato que el diagnóstico del 28/08 no pudo cerrar (¿el selector apunta a la
+# lista general en vez de a los resultados?).
+RESULTADOS_ALTERNATIVOS = Selector(
+    "div[aria-label*='resultado' i] div[role='listitem'], "
+    "div[aria-label*='result' i] div[role='listitem'], "
+    "div[data-testid='search-results'] div[role='listitem'], "
+    "div[data-testid='cell-frame-container']",
+    "un resultado de búsqueda, por sus anclas alternativas",
+    estructural=False,
+)
+
+# La barra de filtros de WhatsApp **Business** (escalón A4). La radiografía del
+# 28/08 mostró `all-filter`, `additional-filters` y catorce `label_item_*`: si
+# hay un filtro o etiqueta activos, la búsqueda queda acotada a ese subconjunto
+# y un contacto que existe no aparece. Este botón vuelve a "Todos".
+FILTRO_TODOS = Selector(
+    "button[id='all-filter'], div[id='all-filter'], "
+    "button[data-testid='all-filter'], "
+    "button[aria-label*='todos' i], button[aria-label*='all' i]",
+    "el filtro 'Todos' de la barra de WhatsApp Business",
+    #  En el WhatsApp común no existe, y eso es lo normal.
+    estructural=False,
+)
+
+# La URL que abre un chat por número, sin tocar el buscador ni la lista
+# (escalón A8). Recarga la página — por eso es el escalón caro — y con un
+# número que no está en WhatsApp muestra un cartel de error que hay que
+# detectar antes de dar el chat por abierto.
+URL_ENVIAR_POR_NUMERO = URL + "send?phone={numero}"
+
+AVISO_DE_URL_INVALIDA = Selector(
+    "div[role='dialog']",
+    "el cartel de 'el número no está en WhatsApp' tras abrir por URL",
+    estructural=False,
+)
+
+# Varias versiones ponen el identificador del contacto (`..._549xx@c.us`) en un
+# atributo de la fila de la lista. Cuando está, es la lectura de número más
+# barata (escalón B5) y no abre ningún panel. Que falte es lo normal.
+ATRIBUTO_DE_ID_EN_LA_FILA = Selector(
+    "[data-id]",
+    "el identificador del contacto en el atributo de la fila",
+    estructural=False,
+)
+
 # ---------------------------------------------------------------------------
 # El chat abierto
 # ---------------------------------------------------------------------------
@@ -126,6 +174,17 @@ TITULO_DEL_HEADER = Selector(
     "span[data-testid='conversation-info-header-chat-title'], "
     "div[id='main'] header span[dir='auto'][title]",
     "el nombre o número que muestra el encabezado",
+)
+
+# Otra vía para abrir el panel del contacto (escalón B4): el header entero es
+# un botón con `data-testid` propio, y sobrevive aunque el span del título —
+# que es lo que clickea la vía de siempre — cambie de ancla.
+BOTON_DE_INFO_DEL_HEADER = Selector(
+    "div[data-testid='conversation-info-header'], "
+    "div[id='main'] header div[role='button'][title*='info' i], "
+    "div[id='main'] header [aria-label*='info' i]",
+    "el botón del encabezado que abre el panel del contacto",
+    estructural=False,
 )
 
 # El panel que se abre al hacer click en el header. Es de donde sale el teléfono
@@ -157,6 +216,17 @@ MARCA_DE_GRUPO = Selector(
     "div[id='main'] header div[role='button'] span[title*=','], "
     "div[data-testid='group-info-drawer']",
     "la señal de que el chat es un grupo",
+    estructural=False,
+)
+
+# ⚠️ La primera opción de `MARCA_DE_GRUPO` depende del atributo `title`, que la
+# verificación del 25/08 declaró muerto en el header. Escalón nuevo: el
+# subtítulo del header, cuyo TEXTO en un grupo es la lista de participantes
+# separados por coma. Se lee por texto y no por `title`, en `es_grupo()`.
+SUBTITULO_DEL_HEADER = Selector(
+    "div[id='main'] header div[role='button'] span[dir='auto'], "
+    "div[id='main'] header span[data-testid='conversation-info-header-subtitle']",
+    "el subtítulo del encabezado (participantes si es un grupo)",
     estructural=False,
 )
 
@@ -231,3 +301,27 @@ async def verificar(pagina) -> Revision:
             faltantes.append(f"{selector.que_busca} ({selector.css})")
 
     return Revision(ok=not faltantes, encontrados=encontrados, faltantes=faltantes)
+
+
+async def sondear(pagina, selector: Selector) -> dict[str, int]:
+    """Cuántos elementos devuelve cada opción del selector, **de a una**.
+
+    Hoy cada `Selector` trae varias opciones separadas por coma y el navegador
+    se queda con la primera que matchea — pero nadie sabe cuál fue. Esto las
+    prueba en orden y devuelve `{opcion: cantidad}`, para loguear qué ancla
+    sobrevivió la próxima vez que WhatsApp mueva el DOM, en vez de obligar a
+    otra radiografía a mano.
+
+    Es diagnóstico puro: no clickea, no espera, no cambia nada. En el camino
+    feliz no se llama.
+    """
+    conteos: dict[str, int] = {}
+    for opcion in (parte.strip() for parte in selector.css.split(",")):
+        if not opcion:
+            continue
+        try:
+            conteos[opcion] = len(await pagina.query_selector_all(opcion))
+        except Exception:
+            #  Una opción con sintaxis que este navegador no traga: 0 y se sigue.
+            conteos[opcion] = 0
+    return conteos
