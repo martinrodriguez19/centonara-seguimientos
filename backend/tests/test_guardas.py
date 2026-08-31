@@ -334,6 +334,43 @@ async def test_el_segundo_enviar_vivo_para_el_mismo_mensaje_no_se_crea(base) -> 
     assert vivos == 1
 
 
+async def test_si_el_ganador_termino_en_el_medio_se_reintenta_una_vez() -> None:
+    """La carrera dentro de la carrera: el insert choca con el índice, pero
+    cuando se busca al job vivo, el ganador YA terminó y salió del índice. No
+    se puede montar con un Mongo real —es una ventana de milisegundos— así que
+    se prueba con una base falsa: el segundo insert tiene que entrar."""
+    from types import SimpleNamespace
+
+    from pymongo.errors import DuplicateKeyError
+
+    class JobsFalsos:
+        def __init__(self) -> None:
+            self.inserciones = 0
+
+        async def insert_one(self, documento):
+            self.inserciones += 1
+            if self.inserciones == 1:
+                raise DuplicateKeyError("ya había un ENVIAR vivo")
+            return SimpleNamespace(inserted_id="job-reintentado")
+
+        async def find_one(self, filtro):
+            #  El ganador terminó entre el insert y esta consulta.
+            return None
+
+    jobs = JobsFalsos()
+    base_falsa = {"jobs": jobs}
+
+    creado = await cola.encolar(
+        base_falsa,
+        tipo=cola.Tipo.ENVIAR,
+        maquina="mac-rocio",
+        payload={"mensaje_id": str(ObjectId()), "contacto_id": "+5491123231151", "texto": "hola"},
+    )
+
+    assert creado == "job-reintentado"
+    assert jobs.inserciones == 2
+
+
 @sin_mongo
 async def test_un_enviar_terminado_no_bloquea_el_reintento_del_mensaje(base) -> None:
     """«Vivo» es la palabra que importa: reenviar un mensaje que falló sigue
