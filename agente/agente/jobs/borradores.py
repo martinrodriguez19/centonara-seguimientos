@@ -222,14 +222,17 @@ def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
             False, "ERROR_INESPERADO", {"motivo": f"status inesperado: {estado!r}"}, **comunes
         )
 
-    buenos, descartados = _revisar_todos(datos.get("chats"))
-    if datos.get("chats") is not None and not isinstance(datos.get("chats"), list):
+    if not isinstance(datos.get("chats"), list):
+        # ⚠️ Un "ok" sin lista NO es una tanda vacía: es una respuesta rota.
+        # Dejarlo pasar haría que el backend lo lea como "no queda nada",
+        # termine la corrida en verde con cero borradores, y nadie se entere.
         return Resultado(
             False,
             "ERROR_INESPERADO",
-            {"motivo": "la respuesta no trae una lista de chats"},
+            {"motivo": "la respuesta dice ok pero no trae la lista de chats"},
             **comunes,
         )
+    buenos, descartados = _revisar_todos(datos.get("chats"))
 
     if descartados:
         # Contados y nombrados. Un chat que se cae en silencio puede ser un
@@ -257,12 +260,18 @@ def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
     )
 
 
+#  Cuántas entradas del reporte se aceptan. Mucho más que la tanda a propósito:
+#  además de los dejados vienen los visitados-y-salteados (campo ocupado, sin
+#  tema), y truncar acá podría tirar un borrador que SÍ quedó en WhatsApp.
+MAX_ENTRADAS_DEL_REPORTE = 60
+
+
 def _revisar_todos(crudos: Any) -> tuple[list[dict[str, Any]], list[str]]:
     buenos: list[dict[str, Any]] = []
     descartados: list[str] = []
     if not isinstance(crudos, list):
         return buenos, descartados
-    for i, crudo in enumerate(crudos[: MAX_POR_TANDA * 2]):
+    for i, crudo in enumerate(crudos[:MAX_ENTRADAS_DEL_REPORTE]):
         limpio, problema = _revisar_chat(crudo)
         if limpio is None:
             descartados.append(f"#{i}: {problema}")

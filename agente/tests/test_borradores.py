@@ -163,6 +163,35 @@ async def test_un_chat_sin_nombre_se_descarta_y_se_cuenta() -> None:
     assert len(resultado.detalle["descartados"]) == 1
 
 
+async def test_un_ok_sin_lista_de_chats_es_un_error_no_una_tanda_vacia() -> None:
+    """⚠️ Si esto pasara como éxito, el backend lo leería como «no queda nada»,
+    terminaría la corrida en verde con cero borradores, y nadie se enteraría."""
+    invocador = responde({"run_id": RUN, "status": "ok"})
+    resultado = await correr(invocador)
+
+    assert not resultado.ok
+    assert resultado.codigo == "ERROR_INESPERADO"
+    assert "no trae la lista" in resultado.detalle["motivo"]
+
+
+async def test_una_tanda_con_muchos_salteados_no_se_trunca() -> None:
+    """Truncar el reporte podría tirar un borrador que SÍ quedó en WhatsApp."""
+    muchos = [
+        visitado(
+            contacto_nombre=f"Contacto {i}",
+            borrador_dejado=False,
+            texto_borrador=None,
+            motivo="campo_ocupado",
+        )
+        for i in range(30)
+    ] + [visitado()]
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": muchos})
+    resultado = await correr(invocador)
+
+    assert resultado.detalle["visitados"] == 31
+    assert resultado.detalle["dejados"] == 1, "el dejado del final no se perdió"
+
+
 async def test_un_run_id_ajeno_no_se_usa() -> None:
     invocador = responde({"run_id": "otro", "status": "ok", "chats": [visitado()]})
     resultado = await correr(invocador)

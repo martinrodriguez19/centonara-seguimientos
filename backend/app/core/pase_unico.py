@@ -205,16 +205,26 @@ async def procesar_reporte(
 
     for chat in chats:
         if chat.get("borrador_dejado") and str(chat.get("texto_borrador") or "").strip():
-            await _registrar_dejado(
-                base,
-                corrida_id=corrida_id,
-                maquina=maquina,
-                chat=chat,
-                config=config,
-                vendedor=vendedor,
-                momento=momento,
-                resultado=resultado,
-            )
+            try:
+                await _registrar_dejado(
+                    base,
+                    corrida_id=corrida_id,
+                    maquina=maquina,
+                    chat=chat,
+                    config=config,
+                    vendedor=vendedor,
+                    momento=momento,
+                    resultado=resultado,
+                )
+            except Exception as error:
+                # Un tropiezo con UN chat no puede perder el registro de los
+                # demás ni la tanda siguiente: el borrador de este quedó en
+                # WhatsApp igual, y el error queda nombrado para ir a buscarlo.
+                log.error(
+                    "registro_de_borrador_fallo",
+                    contacto=str(chat.get("contacto_nombre"))[:60],
+                    error=str(error)[:200],
+                )
         else:
             resultado.salteados += 1
 
@@ -393,6 +403,14 @@ async def activar_respaldo(
     momento = ahora or datetime.now(UTC)
     corrida_id = job["corrida_id"]
     maquina = job["maquina"]
+
+    # ⚠️ Tras un TEXTO_ENVIADO no hay respaldo automático: un texto salió
+    # enviado en vez de quedar escrito, y lo que corresponde es que una persona
+    # mire ese chat antes de que el sistema siga solo por ningún camino. La
+    # corrida de esa máquina queda ahí, con el código a la vista en el panel.
+    if job.get("codigo") == str(cola.Codigo.TEXTO_ENVIADO):
+        log.warning("respaldo_frenado_por_texto_enviado", corrida=str(corrida_id), maquina=maquina)
+        return None
 
     config = await configuracion.obtener(base)
     if str(config.get("modo_borrador", "playwright")) != "extension_con_respaldo":

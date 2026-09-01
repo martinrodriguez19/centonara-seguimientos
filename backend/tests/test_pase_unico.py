@@ -397,6 +397,23 @@ async def test_el_respaldo_solo_corre_si_esta_configurado(base) -> None:
 
 
 @sin_mongo
+async def test_tras_un_texto_enviado_no_hay_respaldo_automatico(base) -> None:
+    """Un texto salió enviado en vez de quedar escrito: ahí tiene que mirar
+    una persona antes de que el sistema siga solo por ningún camino."""
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base, {"destinos_permitidos": ["*"], "modo_borrador": "extension_con_respaldo"}
+    )
+    job = job_borradores(ObjectId(), estado=cola.EstadoJob.FALLIDO)
+    job["codigo"] = str(cola.Codigo.TEXTO_ENVIADO)
+
+    encolado = await pase_unico.activar_respaldo(base, job=job)
+
+    assert encolado is None
+    assert await base["jobs"].count_documents({"tipo": str(cola.Tipo.LISTAR)}) == 0
+
+
+@sin_mongo
 async def test_el_respaldo_encola_el_listar_una_sola_vez(base) -> None:
     await maquina_activa(base)
     await configuracion.actualizar(

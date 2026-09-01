@@ -298,9 +298,14 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
         if reporte.estado == cola.EstadoJob.FALLIDO:
             # B3: la tanda agotó sus intentos (o falló con un código que no se
             # reintenta). Con respaldo configurado, esta máquina cae al
-            # circuito de siempre.
+            # circuito de siempre. El `codigo` va fresco del reporte —el job en
+            # memoria es la foto de ANTES— porque un TEXTO_ENVIADO frena el
+            # respaldo: ahí tiene que mirar una persona.
             try:
-                await pase_unico.activar_respaldo(base, job=job)
+                await pase_unico.activar_respaldo(
+                    base,
+                    job={**job, "codigo": str(cuerpo.codigo) if cuerpo.codigo else None},
+                )
             except Exception as error:
                 log.error("pase_unico_respaldo_fallo", job=job_id, error=str(error)[:300])
 
