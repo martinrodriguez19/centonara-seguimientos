@@ -10,13 +10,19 @@
 
 ## 1. Las cinco reglas
 
-### R1 — Verificar la identidad del contacto antes de escribir, y abortar si no coincide
+### R1 — Si el chat hubo que buscarlo, se verifica identidad antes de escribir
 
-El paso más importante del sistema. Ningún atajo, ninguna optimización, ningún "ya lo verificamos
-antes". Se verifica **inmediatamente antes de escribir**, cada vez.
+*(Reescrita el 01/09/2026 con el pase único. La versión anterior exigía la verificación siempre;
+el motivo de fondo era que el chat se abría por búsqueda y podía abrirse el equivocado.)*
 
-Si el header del chat no se puede leer, o no coincide, o el número no se puede resolver a E.164:
-se aborta ese envío y se reporta. Nunca se escribe "por las dudas".
+En la ruta de contingencia —Playwright abre un chat **por búsqueda**— la comparación de identidad
+por número sigue siendo obligatoria, inmediatamente antes de escribir, sin atajos y sin "ya lo
+verificamos antes". Si el header no se puede leer, o no coincide, o el número no se puede resolver
+a E.164: se aborta y se reporta. Nunca se escribe "por las dudas".
+
+En el pase único no hay búsqueda: el borrador se escribe en la conversación que el modelo tiene
+abierta y acaba de leer, y el registro deja asentado en cuál fue. El día que alguien proponga que
+el pase único "busque un chat" para algo, esta regla vuelve a aplicar entera sobre ese paso.
 
 ### R2 — El sistema falla cerrado
 
@@ -25,13 +31,19 @@ inesperado: no enviar. La opción segura es siempre la de no mandar el mensaje.
 
 Nunca un `except: pass` en el camino de envío. Un error tragado en silencio ahí es un incidente.
 
-### R3 — El modelo redacta; el código decide y envía
+### R3 — El modelo redacta y deja el borrador; el código decide el alcance y nadie envía
 
-El modelo nunca decide a quién escribirle, cuántos mensajes mandar, ni cuándo. Sólo produce texto
-que después pasa por validación. El paso de envío no lo involucra en absoluto.
+*(Reescrita el 01/09/2026 con el pase único. La versión anterior decía "el código decide y
+envía"; ya no envía nadie — el circuito termina en un borrador que manda el vendedor.)*
 
-Corolario: **un límite vive en código Python, nunca en un prompt.** Si alguien propone "se lo
-pedimos al modelo en el prompt", la respuesta es no.
+El modelo produce el texto y lo deja escrito en el chat que está leyendo, **sin enviarlo**. Qué
+chats entran en una corrida, cuántos y con qué topes lo sigue decidiendo el backend, y viaja como
+**dato en el payload** —listas de no-escribir, números permitidos, cantidad por tanda—, no como
+criterio en un prompt. Apretar enviar no lo hace el sistema: lo hace el vendedor, chat por chat.
+
+Corolario, que sigue en pie: **un límite vive en código Python, nunca en un prompt.** El prompt
+recibe las listas ya calculadas y las obedece; no las calcula. Y la verificación de qué se dejó y
+dónde la hace el backend después, sobre el reporte, como registro (R5).
 
 ### R4 — Sólo se escribe a números de la lista de destinos permitidos
 

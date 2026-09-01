@@ -102,7 +102,9 @@ async def test_una_mac_que_se_apaga_no_pierde_su_trabajo(base) -> None:
     tomado = await cola.tomar(base, "mac-rocio", ahora=AHORA)
     assert tomado is not None
 
-    despues = AHORA + timedelta(hours=1)
+    #  Bien pasado el umbral (60 min desde el pase único): lo que se prueba es
+    #  la recuperación, no el filo del corte.
+    despues = AHORA + timedelta(hours=2)
     assert await cola.recuperar_colgados(base, ahora=despues) == 1
 
     de_nuevo = await cola.tomar(base, "mac-rocio", ahora=despues)

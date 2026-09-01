@@ -6,7 +6,8 @@ distintos (rechazado, vetado, vencido, fallido) acá es el porqué de uno solo.
 
 ```
   BORRADOR ──▶ EN_ESPERA ──▶ ENVIANDO ──▶ ENVIADO
-      │             ▲  │          │└─────▶ BORRADOR_DEJADO   (modo borradores, D30)
+      │ │           ▲  │          │└─────▶ BORRADOR_DEJADO   (modo borradores, D30)
+      │ └───────────│──│──────────────────▶ BORRADOR_DEJADO  (pase único, 01/09)
       │             │  │          └──(falla, quedan intentos)──▶ EN_ESPERA
       ▼             │  ▼
   RETENIDO ─(libera)┘  └──────────────────▶ DESCARTADO
@@ -93,7 +94,13 @@ TERMINALES: frozenset[Estado] = frozenset(
 #   - ENVIADO no vuelve. Un mensaje que salió, salió.
 #   - DESCARTADO no resucita: si hay que mandar ese mensaje, se genera uno nuevo.
 TRANSICIONES: dict[Estado, frozenset[Estado]] = {
-    Estado.BORRADOR: frozenset({Estado.RETENIDO, Estado.EN_ESPERA, Estado.DESCARTADO}),
+    # BORRADOR → BORRADOR_DEJADO es del pase único (01/09): cuando el reporte
+    # del agente llega, el texto YA está escrito en el chat — el estado sólo se
+    # pone al día con la realidad. No pasa por EN_ESPERA porque no hay envío
+    # que esperar: en esta ruta no envía nadie.
+    Estado.BORRADOR: frozenset(
+        {Estado.RETENIDO, Estado.EN_ESPERA, Estado.BORRADOR_DEJADO, Estado.DESCARTADO}
+    ),
     Estado.RETENIDO: frozenset({Estado.EN_ESPERA, Estado.DESCARTADO}),
     Estado.EN_ESPERA: frozenset({Estado.ENVIANDO, Estado.DESCARTADO}),
     # ENVIANDO vuelve a EN_ESPERA cuando falla algo reintentable: el agente no

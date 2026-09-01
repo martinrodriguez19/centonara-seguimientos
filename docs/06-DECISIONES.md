@@ -729,6 +729,54 @@ aplicar también en modo `prueba`.
 
 ---
 
+### D38 — El pase único: la extensión deja el borrador en el chat que está leyendo *(reescribe R1 y R3; revisa D34)*
+
+**Contexto (01/09).** El circuito de generación tocaba cada chat hasta tres veces: `LISTAR` lo
+abría con la extensión, `RESOLVER` lo reabría con Playwright para leer el número, y `ENVIAR` lo
+volvía a buscar para dejar el borrador. Toda la verificación de identidad (R1, D34) existía
+porque ese tercer encuentro abría el chat **por búsqueda** y podía abrir el equivocado — y la
+búsqueda fue exactamente lo que falló el 28/08 (`CHAT_NO_ABRE` en las tres máquinas). Además, el
+espaciado anti-patrón de 45–180 s entre envíos, pensado para *envíos*, hacía esperar 30–45
+minutos por corrida a un modo que no envía nada.
+
+**Decisión.** Un job nuevo, `BORRADORES`: la extensión lee cada chat frío y deja el seguimiento
+escrito en el campo de texto de esa misma conversación, sin enviar, en tandas de
+`chats_por_tanda` (6). El chat nunca se vuelve a buscar, así que la clase entera de errores de
+apertura desaparece de esta ruta. Quien envía es el vendedor, a mano. La perilla
+`modo_borrador` (`playwright` | `extension` | `extension_con_respaldo`) decide la ruta y arranca
+en `playwright`: exactamente lo de siempre hasta que el piloto respalde el cambio.
+
+**Lo que esto reescribió, a propósito y con el dueño:**
+
+- **R1** quedó atada a la búsqueda: rige entera en la ruta de contingencia (Playwright abre por
+  búsqueda), y no aplica en el pase único porque no hay segundo encuentro que verificar.
+- **R3** pasó de "el código decide y envía" a "el código decide el alcance y nadie envía". Los
+  límites siguen viviendo en Python: viajan como **listas en el payload** (`no_escribir`,
+  `solo_numeros`, `n_chats`) que el prompt obedece — la fila de la tabla de descartadas ("que el
+  modelo decida a quién escribirle") sigue en pie en su sentido real: el modelo no calcula
+  ninguna lista, las recibe.
+- El `CLAUDE.md` de la máquina dejó de decir "sólo lectura": ahora autoriza dejar borradores y
+  prohíbe enviar, con las cuatro reglas de la tarea escritas desde el dueño.
+
+**El registro es de hechos consumados.** Cuando el reporte llega, los borradores ya están en los
+chats: los mensajes nacen y pasan a `BORRADOR_DEJADO` (transición nueva desde `BORRADOR`), los
+guardrails corren *después* como señales informativas para el panel (R5), y nada del procesado
+puede des-escribir un borrador — por eso no bloquea. `TEXTO_ENVIADO` es el código nuevo que corta
+todo sin reintentos: un texto que salió enviado en vez de quedar escrito es la única falla grave
+de esta ruta.
+
+**La cascada, como todo lo demás desde el 31/08:** B1 la tanda; B2 los reintentos del mismo job
+(el chequeo de campo-no-vacío hace que salteen solos lo ya dejado — idempotencia gratis); B3 el
+circuito completo de siempre, que se activa por máquina al agotar los reintentos, sólo con
+`extension_con_respaldo`. Nada del circuito viejo se borró.
+
+**Qué la revertiría.** Que el pase único deje borradores en chats equivocados (no tiene la
+comparación por número; su garantía es no buscar), que WhatsApp trate la escritura sostenida en
+el campo como actividad de autómata, o que las tandas no entren en el timeout ni achicándolas.
+En cualquiera de los tres, la perilla vuelve a `playwright` y no se perdió nada.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

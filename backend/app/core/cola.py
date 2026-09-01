@@ -47,11 +47,13 @@ INTENTOS_POR_CODIGO: dict[str, int] = {"TIMEOUT": 2}
 # apagó, se cortó la red, alguien mató el proceso. Vuelve a la cola.
 #
 # ⚠️ **Tiene que ser MAYOR que el timeout más largo del agente** (hoy 25 min,
-# el `LISTAR` del barrido). Si fuera menor, el backend devolvería a la cola un
-# job que el agente todavía está haciendo, y ese trabajo se pagaría dos veces.
-# Generoso a propósito: una Mac muerta se ve igual en el panel —sin latido— y
-# la corrida se puede cancelar a mano desde ahí.
-SEGUNDOS_PARA_DAR_POR_COLGADO = 40 * 60
+# el `LISTAR` del barrido; el pase único usa 20). Si fuera menor, el backend
+# devolvería a la cola un job que el agente todavía está haciendo, y ese
+# trabajo se pagaría dos veces — con el pase único, además, serían borradores
+# duplicados si el campo-no-vacío no los atajara. Generoso a propósito: una
+# Mac muerta se ve igual en el panel —sin latido— y la corrida se puede
+# cancelar a mano desde ahí.
+SEGUNDOS_PARA_DAR_POR_COLGADO = 60 * 60
 
 # Espaciado entre envíos. Aleatorio, siempre (03-REGLAS §4).
 PAUSA_ENTRE_ENVIOS = (45, 180)
@@ -71,6 +73,10 @@ class Tipo(StrEnum):
     contactos reales están agendados por nombre y el número no viene servido."""
     REDACTAR = "REDACTAR"
     ENVIAR = "ENVIAR"
+    BORRADORES = "BORRADORES"
+    """El pase único: leer cada chat frío y dejar el seguimiento escrito en el
+    campo de texto de esa misma conversación, sin enviar, con la extensión. Una
+    tanda por job; la siguiente la encola el backend al procesar el reporte."""
     DIAGNOSTICO = "DIAGNOSTICO"
 
 
@@ -97,6 +103,10 @@ class Codigo(StrEnum):
     CAMPO_NO_VACIO = "CAMPO_NO_VACIO"
     CHAT_NO_ABRE = "CHAT_NO_ABRE"
     SESION_CAIDA = "SESION_CAIDA"
+    TEXTO_ENVIADO = "TEXTO_ENVIADO"
+    """Del pase único: un borrador salió ENVIADO en vez de quedar escrito. No se
+    reintenta —reintentar sería arriesgar otro— y una persona revisa ese chat
+    antes de volver a correr."""
     TIMEOUT = "TIMEOUT"
     ERROR_INESPERADO = "ERROR_INESPERADO"
     CANCELADO = "CANCELADO"
@@ -138,6 +148,7 @@ _NO_SE_REINTENTAN = frozenset(
         Codigo.DESTINO_NO_PERMITIDO,
         Codigo.SIN_CONFIRMAR,
         Codigo.SELECTOR_ROTO,
+        Codigo.TEXTO_ENVIADO,
         Codigo.CANCELADO,
     }
 )

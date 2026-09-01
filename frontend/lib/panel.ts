@@ -80,6 +80,15 @@ export type Configuracion = {
    */
   modo_lectura: "recientes" | "barrido";
   /**
+   * Cómo se dejan los borradores (el pase único, 01/09): "playwright" es el
+   * circuito de siempre; "extension" lee cada chat y deja el borrador ahí
+   * mismo en una sola pasada; "extension_con_respaldo" cae al circuito de
+   * siempre si a una máquina se le agotan los reintentos.
+   */
+  modo_borrador: "playwright" | "extension" | "extension_con_respaldo";
+  /** Cuántos borradores deja cada tanda del pase único antes de reportar. */
+  chats_por_tanda: number;
+  /**
    * Lo que el redactor sabe de la empresa: qué vende, qué ofrece, tono. Lo
    * escribe el dueño y viaja a cada redacción como referencia.
    */

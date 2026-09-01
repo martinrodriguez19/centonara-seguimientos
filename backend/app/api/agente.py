@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import db
-from app.core import cola, configuracion, corridas, generacion, mensajes, vendedores
+from app.core import cola, configuracion, corridas, generacion, mensajes, pase_unico, vendedores
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -279,6 +279,30 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
 
     if cuerpo.ok and job["tipo"] == cola.Tipo.RESOLVER:
         await _encolar_desde_resolver(base, job, cuerpo)
+
+    if job["tipo"] == cola.Tipo.BORRADORES:
+        # El pase único (01/09). Corre también cuando la tanda FALLÓ: los
+        # borradores que se alcanzaron a dejar ya están en WhatsApp, y no
+        # registrarlos sería tener borradores que el panel no conoce. Nada de
+        # esto puede romper el reporte del agente: el job ya quedó cerrado con
+        # su raw, y lo que se pierde es una fila del panel o la tanda
+        # siguiente — nunca un borrador, que vive en los chats.
+        try:
+            await pase_unico.procesar_reporte(
+                base,
+                job={**job, "estado": str(reporte.estado)},
+                detalle=cuerpo.detalle,
+            )
+        except Exception as error:
+            log.error("pase_unico_procesado_fallo", job=job_id, error=str(error)[:300])
+        if reporte.estado == cola.EstadoJob.FALLIDO:
+            # B3: la tanda agotó sus intentos (o falló con un código que no se
+            # reintenta). Con respaldo configurado, esta máquina cae al
+            # circuito de siempre.
+            try:
+                await pase_unico.activar_respaldo(base, job=job)
+            except Exception as error:
+                log.error("pase_unico_respaldo_fallo", job=job_id, error=str(error)[:300])
 
     if cuerpo.ok and job["tipo"] == cola.Tipo.REDACTAR:
         mensaje_id = await generacion.guardar_borrador(base, job=job, detalle=cuerpo.detalle)

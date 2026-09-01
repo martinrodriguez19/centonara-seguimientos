@@ -58,6 +58,21 @@ POR_DEFECTO: dict[str, Any] = {
     #               para recuperar a los clientes viejos que quedaron sin
     #               recontactar.
     "modo_lectura": "recientes",
+    # Cómo se dejan los borradores en los chats (el pase único, 01/09):
+    #   playwright            — el circuito de siempre: LISTAR → RESOLVER →
+    #                           REDACTAR → ENVIAR en modo prueba. Es el default
+    #                           porque es el probado en producción.
+    #   extension             — el pase único: la extensión lee cada chat y
+    #                           deja el borrador ahí mismo, sin segundo
+    #                           navegador y sin búsqueda.
+    #   extension_con_respaldo — el pase único, y si una máquina agota sus
+    #                           reintentos, esa máquina cae al circuito de
+    #                           siempre (la cascada B1 → B3).
+    "modo_borrador": "playwright",
+    # Cuántos borradores deja cada job del pase único antes de reportar. Corto
+    # a propósito: una tanda entra cómoda en el timeout del agente (20 min) y
+    # una falla pierde una tanda, no la corrida.
+    "chats_por_tanda": 6,
     # Lo que el dueño quiere que el redactor sepa de su empresa: qué vende, qué
     # ofrece, promociones, tono. Viaja al REDACTAR como dato acotado y el prompt
     # lo enmarca como referencia — no como instrucciones. Vacío = no se usa.

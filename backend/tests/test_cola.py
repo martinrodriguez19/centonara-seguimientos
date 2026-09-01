@@ -325,10 +325,11 @@ async def test_el_rescate_de_colgados_espera_mas_que_el_job_mas_largo(base) -> N
     job_id = await encolar(base, tipo=Tipo.LISTAR, maquina="mac-1", ahora=AHORA)
     await tomar(base, "mac-1", ahora=AHORA)
 
-    #  A los 20 minutos sigue siendo suyo: está trabajando.
-    assert await recuperar_colgados(base, ahora=AHORA + timedelta(minutes=20)) == 0
-    #  A los 45, no: esa Mac se murió.
-    assert await recuperar_colgados(base, ahora=AHORA + timedelta(minutes=45)) == 1
+    #  A los 45 minutos sigue siendo suyo: un barrido largo todavía puede estar
+    #  trabajando (el umbral subió a 60 con el pase único).
+    assert await recuperar_colgados(base, ahora=AHORA + timedelta(minutes=45)) == 0
+    #  A los 75, no: esa Mac se murió.
+    assert await recuperar_colgados(base, ahora=AHORA + timedelta(minutes=75)) == 1
     guardado = await base["jobs"].find_one({"_id": job_id})
     assert guardado["estado"] == str(EstadoJob.PENDIENTE)
 
@@ -399,9 +400,9 @@ async def test_un_agente_que_se_muere_deja_su_job_recuperable(base) -> None:
     # Nadie reporta: la máquina se apagó.
     assert await tomar(base, "mac-1", ahora=AHORA + timedelta(minutes=5)) is None
 
-    recuperados = await recuperar_colgados(base, ahora=AHORA + timedelta(hours=1))
+    recuperados = await recuperar_colgados(base, ahora=AHORA + timedelta(hours=2))
     assert recuperados == 1
-    assert await tomar(base, "mac-1", ahora=AHORA + timedelta(hours=1)) is not None
+    assert await tomar(base, "mac-1", ahora=AHORA + timedelta(hours=2)) is not None
 
 
 @sin_mongo
@@ -418,9 +419,9 @@ async def test_recuperar_no_resetea_los_intentos(base) -> None:
     """Un envío que hace colgar al agente no puede entrar en un bucle infinito."""
     await encolar(base, tipo=Tipo.ENVIAR, maquina="mac-1", ahora=AHORA)
     await tomar(base, "mac-1", ahora=AHORA)
-    await recuperar_colgados(base, ahora=AHORA + timedelta(hours=1))
+    await recuperar_colgados(base, ahora=AHORA + timedelta(hours=2))
 
-    job = await tomar(base, "mac-1", ahora=AHORA + timedelta(hours=1))
+    job = await tomar(base, "mac-1", ahora=AHORA + timedelta(hours=2))
     assert job["intentos"] == 2
 
 

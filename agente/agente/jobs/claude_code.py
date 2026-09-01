@@ -48,9 +48,15 @@ TIMEOUT = 600.0
 # tres timeouts seguidos a los 600 s, con el modelo todavía trabajando.
 #
 # ⚠️ Este número tiene un techo: `cola.SEGUNDOS_PARA_DAR_POR_COLGADO` en el
-# backend (40 min). Si lo pasara, el backend devolvería el job a la cola
+# backend (60 min). Si lo pasara, el backend devolvería el job a la cola
 # mientras el agente sigue en eso, y el trabajo se pagaría dos veces.
 TIMEOUT_LISTAR = 25 * 60.0
+
+# El pase único (BORRADORES): leer, redactar y tipear una tanda entera en una
+# sola sesión. La tanda es corta a propósito —el backend manda de a
+# `chats_por_tanda`— así que 20 minutos sobran; si no alcanzaran, la respuesta
+# es achicar la tanda, no agrandar esto contra el techo del backend.
+TIMEOUT_BORRADORES = 20 * 60.0
 
 
 @dataclass(frozen=True)

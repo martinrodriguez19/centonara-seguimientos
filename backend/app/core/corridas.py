@@ -116,32 +116,36 @@ async def disparar(
     )
     corrida_id = resultado.inserted_id
 
+    from app.core import pase_unico
+
+    modo_borrador = str(config.get("modo_borrador", "playwright"))
+
     encolados = 0
     for vendedor in disponibles:
         maquina = vendedor["maquina"]
         if tipo is TipoCorrida.DIAGNOSTICO:
             payload: dict[str, Any] = {}
             job = cola.Tipo.DIAGNOSTICO
+        elif tipo is TipoCorrida.GENERACION and modo_borrador in (
+            "extension",
+            "extension_con_respaldo",
+        ):
+            # El pase único (01/09): una tanda de BORRADORES por máquina; las
+            # siguientes las encadena el backend al procesar cada reporte. Si
+            # el payload no se puede armar —destinos vacíos: a nadie (R4)— se
+            # cae al circuito de siempre, que tampoco va a escribirle a nadie
+            # pero deja la corrida con su recorrido normal y visible.
+            payload_pase = await pase_unico.armar_payload(
+                base, corrida_id=corrida_id, maquina=maquina, config=config, ahora=momento
+            )
+            if payload_pase is not None:
+                payload = payload_pase
+                job = cola.Tipo.BORRADORES
+            else:
+                payload = _payload_listar(config, vendedor, corrida_id, chats)
+                job = cola.Tipo.LISTAR
         else:
-            estrategia = str(config.get("modo_lectura", "recientes"))
-            payload = {
-                "n_chats": chats,
-                "run_id": str(corrida_id),
-                "estrategia": estrategia,
-                # La ventana viaja al agente para que el LISTAR busque los
-                # chats fríos de verdad, no los N de arriba de la lista.
-                "antiguedad_min_dias": config.get("antiguedad_min_dias", 0),
-                "antiguedad_max_dias": config.get("antiguedad_max_dias", 3650),
-            }
-            if estrategia == "barrido":
-                # El cursor de ESTA máquina (D27): hasta dónde llegó el barrido
-                # la última vez, y los nombres de esa tanda para no repetir en
-                # la frontera. Cada Mac avanza a su ritmo.
-                barrido = vendedor.get("barrido") or {}
-                payload["barrido_hasta_dias"] = int(barrido.get("hasta_dias") or 3650)
-                payload["ya_vistos"] = [
-                    str(n)[:120] for n in (barrido.get("ultima_tanda") or []) if str(n).strip()
-                ][:20]
+            payload = _payload_listar(config, vendedor, corrida_id, chats)
             job = cola.Tipo.LISTAR
 
         await cola.encolar(
@@ -165,6 +169,32 @@ async def disparar(
     log.info("corrida_disparada", corrida=str(corrida_id), tipo=str(tipo), maquinas=len(maquinas))
 
     return Disparo(corrida_id=corrida_id, maquinas=maquinas, jobs=encolados)
+
+
+def _payload_listar(
+    config: dict[str, Any], vendedor: dict[str, Any], corrida_id: ObjectId, chats: int
+) -> dict[str, Any]:
+    """El payload del `LISTAR` con el que arranca el circuito de siempre."""
+    estrategia = str(config.get("modo_lectura", "recientes"))
+    payload: dict[str, Any] = {
+        "n_chats": chats,
+        "run_id": str(corrida_id),
+        "estrategia": estrategia,
+        # La ventana viaja al agente para que el LISTAR busque los
+        # chats fríos de verdad, no los N de arriba de la lista.
+        "antiguedad_min_dias": config.get("antiguedad_min_dias", 0),
+        "antiguedad_max_dias": config.get("antiguedad_max_dias", 3650),
+    }
+    if estrategia == "barrido":
+        # El cursor de ESTA máquina (D27): hasta dónde llegó el barrido
+        # la última vez, y los nombres de esa tanda para no repetir en
+        # la frontera. Cada Mac avanza a su ritmo.
+        barrido = vendedor.get("barrido") or {}
+        payload["barrido_hasta_dias"] = int(barrido.get("hasta_dias") or 3650)
+        payload["ya_vistos"] = [
+            str(n)[:120] for n in (barrido.get("ultima_tanda") or []) if str(n).strip()
+        ][:20]
+    return payload
 
 
 class Pausado(Exception):

@@ -33,6 +33,7 @@ from agente.adaptadores import selectores
 from agente.adaptadores.simulada import PaginaSimulada
 from agente.cliente import Job
 from agente.diagnostico import Diagnostico
+from agente.jobs import borradores as borradores_job
 from agente.jobs import enviar as enviar_job
 from agente.jobs import listar as listar_job
 from agente.jobs import redactar as redactar_job
@@ -95,6 +96,42 @@ def construir(
                 estrategia=str(carga.get("estrategia", "recientes")),
                 barrido_hasta_dias=carga.get("barrido_hasta_dias", 3650),
                 ya_vistos=list(carga.get("ya_vistos", [])),
+                device_id=device_id,
+                claude_bin=claude_bin,
+                carpeta=carpeta,
+            )
+            return resultado.a_reporte()
+
+        if job.tipo == "BORRADORES":
+            # El pase único: leer el chat y dejar el borrador ahí mismo, con la
+            # extensión, sin enviar nada. Igual que LISTAR, corre en el Chrome
+            # del vendedor — y con el mismo guard: sin navegador no se le paga
+            # a un modelo para que descubra que no hay navegador.
+            if asegurar_navegador is not None:
+                listo = await asegurar_navegador()
+                if not listo.utilizable:
+                    log.error("chrome_del_vendedor_no_disponible", detalle=listo.detalle)
+                    return {
+                        "ok": False,
+                        "codigo": "ERROR_INESPERADO",
+                        "detalle": {
+                            "motivo": (
+                                "no se pudo abrir el Chrome de esta máquina, que es donde "
+                                f"vive la extensión: {listo.detalle}"
+                            )
+                        },
+                    }
+
+            resultado = await borradores_job.dejar_borradores(
+                n_chats=carga.get("n_chats", 6),
+                run_id=str(carga.get("run_id", "")),
+                antiguedad_min_dias=carga.get("antiguedad_min_dias", 0),
+                antiguedad_max_dias=carga.get("antiguedad_max_dias", 3650),
+                ya_vistos=list(carga.get("ya_vistos", [])),
+                no_escribir=list(carga.get("no_escribir", [])),
+                solo_numeros=list(carga.get("solo_numeros", [])),
+                contexto_empresa=str(carga.get("contexto_empresa", "")),
+                largo_maximo=carga.get("largo_maximo", 600),
                 device_id=device_id,
                 claude_bin=claude_bin,
                 carpeta=carpeta,

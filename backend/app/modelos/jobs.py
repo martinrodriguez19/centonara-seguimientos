@@ -109,6 +109,36 @@ class PayloadEnviar(PayloadBase):
             raise ValueError(f"contacto_id no es un E.164 válido: {error.motivo}") from error
 
 
+class PayloadBorradores(PayloadBase):
+    """El pase único: leer cada chat frío y dejar el borrador ahí mismo.
+
+    Las listas son la forma nueva de R3: el backend decide a quién no
+    escribirle y a quién sí, y eso viaja como **dato** — el prompt las obedece,
+    no las calcula. `n_chats` es el tamaño de la tanda; la siguiente la encola
+    el backend al procesar el reporte, con `ya_vistos` acumulado.
+    """
+
+    n_chats: Annotated[int, Field(ge=1, le=12)] = 6
+    run_id: Annotated[str, Field(max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
+    antiguedad_min_dias: Annotated[int, Field(ge=0, le=3650)] = 0
+    antiguedad_max_dias: Annotated[int, Field(ge=1, le=3650)] = 3650
+    # Nombres visitados en tandas anteriores de esta corrida: no se vuelven a abrir.
+    ya_vistos: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=60)
+    ] = []
+    # Contactos con un mensaje reciente del sistema (anti-duplicado, G5): se
+    # saltean sin abrirlos.
+    no_escribir: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=60)
+    ] = []
+    # R4 cuando la lista de destinos no es "*": sólo chats cuyo número visible
+    # esté acá pueden recibir borrador. Vacía = sin restricción (la lista era
+    # "*"); una lista vacía de destinos no llega a encolar este job.
+    solo_numeros: Annotated[list[Annotated[str, Field(max_length=25)]], Field(max_length=60)] = []
+    largo_maximo: Annotated[int, Field(ge=50, le=1000)] = 600
+    contexto_empresa: Annotated[str, Field(max_length=LARGO_CONTEXTO_EMPRESA)] = ""
+
+
 class PayloadDiagnostico(PayloadBase):
     """Correr los chequeos y reportar. No lleva nada."""
 
@@ -118,6 +148,7 @@ POR_TIPO: dict[str, type[PayloadBase]] = {
     "RESOLVER": PayloadResolver,
     "REDACTAR": PayloadRedactar,
     "ENVIAR": PayloadEnviar,
+    "BORRADORES": PayloadBorradores,
     "DIAGNOSTICO": PayloadDiagnostico,
 }
 

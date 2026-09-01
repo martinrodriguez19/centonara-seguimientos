@@ -90,6 +90,61 @@ async def test_sin_el_chrome_del_vendedor_no_se_le_paga_a_ningun_modelo() -> Non
     assert "CLAUDE_BIN" not in str(resultado["detalle"])
 
 
+async def test_borradores_tiene_el_mismo_guard_de_chrome() -> None:
+    """El pase único corre en el mismo Chrome que LISTAR, con el mismo guard."""
+
+    class NoSePudo:
+        utilizable = False
+        detalle = "Chrome no arrancó"
+
+    async def asegurar():
+        return NoSePudo()
+
+    resultado = await construir(modo="operativo", asegurar_navegador=asegurar)(
+        Job("1", "BORRADORES", {"n_chats": 6, "run_id": "r1"})
+    )
+
+    assert resultado["ok"] is False
+    assert "Chrome" in resultado["detalle"]["motivo"]
+
+
+async def test_borradores_va_al_pase_unico_con_su_payload(monkeypatch) -> None:
+    """El despachador traduce el payload a la llamada, campo por campo."""
+    from agente.jobs import borradores as borradores_job
+
+    visto = {}
+
+    async def falso(**kwargs):
+        visto.update(kwargs)
+        return borradores_job.Resultado(True, detalle={"chats": [], "dejados": 0})
+
+    monkeypatch.setattr(borradores_job, "dejar_borradores", falso)
+
+    resultado = await construir(modo="operativo", claude_bin="claude")(
+        Job(
+            "1",
+            "BORRADORES",
+            {
+                "n_chats": 4,
+                "run_id": "r1",
+                "ya_vistos": ["Corralón"],
+                "no_escribir": ["Pinturería"],
+                "solo_numeros": ["+5491123231151"],
+                "contexto_empresa": "hierro y chapa",
+                "largo_maximo": 300,
+            },
+        )
+    )
+
+    assert resultado["ok"] is True
+    assert visto["n_chats"] == 4
+    assert visto["ya_vistos"] == ["Corralón"]
+    assert visto["no_escribir"] == ["Pinturería"]
+    assert visto["solo_numeros"] == ["+5491123231151"]
+    assert visto["contexto_empresa"] == "hierro y chapa"
+    assert visto["largo_maximo"] == 300
+
+
 def job_enviar(destinos=None, **cambios) -> Job:
     """Un `ENVIAR` como lo entrega el backend, con lo vigente adjunto."""
     payload = {

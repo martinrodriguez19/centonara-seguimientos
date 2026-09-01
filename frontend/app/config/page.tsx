@@ -116,6 +116,60 @@ export default function Config() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Cómo se dejan los borradores</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            <strong>Circuito de siempre</strong>: se leen los chats, se redacta aparte y otro
+            navegador vuelve a abrir cada chat para dejar el borrador. <strong>Pase único</strong>:
+            la extensión lee cada chat y deja el borrador ahí mismo, en una sola pasada — sin
+            segundo navegador y sin volver a buscar el chat. <strong>Con respaldo</strong>: el pase
+            único, y si a una máquina se le agotan los reintentos, esa máquina cae al circuito de
+            siempre.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={
+                (datos.modo_borrador ?? "playwright") === "playwright" ? "default" : "outline"
+              }
+              disabled={guardar.isPending}
+              onClick={() => guardar.mutate({ modo_borrador: "playwright" })}
+            >
+              Circuito de siempre
+            </Button>
+            <Button
+              size="sm"
+              variant={datos.modo_borrador === "extension" ? "default" : "outline"}
+              disabled={guardar.isPending}
+              onClick={() => guardar.mutate({ modo_borrador: "extension" })}
+            >
+              Pase único
+            </Button>
+            <Button
+              size="sm"
+              variant={datos.modo_borrador === "extension_con_respaldo" ? "default" : "outline"}
+              disabled={guardar.isPending}
+              onClick={() => guardar.mutate({ modo_borrador: "extension_con_respaldo" })}
+            >
+              Pase único con respaldo
+            </Button>
+          </div>
+          {(datos.modo_borrador ?? "playwright") === "playwright" ? null : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Numero
+                etiqueta="Borradores por tanda"
+                ayuda="El pase trabaja de a tandas cortas y reporta al terminar cada una. Seis entra cómodo; más de eso arriesga el tiempo límite."
+                valor={datos.chats_por_tanda ?? 6}
+                onGuardar={(chats_por_tanda) => guardar.mutate({ chats_por_tanda })}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Indicaciones para redactar</CardTitle>
           <p className="text-sm text-muted-foreground">
             Lo que escribas acá manda sobre lo que dicen los mensajes y cómo lo dicen: qué vende la

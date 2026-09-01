@@ -669,6 +669,12 @@ class CambioConfiguracion(Estricto):
     # Cómo elige chats la generación (D27): los recientes de la ventana, o el
     # barrido del historial del más viejo a hoy.
     modo_lectura: Literal["recientes", "barrido"] | None = None
+    # Cómo se dejan los borradores (el pase único, 01/09): el circuito de
+    # siempre con Playwright, la extensión en una sola pasada, o la extensión
+    # con el circuito de siempre como respaldo por máquina.
+    modo_borrador: Literal["playwright", "extension", "extension_con_respaldo"] | None = None
+    # Cuántos borradores deja cada tanda del pase único antes de reportar.
+    chats_por_tanda: Annotated[int | None, Field(ge=1, le=12)] = None
     # Las indicaciones del dueño sobre su empresa (D33), que viajan al REDACTAR
     # y mandan sobre el contenido y el tono del borrador.
     contexto_empresa: Annotated[
