@@ -28,21 +28,20 @@ PASOS:
    lista de chats. Si aparece un QR de login, no intentes resolverlo: devolve el
    JSON de error con motivo "sesion_no_iniciada".
 
-2. Lo que se busca son conversaciones FRIAS: chats cuyo ultimo mensaje tenga
-   entre {{ANTIGUEDAD_MIN}} y {{ANTIGUEDAD_MAX}} dias de antiguedad. Recorre la
-   lista desde arriba hacia abajo, scrolleando lo que haga falta. Saltea los
-   grupos siempre. Saltea tambien, sin abrirlos, los chats cuyo nombre este en
-   estas dos listas:
+{{COMO_RECORRER}}
 
-   Ya visitados en tandas anteriores de esta corrida:
+3. Saltea SIEMPRE los grupos. Y saltea tambien, sin abrirlos, los chats cuyo
+   nombre este en estas dos listas:
+
+   Ya visitados (no los vuelvas a abrir):
 {{YA_VISTOS}}
 
    No escribirles (ya se les escribio hace poco):
 {{NO_ESCRIBIR}}
 
-3. Restriccion de destinos: {{RESTRICCION_DESTINOS}}
+4. Restriccion de destinos: {{RESTRICCION_DESTINOS}}
 
-4. Por cada chat que califique, EN ESTE ORDEN y sin pasar al siguiente hasta
+5. Por cada chat que califique, EN ESTE ORDEN y sin pasar al siguiente hasta
    terminar con el actual:
 
    a. Abrilo y mira los ultimos mensajes -no solo el ultimo- para entender QUE
@@ -64,11 +63,6 @@ PASOS:
    f. Pasa al siguiente chat CLICKEANDO en el en la lista. Al salir, WhatsApp
       guarda lo escrito como borrador de esa conversacion: eso es exactamente
       lo que se busca.
-
-5. Frena cuando hayas dejado {{N_CHATS}} borradores, o cuando los chats que veas
-   sean ya mas viejos que {{ANTIGUEDAD_MAX}} dias, o cuando no queden chats por
-   revisar. Si frenaste porque no queda nada mas dentro de la ventana, marca
-   "fin_de_ventana": true en la respuesta.
 
 INDICACIONES DEL DUEÑO
 
@@ -125,7 +119,8 @@ QUE NO PODES HACER al redactar, y esto importa mas que todo lo anterior
 
 FORMATO DE SALIDA
 
-Devolve UNICAMENTE un objeto JSON, sin texto antes ni despues, sin backticks:
+Devolve UNICAMENTE un objeto JSON, sin texto antes ni despues, sin backticks,
+con los chats en el MISMO ORDEN en que los recorriste:
 
 {
   "run_id": "{{RUN_ID}}",
@@ -157,7 +152,11 @@ Devolve UNICAMENTE un objeto JSON, sin texto antes ni despues, sin backticks:
 
 En "chats" va TODO chat que abriste, haya quedado con borrador o no: los
 salteados llevan "borrador_dejado": false y su motivo. Los que salteaste SIN
-abrir (por las listas del paso 2) no van.
+abrir (por las listas del paso 3) no van.
+
+El campo "antiguedad_dias" tiene que ser fiel a lo que muestra la interfaz: el
+sistema lo usa para saber por donde sigue la proxima tanda. Un numero inventado
+ahi hace que se saltee gente o que se repita el mismo tramo.
 
 Si algo falla, devolve:
 

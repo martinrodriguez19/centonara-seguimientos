@@ -165,6 +165,145 @@ async def test_el_anti_duplicado_viaja_como_nombres_a_no_escribir(base) -> None:
 
 
 # ---------------------------------------------------------------------------
+# El barrido: la misma perilla y el mismo cursor que el circuito viejo (D27)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_con_modo_lectura_barrido_el_payload_lleva_el_cursor(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "modo_lectura": "barrido"})
+    await base["vendedores"].update_one(
+        {"maquina": "mac-rocio"},
+        {"$set": {"barrido": {"hasta_dias": 200, "ultima_tanda": ["Ferretería Sur"]}}},
+    )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["estrategia"] == "barrido"
+    assert payload["barrido_hasta_dias"] == 200
+    assert "Ferretería Sur" in payload["ya_vistos"]
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_sin_cursor_previo_el_barrido_arranca_de_3650(base) -> None:
+    """Una máquina que nunca barrió: `hasta_dias` empieza en el techo, como el
+    circuito viejo."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "modo_lectura": "barrido"})
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["barrido_hasta_dias"] == 3650
+
+
+@sin_mongo
+async def test_con_modo_lectura_recientes_no_hay_cursor_en_el_payload(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["estrategia"] == "recientes"
+    assert "barrido_hasta_dias" not in payload
+
+
+@sin_mongo
+async def test_procesar_reporte_avanza_el_cursor_de_la_maquina(base) -> None:
+    """El corazón del pedido del dueño: que el pase único recorra del más
+    viejo al más nuevo, igual que hacía el circuito con Playwright."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "modo_lectura": "barrido"})
+    job = job_borradores(ObjectId())
+    job["payload"]["estrategia"] = "barrido"
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job,
+        detalle={
+            "chats": [visitado(antiguedad_dias=400), visitado(antiguedad_dias=380)],
+            "fin_de_ventana": False,
+        },
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    #  El MÁS NUEVO de la tanda es el próximo "hasta": 380, no 400.
+    assert vendedor["barrido"]["hasta_dias"] == 380
+    assert vendedor["barrido"]["completado_en"] is None
+
+
+@sin_mongo
+async def test_fin_de_ventana_en_barrido_marca_el_historial_completado(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "modo_lectura": "barrido"})
+    job = job_borradores(ObjectId())
+    job["payload"]["estrategia"] = "barrido"
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job,
+        detalle={"chats": [visitado(antiguedad_dias=900)], "fin_de_ventana": True},
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedor["barrido"]["completado_en"] is not None
+
+
+@sin_mongo
+async def test_en_recientes_el_cursor_no_se_toca(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    await base["vendedores"].update_one(
+        {"maquina": "mac-rocio"}, {"$set": {"barrido": {"hasta_dias": 200}}}
+    )
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(ObjectId()),
+        detalle={"chats": [visitado()], "fin_de_ventana": False},
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedor["barrido"]["hasta_dias"] == 200, "no lo tocó una corrida en recientes"
+
+
+@sin_mongo
+async def test_una_tanda_fallida_igual_avanza_el_cursor(base) -> None:
+    """Los chats parciales de una tanda que falló ya se recorrieron —varios con
+    borrador dejado— y releerlos en el reintento sería trabajo perdido."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "modo_lectura": "barrido"})
+    job = job_borradores(ObjectId(), estado=cola.EstadoJob.FALLIDO)
+    job["payload"]["estrategia"] = "barrido"
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job,
+        detalle={"chats": [visitado(antiguedad_dias=500)]},
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedor["barrido"]["hasta_dias"] == 500
+
+
+def test_los_nombres_repetidos_no_gastan_el_tope() -> None:
+    from app.core.pase_unico import _sin_repetidos
+
+    assert _sin_repetidos(["A", "B", "A", "C", "B"]) == ["A", "B", "C"]
+
+
+# ---------------------------------------------------------------------------
 # Disparar: la perilla decide qué job sale
 # ---------------------------------------------------------------------------
 

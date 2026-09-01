@@ -282,6 +282,47 @@ async def test_el_contexto_de_la_empresa_viaja_una_vez_por_tanda() -> None:
     assert "<<INDICACIONES DEL DUEÑO>>" in prompt
 
 
+# ---------------------------------------------------------------------------
+# Las dos estrategias (D27)
+# ---------------------------------------------------------------------------
+
+
+async def test_por_defecto_recorre_de_arriba_hacia_abajo() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, antiguedad_min_dias=7, antiguedad_max_dias=90)
+
+    prompt = invocador.visto["prompt"]
+    assert "entre 7 y 90 dias" in prompt
+    assert "desde arriba hacia abajo" in prompt
+    assert "BARRIDO DEL HISTORIAL" not in prompt
+
+
+async def test_el_barrido_va_al_fondo_y_avanza_hacia_hoy() -> None:
+    """Lo que pidió el dueño: los más viejos primero, igual que el circuito
+    viejo, con el cursor de la máquina marcando hasta dónde se llegó."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, estrategia="barrido", barrido_hasta_dias=84)
+
+    prompt = invocador.visto["prompt"]
+    assert "BARRIDO DEL HISTORIAL" in prompt
+    assert "HASTA EL FONDO" in prompt
+    assert "84 dias o menos" in prompt
+    assert "MAS VIEJO AL MAS" in prompt and "NUEVO" in prompt
+    #  La ventana de antigüedad no manda en barrido: es su propia selección.
+    assert "entre 0 y 3650 dias" not in prompt
+
+
+async def test_las_variables_del_bloque_de_recorrido_se_rellenan() -> None:
+    """El bloque de estrategia trae `{{N_CHATS}}` adentro: si no se sustituye,
+    el modelo recibe la llave literal y no sabe cuántos dejar."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, n_chats=5, estrategia="barrido", barrido_hasta_dias=120)
+
+    prompt = invocador.visto["prompt"]
+    assert "{{" not in prompt, "quedó una variable sin rellenar"
+    assert "5 borradores" in prompt
+
+
 async def test_el_prompt_prohibe_enviar() -> None:
     """La regla que hace que esto sea «dejar borradores» y no otra cosa."""
     invocador = responde({"run_id": RUN, "status": "ok", "chats": []})

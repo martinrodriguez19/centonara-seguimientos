@@ -84,12 +84,17 @@ async def armar_payload(
     #  concretos, sólo esos chats pueden recibir borrador.
     solo_numeros = [] if "*" in destinos else destinos[:MAX_NOMBRES]
 
-    return {
+    # El pase único respeta `modo_lectura` igual que el circuito viejo (D27):
+    # la perilla del panel es una sola y significa lo mismo en las dos rutas.
+    estrategia = str(config.get("modo_lectura", "recientes"))
+    vistos = [str(n)[:120] for n in (ya_vistos or [])]
+
+    payload = {
         "n_chats": int(config.get("chats_por_tanda", 6)),
         "run_id": str(corrida_id),
         "antiguedad_min_dias": int(config.get("antiguedad_min_dias", 0)),
         "antiguedad_max_dias": int(config.get("antiguedad_max_dias", 3650)),
-        "ya_vistos": [n[:120] for n in (ya_vistos or [])][-MAX_NOMBRES:],
+        "estrategia": estrategia,
         "no_escribir": await _no_escribir(base, maquina, config=config, ahora=momento),
         "solo_numeros": solo_numeros,
         "largo_maximo": int(config.get("largo_maximo", 600)),
@@ -97,6 +102,35 @@ async def armar_payload(
             : configuracion.LARGO_CONTEXTO_EMPRESA
         ],
     }
+
+    if estrategia == "barrido":
+        # El cursor de ESTA máquina: hasta dónde llegó el barrido, y los
+        # nombres de la última tanda para desempatar en la frontera cuando
+        # varios chats comparten antigüedad. Es el mismo cursor que usa el
+        # circuito viejo — las dos rutas avanzan sobre el mismo recorrido, así
+        # que cambiar de perilla a mitad del historial no lo hace empezar de
+        # nuevo ni saltearse un tramo.
+        cursor = (await base["vendedores"].find_one({"maquina": maquina}) or {}).get(
+            "barrido"
+        ) or {}
+        payload["barrido_hasta_dias"] = int(cursor.get("hasta_dias") or 3650)
+        frontera = [str(n)[:120] for n in (cursor.get("ultima_tanda") or []) if str(n).strip()]
+        #  Los de la corrida anterior primero: si hay que recortar, se pierden
+        #  los más viejos, que ya quedaron detrás del cursor igual.
+        vistos = frontera + vistos
+
+    payload["ya_vistos"] = _sin_repetidos(vistos)[-MAX_NOMBRES:]
+    return payload
+
+
+def _sin_repetidos(nombres: list[str]) -> list[str]:
+    """Los mismos nombres, sin duplicados, en el orden en que aparecieron.
+
+    En barrido, la última tanda entra dos veces —por el cursor y por lo
+    acumulado en la corrida— y cada repetido gasta un lugar del tope de 60 que
+    le corresponde a un chat que sí hay que saltear.
+    """
+    return list(dict.fromkeys(nombres))
 
 
 async def _no_escribir(base, maquina: str, *, config: dict[str, Any], ahora: datetime) -> list[str]:
@@ -237,6 +271,14 @@ async def procesar_reporte(
         repetidos=resultado.repetidos,
     )
 
+    # ---- El cursor del barrido ---------------------------------------------
+    #
+    # Se avanza SIEMPRE que la tanda haya visitado algo, incluso si falló a la
+    # mitad: esos chats ya se recorrieron —y varios quedaron con borrador— así
+    # que volver a pasarlos sería releerlos para saltearlos por campo ocupado.
+    if str((job.get("payload") or {}).get("estrategia")) == "barrido" and chats:
+        await _avanzar_cursor(base, maquina, chats=chats, detalle=detalle, momento=momento)
+
     # ---- La tanda siguiente ------------------------------------------------
     #
     # Sólo si la tanda vino de un job exitoso: una fallida sigue por los
@@ -264,6 +306,41 @@ async def procesar_reporte(
     if resultado.tanda_siguiente is None:
         await _terminar_si_no_queda_nada(base, corrida_id, momento)
     return resultado
+
+
+async def _avanzar_cursor(
+    base,
+    maquina: str,
+    *,
+    chats: list[dict[str, Any]],
+    detalle: dict[str, Any],
+    momento: datetime,
+) -> None:
+    """Mueve el cursor del barrido de esta máquina, del fondo hacia hoy (D27).
+
+    `hasta_dias` pasa a ser la antigüedad del chat **más nuevo** de la tanda:
+    la próxima pide "los más viejos con hasta esos días" y así avanza sin
+    volver a empezar. Es el mismo cursor y la misma función que usa el circuito
+    viejo, a propósito — cambiar de perilla a mitad del historial no tiene que
+    hacer que el barrido reempiece ni que se saltee un tramo.
+
+    ⚠️ `completado` lo dice el agente en `fin_de_ventana`, no se deduce contando:
+    una tanda corta por tiempo y una por historial agotado se ven iguales desde
+    acá, y confundirlas daría el barrido por terminado a mitad de camino.
+    """
+    from app.core import vendedores
+
+    antiguedades = [
+        int(c["antiguedad_dias"]) for c in chats if isinstance(c.get("antiguedad_dias"), int)
+    ]
+    await vendedores.registrar_barrido(
+        base,
+        maquina,
+        hasta_dias=min(antiguedades) if antiguedades else None,
+        tanda=[str(c.get("contacto_nombre", ""))[:120] for c in chats],
+        completado=bool(detalle.get("fin_de_ventana")),
+        ahora=momento,
+    )
 
 
 async def _registrar_dejado(

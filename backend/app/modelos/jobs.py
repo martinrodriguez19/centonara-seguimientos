@@ -122,6 +122,12 @@ class PayloadBorradores(PayloadBase):
     run_id: Annotated[str, Field(max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
     antiguedad_min_dias: Annotated[int, Field(ge=0, le=3650)] = 0
     antiguedad_max_dias: Annotated[int, Field(ge=1, le=3650)] = 3650
+    # Las mismas dos estrategias que `LISTAR` (D27). En `barrido`, la ventana de
+    # antigüedad no aplica —el barrido ES su propia selección— y manda el
+    # cursor: sólo chats con antigüedad menor o igual a `barrido_hasta_dias`,
+    # del más viejo al más nuevo.
+    estrategia: Literal["recientes", "barrido"] = "recientes"
+    barrido_hasta_dias: Annotated[int, Field(ge=0, le=3650)] = 3650
     # Nombres visitados en tandas anteriores de esta corrida: no se vuelven a abrir.
     ya_vistos: Annotated[
         list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=60)

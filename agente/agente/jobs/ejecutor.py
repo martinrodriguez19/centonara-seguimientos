@@ -127,6 +127,8 @@ def construir(
                 run_id=str(carga.get("run_id", "")),
                 antiguedad_min_dias=carga.get("antiguedad_min_dias", 0),
                 antiguedad_max_dias=carga.get("antiguedad_max_dias", 3650),
+                estrategia=str(carga.get("estrategia", "recientes")),
+                barrido_hasta_dias=carga.get("barrido_hasta_dias", 3650),
                 ya_vistos=list(carga.get("ya_vistos", [])),
                 no_escribir=list(carga.get("no_escribir", [])),
                 solo_numeros=list(carga.get("solo_numeros", [])),

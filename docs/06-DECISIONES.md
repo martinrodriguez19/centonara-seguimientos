@@ -770,6 +770,15 @@ de esta ruta.
 circuito completo de siempre, que se activa por máquina al agotar los reintentos, sólo con
 `extension_con_respaldo`. Nada del circuito viejo se borró.
 
+**Corrección del mismo día: el pase único también respeta `modo_lectura` (D27).** La primera
+versión sólo sabía recorrer de arriba hacia abajo — un hueco que nadie notó hasta activarlo en
+producción y ver que el barrido dejó de avanzar. Ahora `armar_payload` lee `modo_lectura` igual
+que el circuito viejo y, en `barrido`, usa **el mismo cursor por máquina** (`vendedores.barrido`):
+`procesar_reporte` lo avanza con la antigüedad del chat más nuevo de cada tanda, también cuando la
+tanda falló a la mitad — esos chats ya se recorrieron y releerlos sería trabajo perdido. Cambiar
+la perilla de ruta a mitad del historial no reinicia el barrido ni salta ningún tramo: las dos
+rutas comparten el mismo punto de avance.
+
 **Qué la revertiría.** Que el pase único deje borradores en chats equivocados (no tiene la
 comparación por número; su garantía es no buscar), que WhatsApp trate la escritura sostenida en
 el campo como actividad de autómata, o que las tandas no entren en el timeout ni achicándolas.

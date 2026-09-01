@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agente.jobs.claude_code import TIMEOUT_BORRADORES, Invocacion, invocar, rellenar
+from agente.jobs.claude_code import TIMEOUT_BORRADORES, Invocacion, invocar
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -65,6 +65,49 @@ MOTIVOS_DE_SALTEO = {"campo_ocupado", "sin_tema", "fuera_de_lista"}
 
 QUIEN_HABLO = {"contacto": "contacto", "yo": "vendedor", "vendedor": "vendedor"}
 
+# ---------------------------------------------------------------------------
+# Cómo recorrer la lista: los dos bloques que rellenan `{{COMO_RECORRER}}`
+# ---------------------------------------------------------------------------
+#
+# ⚠️ Son dos bloques dentro de UN prompt, y no dos archivos como
+# `prompt-listar.txt` / `prompt-barrido.txt`. El motivo es concreto: lo único
+# que cambia entre las dos estrategias es CÓMO se eligen los chats — todo lo
+# demás (las tres reglas, el recorrido chat por chat, las indicaciones del
+# dueño, las prohibiciones al redactar, el formato de salida) tiene que ser
+# idéntico, y duplicarlo en dos archivos es garantizar que un día diverjan.
+# Justo la mitad que no puede divergir es la de redacción.
+
+RECORRIDO_RECIENTES = """2. Lo que se busca son conversaciones FRIAS: chats cuyo
+   ultimo mensaje tenga entre {{ANTIGUEDAD_MIN}} y {{ANTIGUEDAD_MAX}} dias de
+   antiguedad. Recorre la
+   lista desde arriba hacia abajo, scrolleando lo que haga falta: los chats de
+   hoy y de ayer probablemente NO califican y los que buscas estan mas abajo.
+
+   Frena cuando hayas dejado {{N_CHATS}} borradores, o cuando los chats que veas
+   sean ya mas viejos que {{ANTIGUEDAD_MAX}} dias. Si frenaste porque ya no
+   queda ningun chat dentro de la ventana, marca "fin_de_ventana": true."""
+
+RECORRIDO_BARRIDO = """2. Esta es una pasada de BARRIDO DEL HISTORIAL: la empresa esta recuperando a
+   sus clientes viejos, recorriendo todos los chats desde el MAS ANTIGUO hacia
+   hoy, de a tandas. El backend lleva el cursor; tu tanda es esta.
+
+   Scrollea la lista de chats HASTA EL FONDO: los mas viejos estan al final, y
+   ahi arranca tu tanda. Busca los chats MAS VIEJOS cuyo ultimo mensaje tenga
+   {{HASTA_DIAS}} dias o menos de antiguedad — los que tengan MAS ya se
+   procesaron en tandas anteriores, salteolos. Recorrelos DEL MAS VIEJO AL MAS
+   NUEVO, y devolvelos en ese orden.
+
+   Frena cuando hayas dejado {{N_CHATS}} borradores. Devolver menos esta bien y
+   es preferible a no devolver nada: si la tanda se hace larga, corta y devolve
+   lo que ya tengas — el sistema sigue desde ahi en la proxima tanda. Lo unico
+   que tenes que hacer bien es decir POR QUE devolves menos, en el campo
+   "fin_de_ventana":
+     - true  = ya no quedan chats mas viejos sin procesar: el barrido termino
+     - false = quedan, pero cortaste antes (por tiempo, o por llegar a
+               {{N_CHATS}})
+   Marcar true por error hace que el sistema de por terminado el barrido y no
+   vuelva a mirar el historial. Ante la duda, false."""
+
 
 @dataclass(frozen=True)
 class Resultado:
@@ -95,6 +138,8 @@ async def dejar_borradores(
     carpeta: Path,
     antiguedad_min_dias: int = 0,
     antiguedad_max_dias: int = 3650,
+    estrategia: str = "recientes",
+    barrido_hasta_dias: int = 3650,
     ya_vistos: list[str] | None = None,
     no_escribir: list[str] | None = None,
     solo_numeros: list[str] | None = None,
@@ -104,10 +149,18 @@ async def dejar_borradores(
 ) -> Resultado:
     """Una tanda del pase único: hasta `n_chats` borradores dejados.
 
+    Dos estrategias, la misma que el circuito viejo (D27):
+
+    - `recientes` — de arriba hacia abajo, dentro de la ventana de antigüedad.
+    - `barrido` — desde el fondo del historial hacia hoy, los más viejos con
+      antigüedad menor o igual a `barrido_hasta_dias`. El cursor lo lleva el
+      backend, por máquina, y avanza con cada tanda que vuelve.
+
     Las listas vienen del backend ya calculadas (R3): `ya_vistos` son los
-    nombres de tandas anteriores de esta corrida, `no_escribir` los contactos
-    con un mensaje reciente del sistema (anti-duplicado), y `solo_numeros` —si
-    no está vacía— restringe a chats cuyo número visible esté en la lista.
+    nombres ya recorridos —de tandas anteriores de esta corrida y, en barrido,
+    de la frontera de la corrida previa—, `no_escribir` los contactos con un
+    mensaje reciente del sistema (anti-duplicado), y `solo_numeros` —si no está
+    vacía— restringe a chats cuyo número visible esté en la lista.
     """
     if not device_id:
         # Problema #5 del MVP: con más de un Chrome conectado a la cuenta,
@@ -130,14 +183,22 @@ async def dejar_borradores(
     else:
         restriccion = "ninguna: cualquier chat que califique puede recibir borrador."
 
-    prompt = rellenar(
-        carpeta / "prompts" / "prompt-borradores.txt",
+    #  El bloque de recorrido se sustituye ANTES que el resto: lleva adentro
+    #  sus propias variables ({{N_CHATS}}, {{HASTA_DIAS}}...), que se rellenan
+    #  en la misma pasada que las del cuerpo del prompt.
+    recorrido = RECORRIDO_BARRIDO if estrategia == "barrido" else RECORRIDO_RECIENTES
+    plantilla = (carpeta / "prompts" / "prompt-borradores.txt").read_text(encoding="utf-8")
+    plantilla = plantilla.replace("{{COMO_RECORRER}}", recorrido)
+
+    prompt = _sustituir(
+        plantilla,
         {
             "N_CHATS": str(max(1, min(int(n_chats), MAX_POR_TANDA))),
             "RUN_ID": run_id[:64],
             "DEVICE_ID": device_id,
             "ANTIGUEDAD_MIN": str(minimo),
             "ANTIGUEDAD_MAX": str(maximo),
+            "HASTA_DIAS": str(max(0, int(barrido_hasta_dias))),
             "YA_VISTOS": _lista(ya_vistos),
             "NO_ESCRIBIR": _lista(no_escribir),
             "RESTRICCION_DESTINOS": restriccion,
@@ -157,6 +218,19 @@ async def dejar_borradores(
         return _desde_invocacion(invocacion)
 
     return _interpretar(invocacion, run_id=run_id)
+
+
+def _sustituir(texto: str, variables: dict[str, str]) -> str:
+    """`rellenar`, pero sobre un texto ya leído.
+
+    El prompt del pase único se arma en dos pasos —primero el bloque de
+    recorrido, después las variables— porque ese bloque trae variables adentro.
+    Una sola pasada, igual que `rellenar`: un valor que contenga `{{OTRA_COSA}}`
+    no se vuelve a expandir.
+    """
+    for nombre, valor in variables.items():
+        texto = texto.replace("{{" + nombre + "}}", valor)
+    return texto
 
 
 def _lista(nombres: list[str] | None) -> str:
