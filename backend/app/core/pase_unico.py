@@ -42,6 +42,85 @@ log = obtener_logger(__name__)
 # (`PayloadBorradores`) es la dura; ésta es la de armado.
 MAX_NOMBRES = 60
 
+# `no_escribir` tiene el doble, y no por simetría: es la lista que evita
+# escribirle dos veces a la misma persona, y la única cuyo desborde se le nota a
+# un cliente. Las otras dos desbordan hacia trabajo de más (releer un chat,
+# saltearlo por campo ocupado), ésta desborda hacia un mensaje duplicado.
+#
+# 120 nombres son ~2.000 caracteres de prompt: barato al lado de lo que evita.
+MAX_NO_ESCRIBIR = 120
+
+
+@dataclass(frozen=True)
+class Presupuesto:
+    """Cuántos borradores más puede dejar esta máquina, y quién la está frenando.
+
+    Tres topes miden tres cosas distintas y el que manda es el más chico:
+
+    - `tope_diario_borradores` — el día del vendedor. Es el número que el dueño
+      piensa ("quiero 20 por día") y el que se cambia desde el panel.
+    - `tope_por_corrida` — una corrida sola. Protege de un bug que encole de
+      más, no del volumen.
+    - `max_tandas_por_maquina` — el tiempo. Es el único que frena una cadena de
+      tandas que visitan chats y no dejan ninguno: esas no mueven los otros dos.
+
+    El `motivo` no es cosmético: es lo que el panel muestra cuando alguien
+    pregunta por qué salieron N y no más.
+    """
+
+    quedan: int
+    motivo: str | None = None
+
+    @property
+    def hay_lugar(self) -> bool:
+        return self.quedan > 0
+
+
+async def _presupuesto(
+    base,
+    *,
+    corrida_id: ObjectId,
+    maquina: str,
+    config: dict[str, Any],
+    ahora: datetime,
+) -> Presupuesto:
+    """El más chico de los tres topes, con nombre propio.
+
+    ⚠️ Todo se cuenta **por máquina**. Un tope compartido entre las Macs hace
+    que la primera que reporta se lleve el presupuesto y las demás queden con
+    tandas recortadas sin que nadie lo haya decidido — y el dueño que pide
+    "veinte por día" los está pidiendo para cada vendedor, no entre todos.
+    """
+    dejados_hoy = await mensajes.borradores_dejados_hoy(base, maquina, ahora=ahora)
+    tope_dia = max(0, int(config.get("tope_diario_borradores", 20)))
+
+    dejados_corrida = await base["mensajes"].count_documents(
+        {
+            "corrida_id": corrida_id,
+            "maquina": maquina,
+            "estado": str(Estado.BORRADOR_DEJADO),
+        }
+    )
+    tope_corrida = max(0, int(config.get("tope_por_corrida", 25)))
+
+    #  Todas las tandas de esta máquina en esta corrida, en cualquier estado:
+    #  una que falló también gastó su tiempo, que es lo que este tope mide.
+    tandas = await base["jobs"].count_documents(
+        {"corrida_id": corrida_id, "maquina": maquina, "tipo": str(cola.Tipo.BORRADORES)}
+    )
+    tope_tandas = max(1, int(config.get("max_tandas_por_maquina", 5)))
+
+    if tandas >= tope_tandas:
+        return Presupuesto(0, "tope_de_tandas")
+
+    #  El día primero: es el que el dueño configuró y el que va a reconocer.
+    candidatos = [
+        (tope_dia - dejados_hoy, "tope_diario_borradores"),
+        (tope_corrida - dejados_corrida, "tope_por_corrida"),
+    ]
+    quedan, motivo = min(candidatos)
+    return Presupuesto(max(0, quedan), motivo if quedan <= 0 else None)
+
 
 @dataclass
 class Procesado:
@@ -140,17 +219,33 @@ async def _no_escribir(base, maquina: str, *, config: dict[str, Any], ahora: dat
     salido de los últimos días veta al contacto — un DESCARTADO no, porque una
     decisión de no mandar *ese* texto no veta a la persona. Se calcula por
     nombre porque es lo único que el pase ve en la lista de chats.
+
+    ⚠️ **La lista se corta, y por eso el orden importa.** Antes se ordenaba
+    alfabéticamente y se truncaba: pasando de 60 contactos en la ventana, los
+    nombres del final del abecedario se caían en silencio y esas personas
+    recibían un segundo borrador. Con seis borradores por corrida no se notaba;
+    con veinte por día es cuestión de semanas.
+
+    Ahora se ordena por **lo más reciente primero**. Si hay que perder a
+    alguien, que sea el que se contactó hace más días — el que está más cerca de
+    salir de la ventana igual.
     """
     corte = ahora - timedelta(days=max(1, int(config.get("dias_anti_duplicado", 7))))
-    nombres = await base["mensajes"].distinct(
-        "contacto_nombre",
-        {
-            "maquina": maquina,
-            "creado_en": {"$gte": corte},
-            "estado": {"$ne": str(Estado.DESCARTADO)},
-        },
-    )
-    return sorted(str(n)[:120] for n in nombres if str(n).strip())[:MAX_NOMBRES]
+    filas = await base["mensajes"].aggregate(
+        [
+            {
+                "$match": {
+                    "maquina": maquina,
+                    "creado_en": {"$gte": corte},
+                    "estado": {"$ne": str(Estado.DESCARTADO)},
+                }
+            },
+            {"$group": {"_id": "$contacto_nombre", "ultimo": {"$max": "$creado_en"}}},
+            {"$sort": {"ultimo": -1}},
+            {"$limit": MAX_NO_ESCRIBIR},
+        ]
+    ).to_list(None)
+    return [str(f["_id"])[:120] for f in filas if str(f.get("_id") or "").strip()]
 
 
 async def encolar_tanda(
@@ -164,9 +259,9 @@ async def encolar_tanda(
     """Una tanda del pase único, si corresponde. `None` con el porqué logueado.
 
     Dos guardas antes de encolar: que no haya ya una tanda viva de esta máquina
-    en esta corrida (un reporte procesado dos veces encolaría dos), y que el
-    tope por corrida no esté alcanzado — contado sobre lo ya dejado, porque en
-    esta ruta dejar ES el acto que el tope limita.
+    en esta corrida (un reporte procesado dos veces encolaría dos), y que quede
+    presupuesto — contado sobre lo ya dejado, porque en esta ruta dejar ES el
+    acto que los topes limitan.
     """
     momento = ahora or datetime.now(UTC)
 
@@ -183,12 +278,16 @@ async def encolar_tanda(
         return None
 
     config = await configuracion.obtener(base)
-    dejados = await base["mensajes"].count_documents(
-        {"corrida_id": corrida_id, "estado": str(Estado.BORRADOR_DEJADO)}
+    presupuesto = await _presupuesto(
+        base, corrida_id=corrida_id, maquina=maquina, config=config, ahora=momento
     )
-    tope = int(config.get("tope_por_corrida", 25))
-    if dejados >= tope:
-        log.info("tope_por_corrida_alcanzado", corrida=str(corrida_id), dejados=dejados, tope=tope)
+    if not presupuesto.hay_lugar:
+        log.info(
+            "sin_presupuesto_para_otra_tanda",
+            corrida=str(corrida_id),
+            maquina=maquina,
+            motivo=presupuesto.motivo,
+        )
         return None
 
     payload = await armar_payload(
@@ -203,7 +302,7 @@ async def encolar_tanda(
         return None
     #  La última tanda antes del tope se achica para no pasarlo: el modelo
     #  frena al llegar a `n_chats`, así que `n_chats` ES el tope de la tanda.
-    payload["n_chats"] = max(1, min(payload["n_chats"], tope - dejados))
+    payload["n_chats"] = max(1, min(payload["n_chats"], presupuesto.quedan))
 
     return await cola.encolar(
         base,
@@ -283,29 +382,85 @@ async def procesar_reporte(
     #
     # Sólo si la tanda vino de un job exitoso: una fallida sigue por los
     # reintentos del MISMO job (B2), no por una tanda nueva.
-    if job.get("estado") == str(cola.EstadoJob.LISTO):
-        if bool(detalle.get("fin_de_ventana")):
-            resultado.fin = "fin_de_ventana"
-        elif not chats:
-            #  Visitó cero chats sin declarar fin: no hay con qué avanzar
-            #  `ya_vistos`, y encolar otra tanda igual sería un bucle.
-            resultado.fin = "tanda_vacia"
-        else:
-            vistos_antes = [str(n) for n in (job.get("payload") or {}).get("ya_vistos") or []]
-            vistos = vistos_antes + [c["contacto_nombre"] for c in chats]
-            resultado.tanda_siguiente = await encolar_tanda(
-                base,
-                corrida_id=corrida_id,
-                maquina=maquina,
-                ya_vistos=vistos,
-                ahora=momento,
-            )
-            if resultado.tanda_siguiente is None:
-                resultado.fin = "tope_o_tanda_viva"
+    if job.get("estado") != str(cola.EstadoJob.LISTO):
+        #  Una tanda fallida sigue por los reintentos del MISMO job (B2), no por
+        #  una tanda nueva. Se nombra igual: el panel tiene que poder decir por
+        #  qué la máquina no siguió.
+        resultado.fin = "tanda_fallida"
+    elif bool(detalle.get("fin_de_ventana")):
+        resultado.fin = "fin_de_ventana"
+    elif not chats:
+        #  Visitó cero chats sin declarar fin: no hay con qué avanzar
+        #  `ya_vistos`, y encolar otra tanda igual sería un bucle.
+        resultado.fin = "tanda_vacia"
+    else:
+        vistos_antes = [str(n) for n in (job.get("payload") or {}).get("ya_vistos") or []]
+        vistos = vistos_antes + [c["contacto_nombre"] for c in chats]
+        resultado.tanda_siguiente = await encolar_tanda(
+            base,
+            corrida_id=corrida_id,
+            maquina=maquina,
+            ya_vistos=vistos,
+            ahora=momento,
+        )
+        if resultado.tanda_siguiente is None:
+            #  Se vuelve a preguntar en vez de adivinar: "no se encoló" tiene
+            #  cuatro causas distintas y decir cuál es la diferencia entre
+            #  "subí el tope" y "el recorrido se quedó sin chats".
+            resultado.fin = (
+                await _presupuesto(
+                    base, corrida_id=corrida_id, maquina=maquina, config=config, ahora=momento
+                )
+            ).motivo or "tanda_viva_o_sin_destinos"
+
+    log.info(
+        "pase_unico_tanda_terminada",
+        corrida=str(corrida_id),
+        maquina=maquina,
+        dejados=len(resultado.registrados),
+        pedidos=int((job.get("payload") or {}).get("n_chats") or 0),
+        fin_de_ventana=bool(detalle.get("fin_de_ventana")),
+        fin=resultado.fin,
+        sigue=resultado.tanda_siguiente is not None,
+    )
+    await _anotar_tanda(base, corrida_id, maquina=maquina, job=job, resultado=resultado)
 
     if resultado.tanda_siguiente is None:
         await _terminar_si_no_queda_nada(base, corrida_id, momento)
     return resultado
+
+
+async def _anotar_tanda(
+    base,
+    corrida_id: ObjectId,
+    *,
+    maquina: str,
+    job: dict[str, Any],
+    resultado: Procesado,
+) -> None:
+    """Deja el renglón de esta tanda en la corrida, para que el panel lo cuente.
+
+    Aditivo y silencioso: si esto falla, lo que se pierde es una fila de la
+    tarjeta de la corrida. Nunca un borrador, nunca la tanda siguiente — por eso
+    va **después** de encadenar y con el error tragado.
+    """
+    try:
+        await base["corridas"].update_one(
+            {"_id": corrida_id},
+            {
+                "$push": {
+                    "tandas": {
+                        "maquina": maquina,
+                        "pedidos": int((job.get("payload") or {}).get("n_chats") or 0),
+                        "dejados": len(resultado.registrados),
+                        "salteados": resultado.salteados,
+                        "fin": resultado.fin,
+                    }
+                }
+            },
+        )
+    except Exception as error:  # pragma: no cover - defensa, no camino
+        log.warning("anotar_tanda_fallo", corrida=str(corrida_id), error=str(error)[:200])
 
 
 async def _avanzar_cursor(

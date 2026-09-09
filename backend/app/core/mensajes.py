@@ -287,6 +287,40 @@ async def enviados_hoy(base, maquina: str, *, ahora: datetime | None = None) -> 
     )
 
 
+async def borradores_dejados_hoy(base, maquina: str, *, ahora: datetime | None = None) -> int:
+    """Cuántos borradores dejó hoy esta máquina en los chats de su vendedor (D39).
+
+    El hermano de `enviados_hoy`, y a propósito separado de él: aquél cuenta lo
+    que sale por la línea del vendedor, éste lo que le queda escrito en la
+    bandeja esperando que él lo mande. Son dos cosas distintas y tienen dos
+    topes distintos — juntarlas haría que aflojar uno afloje el otro sin querer.
+
+    Cuenta `BORRADOR_DEJADO` y también los que ya siguieron viaje —el vendedor
+    los mandó y el sistema los registró— porque el tope es sobre **cuántos se
+    dejaron**, no sobre cuántos siguen sin tocar.
+
+    ⚠️ El día es el día UTC, igual que `enviados_hoy`. En la práctica da lo
+    mismo: la ventana comercial termina 19:00 en Argentina, tres horas antes de
+    que UTC cambie de día, así que ninguna corrida cae partida.
+    """
+    momento = ahora or datetime.now(UTC)
+    medianoche = momento.replace(hour=0, minute=0, second=0, microsecond=0)
+    return await base["mensajes"].count_documents(
+        {
+            "maquina": maquina,
+            "creado_en": {"$gte": medianoche},
+            "estado": {
+                "$in": [
+                    str(Estado.BORRADOR_DEJADO),
+                    str(Estado.EN_ESPERA),
+                    str(Estado.ENVIANDO),
+                    str(Estado.ENVIADO),
+                ]
+            },
+        }
+    )
+
+
 async def vencer_viejos(base, *, ahora: datetime | None = None) -> int:
     """Descarta los borradores de más de 24 h (D3).
 

@@ -675,6 +675,17 @@ class CambioConfiguracion(Estricto):
     modo_borrador: Literal["playwright", "extension", "extension_con_respaldo"] | None = None
     # Cuántos borradores deja cada tanda del pase único antes de reportar.
     chats_por_tanda: Annotated[int | None, Field(ge=1, le=12)] = None
+    # El volumen del pase único (D39): cuántos borradores puede dejar una
+    # máquina en un día, sumando todas las corridas. Es el número que el dueño
+    # piensa, y el que manda sobre los otros dos topes.
+    #
+    # El techo de 100 no es una opinión sobre qué conviene: es lo que hace falta
+    # para que un cero de más en el panel no se convierta en una tarde de
+    # borradores. Lo que conviene lo dice la tasa de descarte.
+    tope_diario_borradores: Annotated[int | None, Field(ge=1, le=100)] = None
+    # Cuántas tandas encadena una máquina en una corrida. Es el tope de tiempo:
+    # a 20 minutos por tanda, doce son cuatro horas.
+    max_tandas_por_maquina: Annotated[int | None, Field(ge=1, le=12)] = None
     # Las indicaciones del dueño sobre su empresa (D33), que viajan al REDACTAR
     # y mandan sobre el contenido y el tono del borrador.
     contexto_empresa: Annotated[

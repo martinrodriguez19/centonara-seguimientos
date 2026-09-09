@@ -786,6 +786,64 @@ En cualquiera de los tres, la perilla vuelve a `playwright` y no se perdió nada
 
 ---
 
+### D39 — El volumen del pase único se mide en borradores por día y por máquina *(extiende D38)*
+
+**Contexto (07/09).** El pase único dejaba 6 o 7 borradores por corrida y nadie sabía por qué:
+`tope_por_corrida` estaba en 25 y las tandas se encadenaban solas, así que en el papel tenían que
+salir 25. La causa era el prompt. `RECORRIDO_RECIENTES` daba dos motivos para frenar —llegar a
+`n_chats`, o quedarse sin chats en la ventana— y una sola instrucción de marcado: *"si frenaste
+porque ya no queda ninguno, marcá `fin_de_ventana: true`"*. Nunca decía cuándo va `false`. Un
+modelo que dejaba 6 y además había scrolleado hasta ver chats viejos marcaba `true`, y `true`
+corta la cadena: la corrida terminaba **en verde**, con una sola tanda. El bloque de barrido sí
+desambiguaba —lista los dos valores y cierra con "ante la duda, false"— porque ahí el problema se
+había pensado; el de recientes quedó sin esa mitad.
+
+Y nada de esto se podía diagnosticar sin leer el `raw` del job a mano: `Procesado.fin` se
+calculaba, se devolvía, y quien lo llamaba descartaba el retorno.
+
+**Decisión.** El volumen deja de ser el resultado de tres números que se pisan y pasa a ser uno
+que el dueño configura: **`tope_diario_borradores`, por máquina, por día** (arranca en 20). Es lo
+que él piensa cuando piensa en volumen —"que deje veinte por día"— y es lo que el vendedor va a
+ver en su WhatsApp al final de la jornada. Los otros dos topes siguen, midiendo otra cosa:
+
+- `tope_por_corrida` acota **una corrida**. Protege de un bug que encole de más, no del volumen.
+- `max_tandas_por_maquina` (5) acota **el tiempo**, y es el único que frena una cadena de tandas
+  que visitan chats y no dejan ninguno: ésas no mueven los otros dos contadores.
+
+Manda el más chico de los tres, y `_presupuesto` devuelve **cuál** fue — que es lo que el panel
+muestra cuando alguien pregunta por qué salieron N y no más.
+
+**Los tres se cuentan por máquina, y eso es un cambio.** Antes `tope_por_corrida` era un pozo
+común: la primera Mac que reportaba se lo llevaba y las demás quedaban con tandas recortadas sin
+que nadie lo hubiera decidido. Un dueño que pide veinte por día los pide para cada vendedor, no
+entre todos. El circuito viejo (`playwright`) no se tocó: ahí el tope sigue siendo de la corrida.
+
+**Por qué un tope diario nuevo y no el que ya había.** `tope_diario_maquina` no cuenta
+borradores: `enviados_hoy` mira los mensajes que salen o van a salir, y un borrador dejado no sale
+solo. O sea que hasta hoy **no existía ningún número que limitara borradores por día** — dos
+corridas en una tarde dejaban el doble y ningún tope se enteraba. Se resolvió con un contador
+aparte y no metiendo `BORRADOR_DEJADO` en el de siempre: uno protege la línea del vendedor, el
+otro su bandeja, y juntarlos haría que aflojar uno afloje el otro sin querer.
+
+**El arreglo del prompt, que es la mitad que de verdad sube el volumen.** `RECORRIDO_RECIENTES`
+ahora desambigua igual que el de barrido, y dice explícito que **llegar a `n_chats` es siempre
+`false`**. Sin eso, subir cualquier tope no cambia nada: no era el tope el que frenaba.
+
+**Y la lista `no_escribir` dejó de cortarse por abecedario.** Terminaba en `sorted(...)[:60]`:
+pasando de 60 contactos en la ventana anti-duplicado, los nombres del final del alfabeto se caían
+en silencio y esas personas recibían un segundo borrador. Con seis borradores por corrida no se
+notaba; con veinte por día es cuestión de semanas. Ahora se ordena por lo más reciente primero
+—si hay que perder a alguien, que sea el que está por salir de la ventana igual— y la cota subió
+a 120, el doble que las otras dos listas. No por simetría: es la única cuyo desborde se le nota a
+un cliente. Las otras desbordan hacia trabajo de más.
+
+**Qué la revertiría.** Que la tasa de descarte suba con el volumen —borradores de más que el
+vendedor tira, que es peor que no dejarlos—, o que las corridas largas choquen contra el
+`SEGUNDOS_PARA_DAR_POR_COLGADO` de la cola. En los dos casos se baja el número desde el panel, sin
+despliegue: por eso vive en la configuración y no en el código.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

@@ -134,8 +134,13 @@ class PayloadBorradores(PayloadBase):
     ] = []
     # Contactos con un mensaje reciente del sistema (anti-duplicado, G5): se
     # saltean sin abrirlos.
+    #
+    # ⚠️ El doble que las otras dos listas, a propósito: es la única cuyo
+    # desborde se le nota a un cliente (un segundo borrador en su chat). Las
+    # otras desbordan hacia trabajo de más. Tiene que coincidir con
+    # `pase_unico.MAX_NO_ESCRIBIR`.
     no_escribir: Annotated[
-        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=60)
+        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=120)
     ] = []
     # R4 cuando la lista de destinos no es "*": sólo chats cuyo número visible
     # esté acá pueden recibir borrador. Vacía = sin restricción (la lista era

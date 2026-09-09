@@ -38,6 +38,11 @@ MAX_POR_TANDA = 12
 # con un bug no infle el prompt hasta el timeout.
 MAX_NOMBRES_EN_LISTA = 60
 
+# `no_escribir` entra el doble. Es la lista que evita escribirle dos veces a la
+# misma persona: recortarla acá, del lado del agente, sería deshacer en silencio
+# lo que el backend calculó bien. Coincide con `pase_unico.MAX_NO_ESCRIBIR`.
+MAX_NO_ESCRIBIR_EN_LISTA = 120
+
 MOTIVOS_DE_ERROR = {
     "sesion_no_iniciada": "SESION_CAIDA",
     "browser_no_disponible": "ERROR_INESPERADO",
@@ -83,9 +88,20 @@ RECORRIDO_RECIENTES = """2. Lo que se busca son conversaciones FRIAS: chats cuyo
    lista desde arriba hacia abajo, scrolleando lo que haga falta: los chats de
    hoy y de ayer probablemente NO califican y los que buscas estan mas abajo.
 
-   Frena cuando hayas dejado {{N_CHATS}} borradores, o cuando los chats que veas
-   sean ya mas viejos que {{ANTIGUEDAD_MAX}} dias. Si frenaste porque ya no
-   queda ningun chat dentro de la ventana, marca "fin_de_ventana": true."""
+   Esta es UNA TANDA de un recorrido mas largo: el backend lleva la cuenta y te
+   va a pedir la siguiente desde donde cortaste. Frena cuando hayas dejado
+   {{N_CHATS}} borradores, o cuando los chats que veas sean ya mas viejos que
+   {{ANTIGUEDAD_MAX}} dias.
+
+   Lo unico que tenes que hacer bien es decir POR QUE frenaste, en el campo
+   "fin_de_ventana":
+     - true  = recorriste la ventana entera y ya no queda NINGUN chat sin
+               visitar entre {{ANTIGUEDAD_MIN}} y {{ANTIGUEDAD_MAX}} dias
+     - false = quedan chats por visitar, pero cortaste antes: por llegar a
+               {{N_CHATS}} borradores, o por tiempo
+   Llegar a {{N_CHATS}} es SIEMPRE false: quedan chats y la proxima tanda sigue
+   desde ahi. Marcar true por error da la ventana por agotada y hace que no se
+   deje ni un borrador mas en toda la corrida. Ante la duda, false."""
 
 RECORRIDO_BARRIDO = """2. Esta es una pasada de BARRIDO DEL HISTORIAL: la empresa esta recuperando a
    sus clientes viejos, recorriendo todos los chats desde el MAS ANTIGUO hacia
@@ -200,7 +216,7 @@ async def dejar_borradores(
             "ANTIGUEDAD_MAX": str(maximo),
             "HASTA_DIAS": str(max(0, int(barrido_hasta_dias))),
             "YA_VISTOS": _lista(ya_vistos),
-            "NO_ESCRIBIR": _lista(no_escribir),
+            "NO_ESCRIBIR": _lista(no_escribir, tope=MAX_NO_ESCRIBIR_EN_LISTA),
             "RESTRICCION_DESTINOS": restriccion,
             "CONTEXTO_EMPRESA": contexto_empresa.strip() or "(el dueño no dejó indicaciones)",
             "LARGO_MAXIMO": str(max(50, int(largo_maximo))),
@@ -233,8 +249,8 @@ def _sustituir(texto: str, variables: dict[str, str]) -> str:
     return texto
 
 
-def _lista(nombres: list[str] | None) -> str:
-    limpios = [str(n).strip() for n in (nombres or []) if str(n).strip()][:MAX_NOMBRES_EN_LISTA]
+def _lista(nombres: list[str] | None, *, tope: int = MAX_NOMBRES_EN_LISTA) -> str:
+    limpios = [str(n).strip() for n in (nombres or []) if str(n).strip()][:tope]
     return "\n".join(f"  - {nombre}" for nombre in limpios) or "  (ninguno)"
 
 

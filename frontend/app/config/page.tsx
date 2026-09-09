@@ -155,18 +155,12 @@ export default function Config() {
               Pase único con respaldo
             </Button>
           </div>
-          {(datos.modo_borrador ?? "playwright") === "playwright" ? null : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Numero
-                etiqueta="Borradores por tanda"
-                ayuda="El pase trabaja de a tandas cortas y reporta al terminar cada una. Seis entra cómodo; más de eso arriesga el tiempo límite."
-                valor={datos.chats_por_tanda ?? 6}
-                onGuardar={(chats_por_tanda) => guardar.mutate({ chats_por_tanda })}
-              />
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {(datos.modo_borrador ?? "playwright") === "playwright" ? null : (
+        <Volumen datos={datos} onGuardar={(cambios) => guardar.mutate(cambios)} />
+      )}
 
       <Card>
         <CardHeader>
@@ -209,7 +203,8 @@ export default function Config() {
             onGuardar={(tope_diario_maquina) => guardar.mutate({ tope_diario_maquina })}
           />
           <Numero
-            etiqueta="Mensajes por corrida"
+            etiqueta="Mensajes por corrida, por máquina"
+            ayuda="Protege de un bug que encole de más, no del volumen: el volumen lo decide el tope diario."
             valor={datos.tope_por_corrida}
             onGuardar={(tope_por_corrida) => guardar.mutate({ tope_por_corrida })}
           />
@@ -479,6 +474,98 @@ function DestinosPermitidos({
               </div>
             </div>
           </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Cuánto tarda una tanda del pase único, de punta a punta (`TIMEOUT_BORRADORES`). */
+const MINUTOS_POR_TANDA = 20;
+
+/**
+ * El volumen del pase único: cuántos borradores salen, y cuánto tarda eso.
+ *
+ * Existe porque los tres números que lo deciden no dicen nada por separado. El
+ * dueño piensa "quiero veinte por día"; el sistema piensa en tandas, topes y
+ * minutos. Esta tarjeta hace la cuenta a la vista, con los valores puestos, y
+ * dice el tiempo — que es lo que sorprende cuando alguien sube el volumen sin
+ * saber que cada tanda es una pasada entera del modelo por el navegador.
+ */
+function Volumen({
+  datos,
+  onGuardar,
+}: {
+  datos: Configuracion;
+  onGuardar: (cambios: Partial<Configuracion>) => void;
+}) {
+  const porDia = datos.tope_diario_borradores ?? 20;
+  const porTanda = datos.chats_por_tanda ?? 6;
+  const maxTandas = datos.max_tandas_por_maquina ?? 5;
+
+  // El más chico de los tres manda, igual que en el backend.
+  const porCorrida = Math.min(porDia, datos.tope_por_corrida, maxTandas * porTanda);
+  const tandas = Math.ceil(porCorrida / porTanda);
+  const minutos = tandas * MINUTOS_POR_TANDA;
+
+  // Que el techo de tandas sea el que corta es casi siempre un descuido: son
+  // borradores que los otros topes permitían y que no se van a dejar.
+  const cortaElTiempo = maxTandas * porTanda < Math.min(porDia, datos.tope_por_corrida);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Cuántos borradores se dejan</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          El número que manda es el de arriba: <strong>por día y por máquina</strong>, sumando
+          todas las corridas. Los otros dos son de otra cosa — de a cuánto se llega, y cuánto
+          puede tardar una corrida.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Numero
+            etiqueta="Borradores por día, por máquina"
+            ayuda="Lo que cada vendedor va a encontrar en su WhatsApp al final del día."
+            valor={porDia}
+            onGuardar={(tope_diario_borradores) => onGuardar({ tope_diario_borradores })}
+          />
+          <Numero
+            etiqueta="Borradores por tanda"
+            ayuda="El pase trabaja de a tandas cortas y reporta al terminar cada una. Seis entra cómodo; más de eso arriesga el tiempo límite."
+            valor={porTanda}
+            onGuardar={(chats_por_tanda) => onGuardar({ chats_por_tanda })}
+          />
+          <Numero
+            etiqueta="Tandas por corrida"
+            ayuda="El tope de tiempo. Cada tanda es una pasada entera del modelo por el navegador."
+            valor={maxTandas}
+            onGuardar={(max_tandas_por_maquina) => onGuardar({ max_tandas_por_maquina })}
+          />
+        </div>
+
+        <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
+          Con estos números, cada máquina deja hasta{" "}
+          <strong className="tabular-nums">{porCorrida}</strong>{" "}
+          {porCorrida === 1 ? "borrador" : "borradores"} por corrida, en{" "}
+          <span className="tabular-nums">{tandas}</span> {tandas === 1 ? "tanda" : "tandas"}.
+          <br />
+          Va a tardar <strong className="tabular-nums">hasta {minutos} minutos</strong> por
+          máquina. Las máquinas trabajan en paralelo, así que la corrida entera tarda eso, no la
+          suma.
+        </div>
+
+        {cortaElTiempo && (
+          <p className="flex gap-2 text-xs text-muted-foreground">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
+            <span>
+              Hoy corta el tope de tandas, no el de borradores: se dejan{" "}
+              <span className="tabular-nums">{porCorrida}</span> aunque los otros topes permitan
+              más. Para llegar a <span className="tabular-nums">{porDia}</span> por día hacen falta{" "}
+              <span className="tabular-nums">{Math.ceil(porDia / porTanda)}</span> tandas — o
+              tandas más grandes.
+            </span>
+          </p>
         )}
       </CardContent>
     </Card>

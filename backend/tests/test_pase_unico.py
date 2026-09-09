@@ -635,3 +635,238 @@ async def test_el_reporte_del_agente_registra_y_encadena(base, cliente) -> None:
     )
     assert siguiente is not None, "la tanda siguiente quedó encolada"
     assert "Corralón San Justo" in siguiente["payload"]["ya_vistos"]
+
+
+# ---------------------------------------------------------------------------
+# El volumen (D39): tres topes, el más chico manda, y todos por máquina
+# ---------------------------------------------------------------------------
+
+
+async def _dejar(base, *, maquina: str, corrida_id, i: int, ahora=None):
+    """Un borrador ya dejado, que es lo que los topes cuentan."""
+    momento = ahora or AHORA
+    mensaje_id = await mensajes.crear_borrador(
+        base,
+        corrida_id=corrida_id,
+        maquina=maquina,
+        contacto_id=f"+54911{abs(hash(maquina)) % 100:02d}{i:05d}",
+        contacto_nombre=f"Cliente {i:03d}",
+        texto="Hola, quedó pendiente lo que hablamos. ¿Seguimos?",
+        resumen_ultimo="cotización",
+        quien_hablo_ultimo="contacto",
+        antiguedad_dias=5,
+        ahora=momento,
+    )
+    await mensajes.mover(
+        base, mensaje_id, Estado.BORRADOR_DEJADO, quien=maquina, ahora=momento
+    )
+    return mensaje_id
+
+
+@sin_mongo
+async def test_llegar_a_n_chats_sin_fin_de_ventana_encadena(base) -> None:
+    """Lo que estaba roto: una tanda llena no es el final del recorrido.
+
+    El prompt marcaba `fin_de_ventana: true` al llegar a `n_chats` porque no le
+    decíamos cuándo va `false`, y la corrida terminaba en verde con una sola
+    tanda. Ése es el bug de los seis borradores.
+    """
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado()], "fin_de_ventana": False},
+        ahora=AHORA,
+    )
+
+    assert procesado.tanda_siguiente is not None
+    assert procesado.fin is None
+
+
+@sin_mongo
+async def test_el_tope_diario_frena_el_encadenado(base) -> None:
+    """El número que el dueño configura: veinte por día, y basta.
+
+    Vale **entre** corridas, que es lo que lo distingue del tope por corrida:
+    dos corridas en la misma tarde no dejan el doble.
+    """
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base, {"destinos_permitidos": ["*"], "tope_diario_borradores": 3}
+    )
+    corrida_id = ObjectId()
+    for i in range(3):
+        #  De OTRA corrida, del mismo día: el tope diario los ve igual.
+        await _dejar(base, maquina="mac-rocio", corrida_id=ObjectId(), i=i)
+
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado()], "fin_de_ventana": False},
+        ahora=AHORA,
+    )
+
+    assert procesado.tanda_siguiente is None
+    assert procesado.fin == "tope_diario_borradores"
+
+
+@sin_mongo
+async def test_el_tope_de_tandas_corta_aunque_sobre_presupuesto(base) -> None:
+    """El único tope que frena una cadena de tandas que no deja nada.
+
+    Una tanda que visita chats y los saltea a todos —campo ocupado, sin tema—
+    no mueve los topes de borradores. Sin éste, encadenaría hasta que el modelo
+    se quedara sin chats.
+    """
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base,
+        {"destinos_permitidos": ["*"], "tope_diario_borradores": 50, "max_tandas_por_maquina": 1},
+    )
+    corrida_id = ObjectId()
+    job = job_borradores(corrida_id)
+    await base["jobs"].insert_one(
+        {
+            "_id": job["_id"],
+            "corrida_id": corrida_id,
+            "maquina": "mac-rocio",
+            "tipo": str(cola.Tipo.BORRADORES),
+            "estado": str(cola.EstadoJob.LISTO),
+        }
+    )
+
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job,
+        detalle={"chats": [visitado(borrador_dejado=False, motivo="campo_ocupado")]},
+        ahora=AHORA,
+    )
+
+    assert procesado.tanda_siguiente is None
+    assert procesado.fin == "tope_de_tandas"
+
+
+@sin_mongo
+async def test_una_maquina_no_se_come_el_presupuesto_de_la_otra(base) -> None:
+    """Los topes son por máquina.
+
+    Un pozo común hace que la primera Mac que reporta se lo lleve y las demás
+    queden con tandas recortadas sin que nadie lo haya decidido — y el dueño
+    que pide veinte por día los pide para cada vendedor, no entre todos.
+    """
+    await maquina_activa(base)
+    await maquina_activa(base, "mac-diego")
+    await configuracion.actualizar(
+        base, {"destinos_permitidos": ["*"], "tope_por_corrida": 2}
+    )
+    corrida_id = ObjectId()
+    for i in range(2):
+        await _dejar(base, maquina="mac-diego", corrida_id=corrida_id, i=i)
+
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado()], "fin_de_ventana": False},
+        ahora=AHORA,
+    )
+
+    assert procesado.tanda_siguiente is not None, "mac-rocio tiene su propio presupuesto"
+
+
+@sin_mongo
+async def test_la_ultima_tanda_se_achica_para_no_pasar_el_tope(base) -> None:
+    """`n_chats` ES el tope de la tanda: el modelo frena al llegar.
+
+    El presupuesto sólo **achica**, nunca agranda: `chats_por_tanda` sigue
+    siendo el tamaño de la tanda, y lo que queda del día es el techo de la
+    última. Con 4 del día y 1 ya dejado, la que viene pide 3 y no 6.
+    """
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base,
+        {"destinos_permitidos": ["*"], "tope_diario_borradores": 4, "chats_por_tanda": 6},
+    )
+    corrida_id = ObjectId()
+
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado()], "fin_de_ventana": False},
+        ahora=AHORA,
+    )
+
+    tanda = await base["jobs"].find_one({"_id": procesado.tanda_siguiente})
+    assert tanda["payload"]["n_chats"] == 3, "quedan 3 del día, aunque la tanda sea de 6"
+
+
+@sin_mongo
+async def test_cada_tanda_deja_su_renglon_en_la_corrida(base) -> None:
+    """Para que el panel pueda decir por qué salieron N y no más."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    resultado = await base["corridas"].insert_one(
+        {
+            "tipo": str(corridas.TipoCorrida.GENERACION),
+            "modo": "prueba",
+            "estado": str(corridas.EstadoCorrida.GENERANDO),
+            "maquinas": ["mac-rocio"],
+            "creada_en": AHORA,
+            "terminada_en": None,
+        }
+    )
+    corrida_id = resultado.inserted_id
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado()], "fin_de_ventana": True},
+        ahora=AHORA,
+    )
+
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    assert corrida["tandas"] == [
+        {
+            "maquina": "mac-rocio",
+            "pedidos": 6,
+            "dejados": 1,
+            "salteados": 0,
+            "fin": "fin_de_ventana",
+        }
+    ]
+
+
+@sin_mongo
+async def test_no_escribir_conserva_a_los_mas_recientes_al_truncar(base) -> None:
+    """El bug que se agranda con volumen: la lista se cortaba por abecedario.
+
+    Pasando de la cota, los nombres del final del alfabeto se caían en silencio
+    y esas personas recibían un segundo borrador. Ahora el que se cae es el que
+    se contactó hace más días, que es el que está por salir de la ventana igual.
+    """
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    cuantos = pase_unico.MAX_NO_ESCRIBIR + 10
+
+    for i in range(cuantos):
+        #  El de índice más alto es el más reciente **y** el último del
+        #  abecedario: con el orden viejo se caía justo el que hay que proteger.
+        await _dejar(
+            base,
+            maquina="mac-rocio",
+            corrida_id=ObjectId(),
+            i=i,
+            ahora=AHORA - timedelta(hours=cuantos - i),
+        )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert len(payload["no_escribir"]) == pase_unico.MAX_NO_ESCRIBIR
+    assert f"Cliente {cuantos - 1:03d}" in payload["no_escribir"], "el más reciente no se cae"
+    assert "Cliente 000" not in payload["no_escribir"], "el más viejo es el que se cae"
+    #  Y la cota dura del esquema tiene que dejar pasar la lista larga.
+    validar_payload("BORRADORES", payload)

@@ -72,7 +72,31 @@ POR_DEFECTO: dict[str, Any] = {
     # Cuántos borradores deja cada job del pase único antes de reportar. Corto
     # a propósito: una tanda entra cómoda en el timeout del agente (20 min) y
     # una falla pierde una tanda, no la corrida.
+    #
+    # ⚠️ Éste NO es el volumen. El volumen se sube con más tandas, no con tandas
+    # más grandes: `tope_diario_borradores` manda, y esto sólo dice de a cuánto
+    # se llega. Ver `tope_diario_borradores` abajo.
     "chats_por_tanda": 6,
+    # El volumen del pase único: cuántos borradores puede dejar UNA MÁQUINA en
+    # un día, sumando todas las corridas (D39).
+    #
+    # Es el número que el dueño piensa —"quiero 20 por día"— y por eso es el que
+    # manda. Los otros dos topes son de otra cosa: `tope_por_corrida` acota una
+    # corrida, `max_tandas_por_maquina` acota el tiempo. Éste acota el día, que
+    # es lo que el vendedor va a ver en su WhatsApp.
+    #
+    # ⚠️ Existe porque `tope_diario_maquina` NO cuenta borradores: `enviados_hoy`
+    # mira los mensajes que salen o van a salir, y un borrador dejado no sale
+    # solo. Son dos cosas distintas —uno protege la línea del vendedor, el otro
+    # su bandeja— y mezclarlas haría que aflojar una afloje la otra sin querer.
+    "tope_diario_borradores": 20,
+    # El techo de tiempo: cuántas tandas encadena una máquina en una corrida.
+    #
+    # No sobra con tener los topes de borradores: una tanda que visita chats y
+    # no deja ninguno (campo ocupado, sin tema) no mueve esos contadores y
+    # encadenaría igual. Esto es lo que garantiza que una corrida termine.
+    # A 20 min por tanda, 5 son ~100 minutos por máquina en el peor caso.
+    "max_tandas_por_maquina": 5,
     # Lo que el dueño quiere que el redactor sepa de su empresa: qué vende, qué
     # ofrece, promociones, tono. Viaja al REDACTAR como dato acotado y el prompt
     # lo enmarca como referencia — no como instrucciones. Vacío = no se usa.

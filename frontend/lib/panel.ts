@@ -89,6 +89,14 @@ export type Configuracion = {
   /** Cuántos borradores deja cada tanda del pase único antes de reportar. */
   chats_por_tanda: number;
   /**
+   * El volumen del pase único (D39): cuántos borradores puede dejar una
+   * máquina en un día, sumando todas las corridas. Es el número que manda —
+   * los otros dos topes acotan una corrida y el tiempo, no el día.
+   */
+  tope_diario_borradores: number;
+  /** Cuántas tandas encadena una máquina en una corrida. Es el tope de tiempo. */
+  max_tandas_por_maquina: number;
+  /**
    * Lo que el redactor sabe de la empresa: qué vende, qué ofrece, tono. Lo
    * escribe el dueño y viaja a cada redacción como referencia.
    */
