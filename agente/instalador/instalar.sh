@@ -145,7 +145,9 @@ else
   # Y si no se puede bajar —repositorio privado, o sin internet— pero la
   # carpeta ya tiene el proyecto (llegó por AirDrop o USB), se sigue con esa:
   # no poder actualizar no es no poder instalar.
-  if curl -fsSL "$TARBALL" | tar -xz --strip-components=1 -C "$REPO"; then
+  # --http1.1: el curl de macOS 10.15 (7.64) contesta 503 con HTTP/2 contra
+  # la CDN de GitHub. Con HTTP/1.1 anda en todas las Macs, viejas y nuevas.
+  if curl -fsSL --http1.1 "$TARBALL" | tar -xz --strip-components=1 -C "$REPO"; then
     echo "  ok  proyecto en $REPO"
   elif [ -f "$REPO/agente/pyproject.toml" ]; then
     echo "  aviso: no se pudo bajar la última versión desde GitHub."
@@ -177,6 +179,26 @@ titulo "[5/8] Los datos de esta máquina"
 # tiene la extensión Y la sesión de WhatsApp, y el deviceId de la extensión.
 # Es la misma lógica de `--datos`, sin pedirle a nadie que copie nada.
 #
+# ⚠️ Y lo que no se puede averiguar NO frena una actualización. Antes, sin
+# deviceId el instalador salía con error acá — y una máquina a la que le
+# faltaba ese dato no podía bajar ni un arreglo hasta que alguien usara la
+# extensión. Ahora se conserva lo que ya estaba en el .env, y si no hay nada,
+# el agente se instala igual: el chequeo `device_id` del panel dice en rojo
+# qué falta, que es para lo que existe.
+#
+# Lo que ya estaba en el .env se conserva en general: el token no se vuelve a
+# pedir, y una máquina puesta a propósito en otro modo o contra otro backend
+# no se resetea.
+ENV_ARCHIVO="$REPO/.env"
+viejo() {
+  [ -f "$ENV_ARCHIVO" ] || return 0
+  sed -n "s/^$1=//p" "$ENV_ARCHIVO" | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//'
+}
+PERFIL_VIEJO=$(viejo CHROME_PERFIL_DIR)
+DEVICE_VIEJO=$(viejo AGENTE_DEVICE_ID)
+#  El marcador que dejaba una instalación a medias no es un deviceId.
+case "$DEVICE_VIEJO" in PEGA-ACA*) DEVICE_VIEJO="" ;; esac
+#
 # El `cd` no es decorativo: el paquete `agente` no se instala en el venv (el
 # pyproject no tiene build-system, a propósito), así que sólo se puede importar
 # parado en esa carpeta — igual que hace `uv run --directory agente` en todos
@@ -195,33 +217,39 @@ estado=$(printf '%s\n' "$datos" | sed -n '1p')
 linea2=$(printf '%s\n' "$datos" | sed -n '2p')
 linea3=$(printf '%s\n' "$datos" | sed -n '3p')
 
-if [ "$estado" != "LISTO" ]; then
-  echo "  Todavía no se puede seguir: $linea2"
-  echo
-  echo "  Qué hacer: $linea3"
-  echo "  Después, volvé a correr este instalador."
-  exit 1
+if [ "$estado" = "LISTO" ]; then
+  PERFIL="$linea2"
+  DEVICE_ID="$linea3"
+  echo "  ok  perfil de Chrome: $PERFIL"
+else
+  # Sin perfil detectado se sigue con el del .env. Sin ninguno de los dos no
+  # hay con qué armar el arranque de Chrome: ahí sí se frena.
+  PERFIL="$PERFIL_VIEJO"
+  DEVICE_ID=""
+  if [ -z "$PERFIL" ]; then
+    echo "  Todavía no se puede seguir: $linea2"
+    echo
+    echo "  Qué hacer: $linea3"
+    echo "  Después, volvé a correr este instalador."
+    exit 1
+  fi
+  echo "  aviso: no se pudo verificar el perfil de Chrome ($linea2)."
+  echo "  Se conserva el del .env: $PERFIL"
 fi
-PERFIL="$linea2"
-DEVICE_ID="$linea3"
 
-if [ -z "$DEVICE_ID" ]; then
-  echo "  La extensión está instalada pero nunca se usó en esta máquina."
-  echo
-  echo "  Qué hacer: abrí Chrome, apretá el ícono de Claude y pedile cualquier"
-  echo "  cosa. Después volvé a correr este instalador."
-  exit 1
+if [ -n "$DEVICE_ID" ]; then
+  echo "  ok  deviceId: $DEVICE_ID"
+elif [ -n "$DEVICE_VIEJO" ]; then
+  DEVICE_ID="$DEVICE_VIEJO"
+  echo "  ok  deviceId: el que ya estaba en el .env ($DEVICE_ID)"
+else
+  echo "  aviso: la extensión de Claude todavía no tiene deviceId en esta máquina."
+  echo "  El agente se instala y arranca igual; en el panel, el chequeo device_id"
+  echo "  va a estar en rojo hasta que se resuelva. Para resolverlo: abrí Chrome"
+  echo "  con el perfil de WhatsApp, apretá el ícono de Claude, pedile cualquier"
+  echo "  cosa, y volvé a correr este instalador."
 fi
-echo "  ok  perfil de Chrome: $PERFIL"
-echo "  ok  deviceId: $DEVICE_ID"
 
-# Lo que ya estaba en el .env se conserva: el token no se vuelve a pedir, y una
-# máquina puesta a propósito en otro modo o contra otro backend no se resetea.
-ENV_ARCHIVO="$REPO/.env"
-viejo() {
-  [ -f "$ENV_ARCHIVO" ] || return 0
-  sed -n "s/^$1=//p" "$ENV_ARCHIVO" | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//'
-}
 BACKEND_URL=$(viejo AGENTE_BACKEND_URL); BACKEND_URL="${BACKEND_URL:-$BACKEND_POR_DEFECTO}"
 PUERTO=$(viejo CHROME_PUERTO);           PUERTO="${PUERTO:-9222}"
 MACHINE_ID=$(viejo AGENTE_MACHINE_ID)

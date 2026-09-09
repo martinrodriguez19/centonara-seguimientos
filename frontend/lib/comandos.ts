@@ -63,13 +63,13 @@ export const grupos: Grupo[] = [
         id: "instalar",
         titulo: "Instalar el agente, o actualizarlo",
         comando:
-          "curl -fsSL https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash",
+          "curl -fsSL --http1.1 https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash",
         queHace:
           "Instala todo lo que hace falta, baja el programa, averigua solo los datos de la máquina, deja configurado el arranque automático y lo enciende. Va a pedir el identificador y el token de la máquina.",
         cuando:
           "En una Mac nueva, y cada vez que haya que actualizar el programa. Correrlo de nuevo es la forma de actualizar, y no vuelve a preguntar nada.",
         aviso:
-          "Es seguro repetirlo las veces que haga falta. Si algo falta, se detiene y lo dice en castellano: hacer lo que dice y volver a pegar el mismo comando.",
+          "Es seguro repetirlo las veces que haga falta. El --http1.1 va siempre: sin él, en macOS 10.15 el curl del sistema contesta 503 y parece un problema de GitHub. Si a la máquina le falta el deviceId de la extensión, la actualización sigue igual y el panel lo marca en rojo.",
       },
       {
         id: "vincular",
@@ -88,7 +88,8 @@ export const grupos: Grupo[] = [
         comando: `${EN_EL_AGENTE} --diagnostico`,
         queHace:
           "Corre los diez chequeos, marca en rojo lo que hay que resolver y «n/a» lo que no aplica acá. No consulta al backend ni abre ningún navegador: por eso la sesión de WhatsApp le sale siempre «n/a» — ésa la revisa el agente solo mientras corre, y lo que encuentra aparece en el panel.",
-        cuando: "Es el primero que hay que correr cuando algo no anda. No cuesta nada y es instantáneo.",
+        cuando:
+          "Es el primero que hay que correr cuando algo no anda. No cuesta nada y es instantáneo.",
       },
       {
         id: "sonda",
@@ -98,7 +99,8 @@ export const grupos: Grupo[] = [
           "Contesta las dos preguntas que el diagnóstico no puede: si la extensión tiene el permiso de sitio y si la sesión de WhatsApp del Chrome del vendedor está iniciada. Cuenta cuántos chats ve y nada más — no abre ninguna conversación ni lee ningún mensaje.",
         cuando:
           "Cuando la generación falla y el diagnóstico da todo verde. Es lo que distingue «falta el permiso de la extensión» de «venció el QR». ⚠️ Mira la sesión del Chrome de todos los días, que es la que usa la lectura de chats; la del navegador que escribe es otra, y ésa la avisa el panel y se arregla con «Vincular».",
-        aviso: "Abre el navegador y consume saldo de Claude. Tarda minutos, por eso no viene con el diagnóstico.",
+        aviso:
+          "Abre el navegador y consume saldo de Claude. Tarda minutos, por eso no viene con el diagnóstico.",
       },
       {
         id: "claude",
@@ -113,14 +115,17 @@ export const grupos: Grupo[] = [
         id: "logs",
         titulo: "Ver qué está haciendo el agente",
         comando: "tail -f ~/Library/Logs/centonara/agente.log",
-        queHace: "Muestra el registro del agente en vivo, línea por línea, a medida que trabaja.",
-        cuando: "Para mirar una corrida mientras pasa. Se corta con Control + C.",
+        queHace:
+          "Muestra el registro del agente en vivo, línea por línea, a medida que trabaja.",
+        cuando:
+          "Para mirar una corrida mientras pasa. Se corta con Control + C.",
       },
       {
         id: "logs-error",
         titulo: "Ver los errores del agente",
         comando: "tail -n 50 ~/Library/Logs/centonara/agente.err",
-        queHace: "Las últimas cincuenta líneas de error. Es lo que hay que copiar y mandar cuando algo se rompe.",
+        queHace:
+          "Las últimas cincuenta líneas de error. Es lo que hay que copiar y mandar cuando algo se rompe.",
       },
       {
         id: "reiniciar",
@@ -135,7 +140,8 @@ export const grupos: Grupo[] = [
         comando: "launchctl list | grep centonara",
         queHace:
           "Lista los dos servicios de arranque automático con su número de proceso y el resultado de la última vez que corrieron. Un 0 en el medio es que salió bien.",
-        cuando: "Cuando la máquina figura «sin conexión» en el panel y la Mac está claramente prendida.",
+        cuando:
+          "Cuando la máquina figura «sin conexión» en el panel y la Mac está claramente prendida.",
       },
       // El comando "cambiar el modo del agente" se fue con la perilla (D32):
       // el agente instalado está siempre operativo, y si un mensaje queda como
@@ -147,7 +153,8 @@ export const grupos: Grupo[] = [
   {
     id: "mantenimiento",
     titulo: "Cuando algo se rompe",
-    descripcion: "También en la Mac del vendedor, pero son de quien mantiene el sistema.",
+    descripcion:
+      "También en la Mac del vendedor, pero son de quien mantiene el sistema.",
     comandos: [
       {
         id: "selectores",
@@ -174,7 +181,8 @@ export const grupos: Grupo[] = [
         id: "detener",
         titulo: "Detener el agente",
         comando: "launchctl bootout gui/$(id -u)/com.centonara.agente",
-        queHace: "Lo frena y no lo vuelve a levantar hasta el próximo inicio de sesión.",
+        queHace:
+          "Lo frena y no lo vuelve a levantar hasta el próximo inicio de sesión.",
         aviso:
           "Para frenar todo el sistema está el botón del panel, que es inmediato y queda registrado. Esto es sólo para trabajar sobre una máquina.",
       },
@@ -206,7 +214,8 @@ export const grupos: Grupo[] = [
       {
         id: "catalina-modelo",
         titulo: "2. Ver si conviene actualizar el sistema en vez de esto",
-        comando: 'system_profiler SPHardwareDataType | grep -E "Model Name|Model Identifier"',
+        comando:
+          'system_profiler SPHardwareDataType | grep -E "Model Name|Model Identifier"',
         queHace:
           "El modelo y el año. macOS 13 acepta MacBook Pro desde 2017, MacBook Air desde 2018, iMac desde 2017, Mac mini desde 2018 y Mac Pro desde 2019. Si la máquina entra en esa lista, actualizar el sistema es mejor camino que todo lo que sigue.",
         aviso:
@@ -215,7 +224,8 @@ export const grupos: Grupo[] = [
       {
         id: "catalina-node",
         titulo: "3. Bajar Node 18",
-        comando: "curl -fsSLO https://nodejs.org/dist/v18.20.8/node-v18.20.8.pkg",
+        comando:
+          "curl -fsSLO https://nodejs.org/dist/v18.20.8/node-v18.20.8.pkg",
         queHace:
           "Node 18 es la última rama que corre en macOS 10.15; las siguientes piden 13.5 o más. Es la pieza que hace posible todo lo demás, y sirve para dos cosas: Claude Code, que lee los chats, y el motor de envío — el navegador que escribe los mensajes también necesita un Node, y el que trae adentro está compilado para macOS 11 o más nuevo. El agente lo detecta solo y usa éste; no hay que configurar nada.",
         aviso:
@@ -240,7 +250,8 @@ export const grupos: Grupo[] = [
       },
       {
         id: "catalina-claude",
-        titulo: "6. Instalar la última versión de Claude Code que no es binario nativo",
+        titulo:
+          "6. Instalar la última versión de Claude Code que no es binario nativo",
         comando: "npm install -g @anthropic-ai/claude-code@2.1.100",
         queHace:
           "Hasta la 2.1.110, Claude Code era un paquete JavaScript que corría sobre Node; el binario nativo —el que aborta— aparece a partir de la 2.1.120. Esta versión tiene «--chrome» y la extensión, que es lo que el agente necesita.",
@@ -260,13 +271,15 @@ export const grupos: Grupo[] = [
         id: "catalina-verificar",
         titulo: "8. Comprobar que quedó la versión correcta",
         comando: "claude --version",
-        queHace: "Tiene que decir 2.1.100. Si dice otra cosa, la actualización automática ya corrió.",
+        queHace:
+          "Tiene que decir 2.1.100. Si dice otra cosa, la actualización automática ya corrió.",
       },
       {
         id: "catalina-sesion",
         titulo: "9. Iniciar sesión",
         comando: "claude",
-        queHace: "Se entra con la cuenta de esta máquina y se sale escribiendo /exit.",
+        queHace:
+          "Se entra con la cuenta de esta máquina y se sale escribiendo /exit.",
       },
       {
         id: "catalina-extension",
@@ -275,10 +288,10 @@ export const grupos: Grupo[] = [
         queHace:
           "Es la prueba que decide si esta máquina sirve para leer chats. Cuesta centavos y tarda un minuto.",
         aviso:
-          "Si contesta «Hubo un error al intentar conectarme a la extensión de Chrome (crypto is not defined)», probá el mismo comando con NODE_OPTIONS=--experimental-global-webcrypto adelante: en Node 18 el servidor MCP corre en un worker thread y ahí WebCrypto no está expuesto. El agente pone ese flag solo, así que esto sólo hace falta al probar a mano. ⚠️ No lo descartes con «node -e \"typeof crypto\"»: en el hilo principal dice object igual, y manda a buscar la causa al lado equivocado.",
+          'Si contesta «Hubo un error al intentar conectarme a la extensión de Chrome (crypto is not defined)», probá el mismo comando con NODE_OPTIONS=--experimental-global-webcrypto adelante: en Node 18 el servidor MCP corre en un worker thread y ahí WebCrypto no está expuesto. El agente pone ese flag solo, así que esto sólo hace falta al probar a mano. ⚠️ No lo descartes con «node -e "typeof crypto"»: en el hilo principal dice object igual, y manda a buscar la causa al lado equivocado.',
       },
     ],
-    pie: "Después de esto, cerrá la Terminal y abrí una nueva —si no, el instalador no ve el PATH que dejó el paso 5— y corré el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. Estas Macs funcionan completas —leen chats y escriben— pero sobre tres piezas congeladas: Node 18, Chrome 128 y Claude Code 2.1.100. El agente se encarga solo de lo que hace falta para que anden (el node del sistema para Playwright, y el flag de WebCrypto para Claude Code). Lo que se acepta: Node 18 sin parches desde abril de 2025, Chrome 128 como última versión posible para este sistema, Claude Code congelado, y Anthropic puede dejar de aceptar versiones viejas cuando quiera — el día que pase, esa máquina deja de funcionar sin aviso. Sirve para desbloquear ahora; el reemplazo va en la lista de cosas a pedir."
+    pie: "Después de esto, cerrá la Terminal y abrí una nueva —si no, el instalador no ve el PATH que dejó el paso 5— y corré el instalador normal del agente: cuando encuentra «claude» ya instalado no lo toca, así que sigue de largo sin volver a fallar. Estas Macs funcionan completas —leen chats y escriben— pero sobre tres piezas congeladas: Node 18, Chrome 128 y Claude Code 2.1.100. El agente se encarga solo de lo que hace falta para que anden (el node del sistema para Playwright, y el flag de WebCrypto para Claude Code). Lo que se acepta: Node 18 sin parches desde abril de 2025, Chrome 128 como última versión posible para este sistema, Claude Code congelado, y Anthropic puede dejar de aceptar versiones viejas cuando quiera — el día que pase, esa máquina deja de funcionar sin aviso. Sirve para desbloquear ahora; el reemplazo va en la lista de cosas a pedir.",
   },
 
   {
@@ -290,8 +303,10 @@ export const grupos: Grupo[] = [
       {
         id: "clonar",
         titulo: "Bajar el proyecto",
-        comando: "git clone https://github.com/martinrodriguez19/centonara-seguimientos.git",
-        queHace: "Un solo clone y está todo: backend, panel, agente e infraestructura.",
+        comando:
+          "git clone https://github.com/martinrodriguez19/centonara-seguimientos.git",
+        queHace:
+          "Un solo clone y está todo: backend, panel, agente e infraestructura.",
       },
       {
         id: "env",
@@ -321,14 +336,16 @@ export const grupos: Grupo[] = [
         id: "backend",
         titulo: "Levantar el backend",
         comando: "uv run --directory backend fastapi dev app/main.py",
-        queHace: "La API, en http://localhost:8000/docs. Desde la raíz del repositorio.",
+        queHace:
+          "La API, en http://localhost:8000/docs. Desde la raíz del repositorio.",
       },
       {
         id: "pnpm-install",
         titulo: "Instalar las dependencias del panel",
         comando: "pnpm install",
         queHace: "Desde frontend/.",
-        aviso: "Node 22 o superior, no negociable: es el problema #1 del historial del MVP.",
+        aviso:
+          "Node 22 o superior, no negociable: es el problema #1 del historial del MVP.",
       },
       {
         id: "pnpm-dev",
@@ -358,7 +375,8 @@ export const grupos: Grupo[] = [
         comando: "UV_NATIVE_TLS=1 uv sync --directory backend",
         queHace:
           "Le dice a uv que use el almacén de certificados del sistema. En una red que inspecciona TLS —un antivirus con escudo web, un proxy corporativo— uv no confía en el certificado que le llega y no puede bajar nada.",
-        aviso: "Para Node el equivalente es NODE_EXTRA_CA_CERTS apuntando al .pem del antivirus.",
+        aviso:
+          "Para Node el equivalente es NODE_EXTRA_CA_CERTS apuntando al .pem del antivirus.",
       },
     ],
   },

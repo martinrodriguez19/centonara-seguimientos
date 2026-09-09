@@ -132,10 +132,12 @@ Abrir la **Terminal** (Cmd + barra espaciadora, escribir `Terminal`, Enter) y
 pegar esto:
 
 ```bash
-curl -fsSL https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash
+curl -fsSL --http1.1 https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash
 ```
 
-Es **una sola línea**, tal cual, de `curl` a `bash`.
+Es **una sola línea**, tal cual, de `curl` a `bash`. El `--http1.1` no es opcional: en macOS
+10.15 el `curl` que viene con el sistema contesta **503** a GitHub sin él, y el error engaña —
+parece de GitHub o de la red, y es del `curl`.
 
 Ese comando instala todo lo que hace falta (no hay que tener nada preparado),
 baja el programa, averigua solo los datos de la máquina, deja configurado el
