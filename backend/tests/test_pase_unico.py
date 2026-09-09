@@ -657,9 +657,7 @@ async def _dejar(base, *, maquina: str, corrida_id, i: int, ahora=None):
         antiguedad_dias=5,
         ahora=momento,
     )
-    await mensajes.mover(
-        base, mensaje_id, Estado.BORRADOR_DEJADO, quien=maquina, ahora=momento
-    )
+    await mensajes.mover(base, mensaje_id, Estado.BORRADOR_DEJADO, quien=maquina, ahora=momento)
     return mensaje_id
 
 
@@ -759,9 +757,7 @@ async def test_una_maquina_no_se_come_el_presupuesto_de_la_otra(base) -> None:
     """
     await maquina_activa(base)
     await maquina_activa(base, "mac-diego")
-    await configuracion.actualizar(
-        base, {"destinos_permitidos": ["*"], "tope_por_corrida": 2}
-    )
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "tope_por_corrida": 2})
     corrida_id = ObjectId()
     for i in range(2):
         await _dejar(base, maquina="mac-diego", corrida_id=corrida_id, i=i)

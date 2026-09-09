@@ -231,20 +231,24 @@ async def _no_escribir(base, maquina: str, *, config: dict[str, Any], ahora: dat
     salir de la ventana igual.
     """
     corte = ahora - timedelta(days=max(1, int(config.get("dias_anti_duplicado", 7))))
-    filas = await base["mensajes"].aggregate(
-        [
-            {
-                "$match": {
-                    "maquina": maquina,
-                    "creado_en": {"$gte": corte},
-                    "estado": {"$ne": str(Estado.DESCARTADO)},
-                }
-            },
-            {"$group": {"_id": "$contacto_nombre", "ultimo": {"$max": "$creado_en"}}},
-            {"$sort": {"ultimo": -1}},
-            {"$limit": MAX_NO_ESCRIBIR},
-        ]
-    ).to_list(None)
+    filas = (
+        await base["mensajes"]
+        .aggregate(
+            [
+                {
+                    "$match": {
+                        "maquina": maquina,
+                        "creado_en": {"$gte": corte},
+                        "estado": {"$ne": str(Estado.DESCARTADO)},
+                    }
+                },
+                {"$group": {"_id": "$contacto_nombre", "ultimo": {"$max": "$creado_en"}}},
+                {"$sort": {"ultimo": -1}},
+                {"$limit": MAX_NO_ESCRIBIR},
+            ]
+        )
+        .to_list(None)
+    )
     return [str(f["_id"])[:120] for f in filas if str(f.get("_id") or "").strip()]
 
 

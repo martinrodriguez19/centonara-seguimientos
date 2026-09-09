@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Aviso } from "@/components/ui/estado";
 import {
   empezarDeCero,
   guardarConfiguracion,
@@ -556,16 +557,20 @@ function Volumen({
         </div>
 
         {cortaElTiempo && (
-          <p className="flex gap-2 text-xs text-muted-foreground">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
-            <span>
-              Hoy corta el tope de tandas, no el de borradores: se dejan{" "}
-              <span className="tabular-nums">{porCorrida}</span> aunque los otros topes permitan
-              más. Para llegar a <span className="tabular-nums">{porDia}</span> por día hacen falta{" "}
-              <span className="tabular-nums">{Math.ceil(porDia / porTanda)}</span> tandas — o
-              tandas más grandes.
-            </span>
-          </p>
+          <Aviso
+            nivel="atencion"
+            titulo="Corta el tope de tandas, no el de borradores"
+            accion={
+              <>
+                Para llegar a <span className="tabular-nums">{porDia}</span> por día hacen falta{" "}
+                <span className="tabular-nums">{Math.ceil(porDia / porTanda)}</span> tandas — o
+                tandas más grandes.
+              </>
+            }
+          >
+            Se dejan <span className="tabular-nums">{porCorrida}</span> por corrida aunque los
+            otros dos topes permitan más.
+          </Aviso>
         )}
       </CardContent>
     </Card>
