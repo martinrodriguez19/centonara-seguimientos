@@ -40,7 +40,18 @@ services:
     region: oregon
     autoDeploy: false
     healthCheckPath: /health
-    buildCommand: pip install uv && uv sync --frozen --no-dev
+    # uv se PINEA y se instala sin cache (falla del 09/09). El build murio en
+    # `pip install uv`, no en `uv sync`: la descarga de la rueda de 20 MB llego
+    # cortada en 4,1 MB y el sha256 no dio. El paquete de PyPI estaba intacto
+    # -- su hash es exactamente el que pip esperaba -- asi que fue la red del
+    # builder. --no-cache-dir evita que una descarga mala quede guardada y haga
+    # fallar tambien los reintentos.
+    #
+    # La version va clavada porque un deploy a produccion no puede depender de
+    # que publico Astral esa manana. Es la misma regla que ya siguen
+    # `uv sync --frozen` y `pnpm install --frozen-lockfile` dos servicios mas
+    # abajo. Para subirla: cambiar el numero aca, a mano y a proposito.
+    buildCommand: pip install --no-cache-dir --retries 5 --timeout 60 'uv==0.12.12' && uv sync --frozen --no-dev
     startCommand: uv run fastapi run app/main.py --port $PORT
     envVars:
       - { key: ENTORNO,          value: produccion }
