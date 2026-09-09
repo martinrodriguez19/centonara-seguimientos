@@ -128,9 +128,17 @@ class PayloadBorradores(PayloadBase):
     # del más viejo al más nuevo.
     estrategia: Literal["recientes", "barrido"] = "recientes"
     barrido_hasta_dias: Annotated[int, Field(ge=0, le=3650)] = 3650
-    # Nombres visitados en tandas anteriores de esta corrida: no se vuelven a abrir.
+    # La dirección dentro de la ventana en `recientes` (D43), y el cursor por
+    # máquina cuando va del más viejo hacia hoy: sólo chats con antigüedad menor
+    # o igual a `ventana_hasta_dias`, sin bajar de `antiguedad_min_dias`.
+    orden: Literal["mas_nuevos_primero", "mas_viejos_primero"] = "mas_nuevos_primero"
+    ventana_hasta_dias: Annotated[int, Field(ge=0, le=3650)] = 3650
+    # Nombres visitados en tandas anteriores de esta corrida (y de la memoria
+    # de visitas, D43): no se vuelven a abrir. El doble que antes: con veinte
+    # por día y contando los salteados, sesenta se llenaban en un día y los
+    # primeros visitados —los que el modelo se vuelve a cruzar— se caían.
     ya_vistos: Annotated[
-        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=60)
+        list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=120)
     ] = []
     # Contactos con un mensaje reciente del sistema (anti-duplicado, G5): se
     # saltean sin abrirlos.
@@ -142,12 +150,28 @@ class PayloadBorradores(PayloadBase):
     no_escribir: Annotated[
         list[Annotated[str, Field(min_length=1, max_length=120)]], Field(max_length=120)
     ] = []
+    # Lo mismo por número (D43): las listas de nombres no ven que "Juan" y
+    # "Juan Ferretería" son la misma persona. El número se ve recién al abrir
+    # el chat, así que esta lista se aplica después de abrirlo.
+    no_escribir_numeros: Annotated[
+        list[Annotated[str, Field(max_length=25)]], Field(max_length=120)
+    ] = []
     # R4 cuando la lista de destinos no es "*": sólo chats cuyo número visible
     # esté acá pueden recibir borrador. Vacía = sin restricción (la lista era
     # "*"); una lista vacía de destinos no llega a encolar este job.
     solo_numeros: Annotated[list[Annotated[str, Field(max_length=25)]], Field(max_length=60)] = []
     largo_maximo: Annotated[int, Field(ge=50, le=1000)] = 600
     contexto_empresa: Annotated[str, Field(max_length=LARGO_CONTEXTO_EMPRESA)] = ""
+    # El segundo freno de la tanda (D44): chats abiertos, no borradores dejados.
+    max_visitas: Annotated[int, Field(ge=1, le=60)] = 20
+    # Las reglas de redacción del dueño (D40, D41), como datos y no como prompt.
+    frases_prohibidas: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=60)]], Field(max_length=40)
+    ] = []
+    palabras_veto: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=60)]], Field(max_length=40)
+    ] = []
+    mensaje_post_compra: bool = True
 
 
 class PayloadDiagnostico(PayloadBase):

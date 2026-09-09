@@ -33,6 +33,8 @@ const SOLO_AGREGAR = ["find", "insert", "createIndex", "listIndexes", "listColle
 // `telefonos` es la memoria de números que resolvió el agente (D27): nombre del
 // contacto -> número real leído del panel. Se pisa en cada resolución nueva, así
 // que necesita escritura como el resto.
+// `vetados` (D42) y `visitas` (D43) son memorias del pase único: a quién no
+// se le vuelve a escribir, y qué chats ya se abrieron. Se renuevan con upsert.
 const CON_ESCRITURA = [
   "vendedores",
   "corridas",
@@ -40,6 +42,8 @@ const CON_ESCRITURA = [
   "jobs",
   "configuracion",
   "telefonos",
+  "vetados",
+  "visitas",
 ];
 
 const privilegios = CON_ESCRITURA.map((coleccion) => ({

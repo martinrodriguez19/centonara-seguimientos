@@ -180,6 +180,33 @@ COLECCIONES: tuple[Coleccion, ...] = (
             Indice(claves=(("maquina", ASCENDING), ("nombre", ASCENDING)), unico=True),
         ),
     ),
+    Coleccion(
+        nombre="vetados",
+        porque=(
+            "La memoria de a quién no se le vuelve a escribir (D42): el cliente con un reclamo "
+            "abierto, o el que ya compró. Se llena sola desde el reporte de cada tanda, vence "
+            "por motivo, y entra primera a la lista de no-escribir del pase único."
+        ),
+        indices=(
+            # Un veto por contacto y máquina: la clave es el número si se vio,
+            # el nombre si no. Único, porque el upsert renueva en vez de apilar.
+            Indice(claves=(("maquina", ASCENDING), ("clave", ASCENDING)), unico=True),
+            # La consulta de cada tanda: los vigentes de esta máquina.
+            Indice(claves=(("maquina", ASCENDING), ("vence_en", ASCENDING))),
+        ),
+    ),
+    Coleccion(
+        nombre="visitas",
+        porque=(
+            "Qué chats abrió ya cada máquina (D43), con o sin borrador. Es lo que evita que "
+            "un chat salteado —campo ocupado, sin tema— se vuelva a abrir y a pagar en la "
+            "corrida siguiente. Se renueva con upsert y se lee por antigüedad."
+        ),
+        indices=(
+            Indice(claves=(("maquina", ASCENDING), ("nombre", ASCENDING)), unico=True),
+            Indice(claves=(("maquina", ASCENDING), ("visto_en", DESCENDING))),
+        ),
+    ),
 )
 
 
@@ -227,9 +254,14 @@ async def purgar_resumenes(base, *, dias: int = RETENCION_RESUMEN_DIAS) -> int:
     con un TTL se habría borrado el mensaje enviado junto con el resumen.
     """
     corte = datetime.now(UTC) - timedelta(days=dias)
+    #  `cita` (D40) es un fragmento literal del chat: dato de un tercero igual
+    #  que el resumen, y con la misma retención.
     resultado = await base["mensajes"].update_many(
-        {"creado_en": {"$lt": corte}, "resumen_ultimo": {"$ne": None}},
-        {"$unset": {"resumen_ultimo": ""}},
+        {
+            "creado_en": {"$lt": corte},
+            "$or": [{"resumen_ultimo": {"$ne": None}}, {"cita": {"$ne": None}}],
+        },
+        {"$unset": {"resumen_ultimo": "", "cita": ""}},
     )
     if resultado.modified_count:
         log.info("resumenes_purgados", cantidad=resultado.modified_count, dias=dias)

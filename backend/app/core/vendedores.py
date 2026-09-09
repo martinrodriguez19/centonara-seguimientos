@@ -217,6 +217,48 @@ async def registrar_barrido(
     )
 
 
+async def registrar_ventana(
+    base,
+    maquina: str,
+    *,
+    hasta_dias: int | None,
+    tanda: list[str],
+    completado: bool,
+    ahora: datetime | None = None,
+) -> None:
+    """El cursor de la ventana de esta máquina, cuando se recorre del más viejo
+    hacia hoy (D43). Hermano del de barrido, y **separado** a propósito: son
+    dos recorridos con extremos distintos, y compartir el campo haría que
+    cambiar de modo salte tramos enteros.
+
+    `hasta_dias` es la antigüedad del chat más nuevo de la tanda: la próxima
+    pide "los más viejos con hasta esos días". `completado` = la tanda llegó al
+    mínimo de la ventana: el cursor se **borra** para que la corrida siguiente
+    vuelva a arrancar del extremo viejo — los ya contactados los protege
+    `no_escribir`, y los salteados merecen otra mirada.
+    """
+    momento = ahora or datetime.now(UTC)
+    cambios: dict[str, Any] = {
+        "ventana.ultima_tanda": [str(n)[:120] for n in tanda][:20],
+        "ventana.actualizado_en": momento,
+        "ventana.completado_en": momento if completado else None,
+    }
+    operacion: dict[str, Any] = {"$set": cambios}
+    if completado:
+        operacion["$unset"] = {"ventana.hasta_dias": ""}
+    elif hasta_dias is not None:
+        cambios["ventana.hasta_dias"] = max(0, int(hasta_dias))
+
+    await base["vendedores"].update_one({"maquina": maquina}, operacion)
+    log.info(
+        "ventana_registrada",
+        maquina=maquina,
+        hasta_dias=None if completado else hasta_dias,
+        tanda=len(tanda),
+        completado=completado,
+    )
+
+
 def esta_pausada(vendedor: dict[str, Any], *, ahora: datetime | None = None) -> bool:
     """¿Esta máquina está pausada ahora mismo?
 

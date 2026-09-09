@@ -26,19 +26,26 @@ const TODOS = "*";
  */
 export default function Config() {
   const clienteQuery = useQueryClient();
-  const config = useQuery({ queryKey: ["configuracion"], queryFn: traerConfiguracion });
+  const config = useQuery({
+    queryKey: ["configuracion"],
+    queryFn: traerConfiguracion,
+  });
 
   const guardar = useMutation({
-    mutationFn: (cambios: Partial<Configuracion>) => guardarConfiguracion(cambios),
+    mutationFn: (cambios: Partial<Configuracion>) =>
+      guardarConfiguracion(cambios),
     onSuccess: (nueva) => {
       clienteQuery.setQueryData(["configuracion"], nueva);
       void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
     },
   });
 
-  if (config.isPending) return <p className="p-8 text-sm text-muted-foreground">Cargando…</p>;
+  if (config.isPending)
+    return <p className="p-8 text-sm text-muted-foreground">Cargando…</p>;
   if (config.isError) {
-    return <p className="p-8 text-sm text-destructive">{config.error.message}</p>;
+    return (
+      <p className="p-8 text-sm text-destructive">{config.error.message}</p>
+    );
   }
 
   const datos = config.data;
@@ -55,24 +62,32 @@ export default function Config() {
       <DestinosPermitidos
         destinos={datos.destinos_permitidos}
         guardando={guardar.isPending}
-        onGuardar={(destinos_permitidos) => guardar.mutate({ destinos_permitidos })}
+        onGuardar={(destinos_permitidos) =>
+          guardar.mutate({ destinos_permitidos })
+        }
       />
 
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Qué chats se siguen</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Dos formas de elegir. <strong>Los más recientes</strong>: los de arriba de la lista,
-            dentro de la ventana de silencio de abajo. <strong>Barrido del historial</strong>: va
-            al fondo del WhatsApp y avanza del chat más viejo hacia hoy, de a tandas, recuperando
-            a los clientes que quedaron sin recontactar — sin repetir a nadie que ya recibió algo.
+            Dos formas de elegir. <strong>Los más recientes</strong>: los de
+            arriba de la lista, dentro de la ventana de silencio de abajo.{" "}
+            <strong>Barrido del historial</strong>: va al fondo del WhatsApp y
+            avanza del chat más viejo hacia hoy, de a tandas, recuperando a los
+            clientes que quedaron sin recontactar — sin repetir a nadie que ya
+            recibió algo.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              variant={(datos.modo_lectura ?? "recientes") === "recientes" ? "default" : "outline"}
+              variant={
+                (datos.modo_lectura ?? "recientes") === "recientes"
+                  ? "default"
+                  : "outline"
+              }
               disabled={guardar.isPending}
               onClick={() => guardar.mutate({ modo_lectura: "recientes" })}
             >
@@ -89,42 +104,93 @@ export default function Config() {
           </div>
           {datos.modo_lectura === "barrido" ? (
             <p className="text-xs text-muted-foreground">
-              Cada corrida lee la siguiente tanda de «Chats a leer por máquina» (abajo). El avance
-              se ve en la tarjeta de cada máquina. La ventana de silencio no aplica en este modo.
+              Cada corrida lee la siguiente tanda de «Chats a leer por máquina»
+              (abajo). El avance se ve en la tarjeta de cada máquina. La ventana
+              de silencio no aplica en este modo.
               <br />
-              Si las corridas tardan demasiado, bajá ese número: el barrido abre cada chat para ver
-              de qué se hablaba, así que diez por corrida rinden más que veinte a medio terminar —
-              y la corrida siguiente continúa donde quedó.
+              Si las corridas tardan demasiado, bajá ese número: el barrido abre
+              cada chat para ver de qué se hablaba, así que diez por corrida
+              rinden más que veinte a medio terminar — y la corrida siguiente
+              continúa donde quedó.
             </p>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Numero
-                etiqueta="Silencio mínimo (días)"
-                ayuda="Un chat más fresco que esto no necesita seguimiento todavía."
-                valor={datos.antiguedad_min_dias ?? 0}
-                onGuardar={(antiguedad_min_dias) => guardar.mutate({ antiguedad_min_dias })}
-              />
-              <Numero
-                etiqueta="Silencio máximo (días)"
-                ayuda="Más viejo que esto, el contacto se considera perdido y no se le escribe."
-                valor={datos.antiguedad_max_dias ?? 90}
-                onGuardar={(antiguedad_max_dias) => guardar.mutate({ antiguedad_max_dias })}
-              />
-            </div>
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Numero
+                  etiqueta="Silencio mínimo (días)"
+                  ayuda="Un chat más fresco que esto no se toca: es hasta dónde se acerca a hoy el recorrido. Tres semanas (21) es lo pedido para el pase único."
+                  valor={datos.antiguedad_min_dias ?? 0}
+                  onGuardar={(antiguedad_min_dias) =>
+                    guardar.mutate({ antiguedad_min_dias })
+                  }
+                />
+                <Numero
+                  etiqueta="Silencio máximo (días)"
+                  ayuda="Más viejo que esto, el contacto se considera perdido y no se le escribe."
+                  valor={datos.antiguedad_max_dias ?? 90}
+                  onGuardar={(antiguedad_max_dias) =>
+                    guardar.mutate({ antiguedad_max_dias })
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">En qué orden se recorren</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={
+                      (datos.orden_recorrido ?? "mas_nuevos_primero") ===
+                      "mas_nuevos_primero"
+                        ? "default"
+                        : "outline"
+                    }
+                    disabled={guardar.isPending}
+                    onClick={() =>
+                      guardar.mutate({ orden_recorrido: "mas_nuevos_primero" })
+                    }
+                  >
+                    De arriba hacia abajo (los más nuevos primero)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={
+                      datos.orden_recorrido === "mas_viejos_primero"
+                        ? "default"
+                        : "outline"
+                    }
+                    disabled={guardar.isPending}
+                    onClick={() =>
+                      guardar.mutate({ orden_recorrido: "mas_viejos_primero" })
+                    }
+                  >
+                    De atrás para adelante (los más viejos primero)
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {datos.orden_recorrido === "mas_viejos_primero"
+                    ? "Arranca en el extremo viejo de la ventana y avanza hacia hoy, frenando en el silencio mínimo. Cada máquina lleva su cursor entre corridas; se ve y se reinicia en su tarjeta."
+                    : "Arranca arriba de la lista en cada corrida. Sin cursor: lo único que evita repetir a alguien es que ya haya recibido un mensaje hace poco."}
+                </p>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Cómo se dejan los borradores</CardTitle>
+          <CardTitle className="text-base">
+            Cómo se dejan los borradores
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
-            <strong>Circuito de siempre</strong>: se leen los chats, se redacta aparte y otro
-            navegador vuelve a abrir cada chat para dejar el borrador. <strong>Pase único</strong>:
-            la extensión lee cada chat y deja el borrador ahí mismo, en una sola pasada — sin
-            segundo navegador y sin volver a buscar el chat. <strong>Con respaldo</strong>: el pase
-            único, y si a una máquina se le agotan los reintentos, esa máquina cae al circuito de
-            siempre.
+            <strong>Circuito de siempre</strong>: se leen los chats, se redacta
+            aparte y otro navegador vuelve a abrir cada chat para dejar el
+            borrador. <strong>Pase único</strong>: la extensión lee cada chat y
+            deja el borrador ahí mismo, en una sola pasada — sin segundo
+            navegador y sin volver a buscar el chat.{" "}
+            <strong>Con respaldo</strong>: el pase único, y si a una máquina se
+            le agotan los reintentos, esa máquina cae al circuito de siempre.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -132,7 +198,9 @@ export default function Config() {
             <Button
               size="sm"
               variant={
-                (datos.modo_borrador ?? "playwright") === "playwright" ? "default" : "outline"
+                (datos.modo_borrador ?? "playwright") === "playwright"
+                  ? "default"
+                  : "outline"
               }
               disabled={guardar.isPending}
               onClick={() => guardar.mutate({ modo_borrador: "playwright" })}
@@ -141,7 +209,9 @@ export default function Config() {
             </Button>
             <Button
               size="sm"
-              variant={datos.modo_borrador === "extension" ? "default" : "outline"}
+              variant={
+                datos.modo_borrador === "extension" ? "default" : "outline"
+              }
               disabled={guardar.isPending}
               onClick={() => guardar.mutate({ modo_borrador: "extension" })}
             >
@@ -149,9 +219,15 @@ export default function Config() {
             </Button>
             <Button
               size="sm"
-              variant={datos.modo_borrador === "extension_con_respaldo" ? "default" : "outline"}
+              variant={
+                datos.modo_borrador === "extension_con_respaldo"
+                  ? "default"
+                  : "outline"
+              }
               disabled={guardar.isPending}
-              onClick={() => guardar.mutate({ modo_borrador: "extension_con_respaldo" })}
+              onClick={() =>
+                guardar.mutate({ modo_borrador: "extension_con_respaldo" })
+              }
             >
               Pase único con respaldo
             </Button>
@@ -160,30 +236,73 @@ export default function Config() {
       </Card>
 
       {(datos.modo_borrador ?? "playwright") === "playwright" ? null : (
-        <Volumen datos={datos} onGuardar={(cambios) => guardar.mutate(cambios)} />
+        <Volumen
+          datos={datos}
+          onGuardar={(cambios) => guardar.mutate(cambios)}
+        />
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Indicaciones para redactar</CardTitle>
+          <CardTitle className="text-base">
+            Indicaciones para redactar
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Lo que escribas acá manda sobre lo que dicen los mensajes y cómo lo dicen: qué vende la
-            empresa, productos y servicios, promociones vigentes, qué destacar, qué no mencionar,
-            con qué tono le hablás a tus clientes. Cuanto más concreto, más concretos salen los
-            borradores. Se puede cambiar cuando quieras — cada redacción usa la versión del
-            momento.
+            Lo que escribas acá manda sobre lo que dicen los mensajes y cómo lo
+            dicen: qué vende la empresa, productos y servicios, promociones
+            vigentes, qué destacar, qué no mencionar, con qué tono le hablás a
+            tus clientes. Cuanto más concreto, más concretos salen los
+            borradores. Se puede cambiar cuando quieras — cada redacción usa la
+            versión del momento.
           </p>
           <p className="text-sm text-muted-foreground">
-            Dos cosas no las cambia ni pidiéndolo: el sistema no inventa precios, fechas ni plazos
-            que no estén acá o en la conversación, y no deja huecos sin completar en el texto.
+            Dos cosas no las cambia ni pidiéndolo: el sistema no inventa
+            precios, fechas ni plazos que no estén acá o en la conversación, y
+            no deja huecos sin completar en el texto.
           </p>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <ContextoEmpresa
             valor={datos.contexto_empresa ?? ""}
             guardando={guardar.isPending}
-            onGuardar={(contexto_empresa) => guardar.mutate({ contexto_empresa })}
+            onGuardar={(contexto_empresa) =>
+              guardar.mutate({ contexto_empresa })
+            }
           />
+
+          {(datos.modo_borrador ?? "playwright") !== "playwright" && (
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium">Cuando el cliente ya compró</p>
+              <p className="text-xs text-muted-foreground">
+                Si en el chat se ve que la compra ya se hizo —con nosotros o en
+                otro lado— nunca se le pregunta por esa venta. Lo que se elige
+                acá es si se le deja un mensaje de post-venta («¿te faltó
+                algo?») o nada.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={
+                    (datos.mensaje_post_compra ?? true) ? "default" : "outline"
+                  }
+                  disabled={guardar.isPending}
+                  onClick={() => guardar.mutate({ mensaje_post_compra: true })}
+                >
+                  Preguntar si le faltó algo
+                </Button>
+                <Button
+                  size="sm"
+                  variant={
+                    datos.mensaje_post_compra === false ? "default" : "outline"
+                  }
+                  disabled={guardar.isPending}
+                  onClick={() => guardar.mutate({ mensaje_post_compra: false })}
+                >
+                  No escribirle
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -195,19 +314,25 @@ export default function Config() {
           <Numero
             etiqueta="Chats a leer por máquina"
             valor={datos.n_chats_por_defecto}
-            onGuardar={(n_chats_por_defecto) => guardar.mutate({ n_chats_por_defecto })}
+            onGuardar={(n_chats_por_defecto) =>
+              guardar.mutate({ n_chats_por_defecto })
+            }
           />
           <Numero
             etiqueta="Mensajes por máquina por día"
             ayuda="Es lo que protege la línea del vendedor."
             valor={datos.tope_diario_maquina}
-            onGuardar={(tope_diario_maquina) => guardar.mutate({ tope_diario_maquina })}
+            onGuardar={(tope_diario_maquina) =>
+              guardar.mutate({ tope_diario_maquina })
+            }
           />
           <Numero
             etiqueta="Mensajes por corrida, por máquina"
             ayuda="Protege de un bug que encole de más, no del volumen: el volumen lo decide el tope diario."
             valor={datos.tope_por_corrida}
-            onGuardar={(tope_por_corrida) => guardar.mutate({ tope_por_corrida })}
+            onGuardar={(tope_por_corrida) =>
+              guardar.mutate({ tope_por_corrida })
+            }
           />
           <Numero
             etiqueta="Largo máximo del mensaje"
@@ -217,7 +342,9 @@ export default function Config() {
           <Numero
             etiqueta="Días sin repetirle a un contacto"
             valor={datos.dias_anti_duplicado}
-            onGuardar={(dias_anti_duplicado) => guardar.mutate({ dias_anti_duplicado })}
+            onGuardar={(dias_anti_duplicado) =>
+              guardar.mutate({ dias_anti_duplicado })
+            }
           />
         </CardContent>
       </Card>
@@ -242,11 +369,12 @@ export default function Config() {
           <div>
             <p className="text-sm font-medium">Espera entre mensajes</p>
             <p className="text-sm tabular-nums text-muted-foreground">
-              entre {datos.pausa_entre_envios_s[0]} y {datos.pausa_entre_envios_s[1]} segundos
+              entre {datos.pausa_entre_envios_s[0]} y{" "}
+              {datos.pausa_entre_envios_s[1]} segundos
             </p>
             <p className="text-xs text-muted-foreground">
-              Al azar dentro de ese rango. Es lo que evita que la línea parezca un robot. Esto sí
-              es fijo.
+              Al azar dentro de ese rango. Es lo que evita que la línea parezca
+              un robot. Esto sí es fijo.
             </p>
           </div>
         </CardContent>
@@ -280,8 +408,13 @@ function EmpezarDeCero() {
         borrar_maquinas: borrarMaquinas,
       }),
     onSuccess: (resultado) => {
-      const total = Object.values(resultado.borrados).reduce((a, b) => a + b, 0);
-      setHecho(`Listo: se borraron ${total} registros. El sistema quedó como recién instalado.`);
+      const total = Object.values(resultado.borrados).reduce(
+        (a, b) => a + b,
+        0,
+      );
+      setHecho(
+        `Listo: se borraron ${total} registros. El sistema quedó como recién instalado.`,
+      );
       setConfirmacion("");
       void clienteQuery.invalidateQueries();
     },
@@ -309,10 +442,14 @@ function EmpezarDeCero() {
           <div>
             <p className="font-medium">No se borra</p>
             <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-              <li>El historial de auditoría: es el registro de lo que pasó y no se puede
-                borrar ni desde acá ni desde la base</li>
+              <li>
+                El historial de auditoría: es el registro de lo que pasó y no se
+                puede borrar ni desde acá ni desde la base
+              </li>
               <li>Las máquinas instaladas, salvo que lo pidas abajo</li>
-              <li>Nada de WhatsApp: los chats del vendedor no se tocan nunca</li>
+              <li>
+                Nada de WhatsApp: los chats del vendedor no se tocan nunca
+              </li>
             </ul>
           </div>
         </div>
@@ -327,9 +464,10 @@ function EmpezarDeCero() {
           <span>
             Volver la configuración a cero
             <span className="block text-xs text-muted-foreground">
-              Deja la lista de destinos permitidos vacía —que significa a nadie— y borra la
-              información de la empresa. Es lo que corresponde al entregar: si no, el cliente
-              hereda los números con los que probaste.
+              Deja la lista de destinos permitidos vacía —que significa a nadie—
+              y borra la información de la empresa. Es lo que corresponde al
+              entregar: si no, el cliente hereda los números con los que
+              probaste.
             </span>
           </span>
         </label>
@@ -344,8 +482,8 @@ function EmpezarDeCero() {
           <span>
             Dar de baja las máquinas
             <span className="block text-xs text-muted-foreground">
-              Revoca sus tokens: hay que volver a instalarlas una por una. Sólo si las Macs de
-              prueba no son las del cliente.
+              Revoca sus tokens: hay que volver a instalarlas una por una. Sólo
+              si las Macs de prueba no son las del cliente.
             </span>
           </span>
         </label>
@@ -365,14 +503,19 @@ function EmpezarDeCero() {
             <Button
               variant="destructive"
               size="sm"
-              disabled={confirmacion.trim().toUpperCase() !== "BORRAR" || borrar.isPending}
+              disabled={
+                confirmacion.trim().toUpperCase() !== "BORRAR" ||
+                borrar.isPending
+              }
               onClick={() => borrar.mutate()}
             >
               {borrar.isPending ? "Borrando…" : "Empezar de cero"}
             </Button>
           </div>
           {hecho && <p className="text-sm text-muted-foreground">{hecho}</p>}
-          {borrar.error && <p className="text-sm text-destructive">{borrar.error.message}</p>}
+          {borrar.error && (
+            <p className="text-sm text-destructive">{borrar.error.message}</p>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -396,27 +539,44 @@ function DestinosPermitidos({
   onGuardar: (destinos: string[]) => void;
 }) {
   const abierto = destinos.includes(TODOS);
-  const [lista, setLista] = useState(destinos.filter((d) => d !== TODOS).join("\n"));
+  const [lista, setLista] = useState(
+    destinos.filter((d) => d !== TODOS).join("\n"),
+  );
   const [confirmacion, setConfirmacion] = useState("");
 
-  const numeros = () => lista.split("\n").map((l) => l.trim()).filter(Boolean);
+  const numeros = () =>
+    lista
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
 
   return (
-    <Card className={abierto ? "border-critico-borde bg-critico-suave" : "border-atencion-borde"}>
+    <Card
+      className={
+        abierto
+          ? "border-critico-borde bg-critico-suave"
+          : "border-atencion-borde"
+      }
+    >
       <CardHeader>
         <CardTitle className="text-base">Destinos permitidos</CardTitle>
         <p className="text-sm text-muted-foreground">
-          El sistema sólo le escribe a estos números. Una lista vacía significa <strong>a
-          nadie</strong>.
+          El sistema sólo le escribe a estos números. Una lista vacía significa{" "}
+          <strong>a nadie</strong>.
         </p>
       </CardHeader>
 
       <CardContent className="space-y-4">
         {abierto ? (
           <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3">
-            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
+            <AlertTriangle
+              className="mt-0.5 size-5 shrink-0 text-destructive"
+              aria-hidden
+            />
             <div className="space-y-2">
-              <p className="font-semibold text-destructive">Abierto a todos los contactos</p>
+              <p className="font-semibold text-destructive">
+                Abierto a todos los contactos
+              </p>
               <p className="text-sm text-muted-foreground">
                 Cualquier chat que el sistema lea puede recibir un mensaje.
               </p>
@@ -433,7 +593,9 @@ function DestinosPermitidos({
         ) : (
           <>
             <label className="block space-y-1">
-              <span className="text-sm font-medium">Números, uno por línea</span>
+              <span className="text-sm font-medium">
+                Números, uno por línea
+              </span>
               <textarea
                 rows={4}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -442,7 +604,11 @@ function DestinosPermitidos({
                 onChange={(evento) => setLista(evento.target.value)}
               />
             </label>
-            <Button size="sm" disabled={guardando} onClick={() => onGuardar(numeros())}>
+            <Button
+              size="sm"
+              disabled={guardando}
+              onClick={() => onGuardar(numeros())}
+            >
               Guardar lista
             </Button>
 
@@ -451,8 +617,9 @@ function DestinosPermitidos({
                 Abrir a todos los contactos
               </p>
               <p className="text-sm text-muted-foreground">
-                A partir de ese momento el sistema puede escribirle a cualquier chat que lea. Para
-                confirmar, escribí <code className="font-mono">ABRIR</code>.
+                A partir de ese momento el sistema puede escribirle a cualquier
+                chat que lea. Para confirmar, escribí{" "}
+                <code className="font-mono">ABRIR</code>.
               </p>
               <div className="flex gap-2">
                 <input
@@ -481,8 +648,8 @@ function DestinosPermitidos({
   );
 }
 
-/** Cuánto tarda una tanda del pase único, de punta a punta (`TIMEOUT_BORRADORES`). */
-const MINUTOS_POR_TANDA = 20;
+/** Cuánto tarda una tanda del pase único, de punta a punta (`TIMEOUT_BORRADORES`, D44). */
+const MINUTOS_POR_TANDA = 35;
 
 /**
  * El volumen del pase único: cuántos borradores salen, y cuánto tarda eso.
@@ -501,59 +668,92 @@ function Volumen({
   onGuardar: (cambios: Partial<Configuracion>) => void;
 }) {
   const porDia = datos.tope_diario_borradores ?? 20;
-  const porTanda = datos.chats_por_tanda ?? 6;
-  const maxTandas = datos.max_tandas_por_maquina ?? 5;
+  const porTanda = datos.chats_por_tanda ?? 8;
+  const maxTandas = datos.max_tandas_por_maquina ?? 6;
+  const maxVisitas = datos.max_visitas_por_tanda ?? 20;
 
   // El más chico de los tres manda, igual que en el backend.
-  const porCorrida = Math.min(porDia, datos.tope_por_corrida, maxTandas * porTanda);
+  const porCorrida = Math.min(
+    porDia,
+    datos.tope_por_corrida,
+    maxTandas * porTanda,
+  );
   const tandas = Math.ceil(porCorrida / porTanda);
   const minutos = tandas * MINUTOS_POR_TANDA;
 
   // Que el techo de tandas sea el que corta es casi siempre un descuido: son
   // borradores que los otros topes permitían y que no se van a dejar.
-  const cortaElTiempo = maxTandas * porTanda < Math.min(porDia, datos.tope_por_corrida);
+  const cortaElTiempo =
+    maxTandas * porTanda < Math.min(porDia, datos.tope_por_corrida);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Cuántos borradores se dejan</CardTitle>
         <p className="text-sm text-muted-foreground">
-          El número que manda es el de arriba: <strong>por día y por máquina</strong>, sumando
-          todas las corridas. Los otros dos son de otra cosa — de a cuánto se llega, y cuánto
-          puede tardar una corrida.
+          El número que manda es el de arriba:{" "}
+          <strong>por día y por máquina</strong>, sumando todas las corridas.
+          Los otros dos son de otra cosa — de a cuánto se llega, y cuánto puede
+          tardar una corrida.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Numero
             etiqueta="Borradores por día, por máquina"
             ayuda="Lo que cada vendedor va a encontrar en su WhatsApp al final del día."
             valor={porDia}
-            onGuardar={(tope_diario_borradores) => onGuardar({ tope_diario_borradores })}
+            onGuardar={(tope_diario_borradores) =>
+              onGuardar({ tope_diario_borradores })
+            }
           />
           <Numero
             etiqueta="Borradores por tanda"
-            ayuda="El pase trabaja de a tandas cortas y reporta al terminar cada una. Seis entra cómodo; más de eso arriesga el tiempo límite."
+            ayuda="El pase trabaja de a tandas y reporta al terminar cada una. Ocho entra en el tiempo límite; más de doce no se puede."
             valor={porTanda}
             onGuardar={(chats_por_tanda) => onGuardar({ chats_por_tanda })}
+          />
+          <Numero
+            etiqueta="Chats abiertos por tanda"
+            ayuda="Hasta cuántos chats abre una tanda buscando sus borradores, contando los que saltea. Cuando llega, devuelve lo que tiene y sigue en la próxima."
+            valor={maxVisitas}
+            onGuardar={(max_visitas_por_tanda) =>
+              onGuardar({ max_visitas_por_tanda })
+            }
           />
           <Numero
             etiqueta="Tandas por corrida"
             ayuda="El tope de tiempo. Cada tanda es una pasada entera del modelo por el navegador."
             valor={maxTandas}
-            onGuardar={(max_tandas_por_maquina) => onGuardar({ max_tandas_por_maquina })}
+            onGuardar={(max_tandas_por_maquina) =>
+              onGuardar({ max_tandas_por_maquina })
+            }
           />
         </div>
+
+        {maxVisitas < porTanda && (
+          <Aviso
+            nivel="atencion"
+            titulo="Abre menos chats de los que tiene que llenar"
+          >
+            Una tanda no puede dejar{" "}
+            <span className="tabular-nums">{porTanda}</span> borradores abriendo{" "}
+            <span className="tabular-nums">{maxVisitas}</span> chats. El sistema
+            usa el más grande de los dos.
+          </Aviso>
+        )}
 
         <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
           Con estos números, cada máquina deja hasta{" "}
           <strong className="tabular-nums">{porCorrida}</strong>{" "}
           {porCorrida === 1 ? "borrador" : "borradores"} por corrida, en{" "}
-          <span className="tabular-nums">{tandas}</span> {tandas === 1 ? "tanda" : "tandas"}.
+          <span className="tabular-nums">{tandas}</span>{" "}
+          {tandas === 1 ? "tanda" : "tandas"}.
           <br />
-          Va a tardar <strong className="tabular-nums">hasta {minutos} minutos</strong> por
-          máquina. Las máquinas trabajan en paralelo, así que la corrida entera tarda eso, no la
-          suma.
+          Va a tardar{" "}
+          <strong className="tabular-nums">hasta {minutos} minutos</strong> por
+          máquina. Las máquinas trabajan en paralelo, así que la corrida entera
+          tarda eso, no la suma.
         </div>
 
         {cortaElTiempo && (
@@ -562,14 +762,17 @@ function Volumen({
             titulo="Corta el tope de tandas, no el de borradores"
             accion={
               <>
-                Para llegar a <span className="tabular-nums">{porDia}</span> por día hacen falta{" "}
-                <span className="tabular-nums">{Math.ceil(porDia / porTanda)}</span> tandas — o
-                tandas más grandes.
+                Para llegar a <span className="tabular-nums">{porDia}</span> por
+                día hacen falta{" "}
+                <span className="tabular-nums">
+                  {Math.ceil(porDia / porTanda)}
+                </span>{" "}
+                tandas — o tandas más grandes.
               </>
             }
           >
-            Se dejan <span className="tabular-nums">{porCorrida}</span> por corrida aunque los
-            otros dos topes permitan más.
+            Se dejan <span className="tabular-nums">{porCorrida}</span> por
+            corrida aunque los otros dos topes permitan más.
           </Aviso>
         )}
       </CardContent>
@@ -608,7 +811,9 @@ function Numero({
           </Button>
         )}
       </div>
-      {ayuda && <span className="block text-xs text-muted-foreground">{ayuda}</span>}
+      {ayuda && (
+        <span className="block text-xs text-muted-foreground">{ayuda}</span>
+      )}
     </label>
   );
 }
@@ -661,12 +866,17 @@ function ContextoEmpresa({
         onChange={(evento) => setBorrador(evento.target.value)}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button size="sm" disabled={guardando || borrador === valor} onClick={() => onGuardar(borrador)}>
+        <Button
+          size="sm"
+          disabled={guardando || borrador === valor}
+          onClick={() => onGuardar(borrador)}
+        >
           Guardar indicaciones
         </Button>
         <span className="text-xs tabular-nums text-muted-foreground">
           {pesado && <span className="mr-2">Cada mensaje lo lee entero.</span>}
-          {borrador.length.toLocaleString("es-AR")} / {LIMITE.toLocaleString("es-AR")}
+          {borrador.length.toLocaleString("es-AR")} /{" "}
+          {LIMITE.toLocaleString("es-AR")}
         </span>
       </div>
     </>
@@ -691,16 +901,22 @@ function VentanaDeEnvio({
 }) {
   const [inicio, setInicio] = useState(ventana.inicio);
   const [fin, setFin] = useState(ventana.fin);
-  const [dias, setDias] = useState<number[]>([...ventana.dias].sort((a, b) => a - b));
+  const [dias, setDias] = useState<number[]>(
+    [...ventana.dias].sort((a, b) => a - b),
+  );
   const NOMBRES = ["", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
   const alternar = (dia: number) =>
     setDias((antes) =>
-      antes.includes(dia) ? antes.filter((d) => d !== dia) : [...antes, dia].sort((a, b) => a - b),
+      antes.includes(dia)
+        ? antes.filter((d) => d !== dia)
+        : [...antes, dia].sort((a, b) => a - b),
     );
 
   const sinRestriccion =
-    ventana.inicio === "00:00" && ventana.fin === "24:00" && ventana.dias.length === 7;
+    ventana.inicio === "00:00" &&
+    ventana.fin === "24:00" &&
+    ventana.dias.length === 7;
 
   return (
     <div className="space-y-3">
@@ -748,29 +964,46 @@ function VentanaDeEnvio({
             size="sm"
             variant="outline"
             disabled={guardando}
-            onClick={() => onGuardar({ inicio: "00:00", fin: "24:00", dias: [1, 2, 3, 4, 5, 6, 7] })}
+            onClick={() =>
+              onGuardar({
+                inicio: "00:00",
+                fin: "24:00",
+                dias: [1, 2, 3, 4, 5, 6, 7],
+              })
+            }
           >
             Sin restricción (24/7)
           </Button>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Formato HH:MM; 24:00 vale como fin del día. Fuera de la ventana, el botón de enviar
-        contesta que no es horario.
+        Formato HH:MM; 24:00 vale como fin del día. Fuera de la ventana, el
+        botón de enviar contesta que no es horario.
       </p>
     </div>
   );
 }
 
 function diasDeLaVentana(dias: number[]): string {
-  const NOMBRES = ["", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+  const NOMBRES = [
+    "",
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "domingo",
+  ];
   const ordenados = [...dias].sort((a, b) => a - b);
 
   if (ordenados.length === 0) return "ningún día";
   if (ordenados.length === 7) return "todos los días";
 
   // Un rango corrido se dice como rango. Lunes a viernes es el caso de fábrica.
-  const corrido = ordenados.every((dia, i) => i === 0 || dia === ordenados[i - 1] + 1);
+  const corrido = ordenados.every(
+    (dia, i) => i === 0 || dia === ordenados[i - 1] + 1,
+  );
   if (corrido && ordenados.length > 2) {
     return `de ${NOMBRES[ordenados[0]]} a ${NOMBRES[ordenados[ordenados.length - 1]]}`;
   }

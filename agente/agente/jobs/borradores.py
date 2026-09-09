@@ -38,6 +38,10 @@ MAX_POR_TANDA = 12
 # con un bug no infle el prompt hasta el timeout.
 MAX_NOMBRES_EN_LISTA = 60
 
+# `ya_vistos` entra el doble (D43): con veinte por día y contando los
+# salteados, sesenta se llenaban en un día. Coincide con `pase_unico.MAX_YA_VISTOS`.
+MAX_YA_VISTOS_EN_LISTA = 120
+
 # `no_escribir` entra el doble. Es la lista que evita escribirle dos veces a la
 # misma persona: recortarla acá, del lado del agente, sería deshacer en silencio
 # lo que el backend calculó bien. Coincide con `pase_unico.MAX_NO_ESCRIBIR`.
@@ -66,7 +70,26 @@ QUE_SIGNIFICA = {
 
 #  Por qué un chat visitado quedó sin borrador. Cualquier otro valor se guarda
 #  como "otro": no se pierde, pero tampoco se inventa un vocabulario nuevo.
-MOTIVOS_DE_SALTEO = {"campo_ocupado", "sin_tema", "fuera_de_lista"}
+#
+#  `disconforme` y `ya_compro` (D41) son los dos que además vetan al contacto
+#  para las corridas siguientes. `ya_compro` es el único que puede venir en un
+#  chat CON borrador: el post-venta deja mensaje y la venta igual queda cerrada.
+MOTIVOS_DE_SALTEO = {
+    "campo_ocupado",
+    "sin_tema",
+    "fuera_de_lista",
+    "disconforme",
+    "ya_compro",
+    #  El número visible del chat ya recibió mensaje (D43): otro nombre, la
+    #  misma persona. Se ve recién al abrir, por eso no entra en las listas
+    #  de nombres.
+    "numero_repetido",
+}
+
+#  Por qué la tanda devolvió menos de lo pedido (D44). `tope_de_visitas` es el
+#  freno normal desde que las reglas de redacción saltean más chats: una tanda
+#  que abre `max_visitas` sin llenar su cupo vuelve igual, con lo que leyó.
+CORTES = {"n_chats", "tope_de_visitas", "fin_de_ventana", "tiempo"}
 
 QUIEN_HABLO = {"contacto": "contacto", "yo": "vendedor", "vendedor": "vendedor"}
 
@@ -89,19 +112,58 @@ RECORRIDO_RECIENTES = """2. Lo que se busca son conversaciones FRIAS: chats cuyo
    hoy y de ayer probablemente NO califican y los que buscas estan mas abajo.
 
    Esta es UNA TANDA de un recorrido mas largo: el backend lleva la cuenta y te
-   va a pedir la siguiente desde donde cortaste. Frena cuando hayas dejado
-   {{N_CHATS}} borradores, o cuando los chats que veas sean ya mas viejos que
-   {{ANTIGUEDAD_MAX}} dias.
+   va a pedir la siguiente desde donde cortaste. Frena cuando pase CUALQUIERA
+   de estas tres cosas:
+     - dejaste {{N_CHATS}} borradores;
+     - ABRISTE {{MAX_VISITAS}} chats, contando los que salteaste despues de
+       abrir. Es normal que pase antes de llegar a {{N_CHATS}}: devolve lo que
+       tengas y el sistema sigue desde ahi;
+     - los chats que ves ya son mas viejos que {{ANTIGUEDAD_MAX}} dias.
 
-   Lo unico que tenes que hacer bien es decir POR QUE frenaste, en el campo
+   Lo unico que tenes que hacer bien es decir POR QUE frenaste, en dos campos:
    "fin_de_ventana":
      - true  = recorriste la ventana entera y ya no queda NINGUN chat sin
                visitar entre {{ANTIGUEDAD_MIN}} y {{ANTIGUEDAD_MAX}} dias
-     - false = quedan chats por visitar, pero cortaste antes: por llegar a
-               {{N_CHATS}} borradores, o por tiempo
-   Llegar a {{N_CHATS}} es SIEMPRE false: quedan chats y la proxima tanda sigue
-   desde ahi. Marcar true por error da la ventana por agotada y hace que no se
-   deje ni un borrador mas en toda la corrida. Ante la duda, false."""
+     - false = quedan chats por visitar, pero cortaste antes
+   Llegar a {{N_CHATS}} o a {{MAX_VISITAS}} es SIEMPRE false: quedan chats y la
+   proxima tanda sigue desde ahi. Marcar true por error da la ventana por
+   agotada y hace que no se deje ni un borrador mas en toda la corrida. Ante la
+   duda, false.
+   "corte": "n_chats" | "tope_de_visitas" | "fin_de_ventana" | "tiempo",
+   segun cual de las causas te freno."""
+
+RECORRIDO_VENTANA_ASCENDENTE = """2. Lo que se busca son conversaciones FRIAS: chats cuyo
+   ultimo mensaje tenga entre {{ANTIGUEDAD_MIN}} y {{ANTIGUEDAD_MAX}} dias de
+   antiguedad, recorridos DEL MAS VIEJO AL MAS NUEVO. El backend lleva un
+   cursor por maquina; tu tanda es esta.
+
+   Scrollea la lista hacia abajo hasta pasar los chats de {{VENTANA_HASTA_DIAS}}
+   dias de antiguedad (o hasta el fondo, si no hay tantos). Desde ahi recorre
+   HACIA ARRIBA, hacia hoy: los chats MAS VIEJOS cuyo ultimo mensaje tenga
+   {{VENTANA_HASTA_DIAS}} dias o menos — los que tengan MAS ya se procesaron en
+   tandas anteriores, salteolos — y nunca menos de {{ANTIGUEDAD_MIN}} dias. Un
+   chat con MENOS de {{ANTIGUEDAD_MIN}} dias es demasiado fresco: ahi termina
+   la ventana. Devolvelos en ese orden, del mas viejo al mas nuevo.
+
+   Frena cuando pase CUALQUIERA de estas tres cosas:
+     - dejaste {{N_CHATS}} borradores;
+     - ABRISTE {{MAX_VISITAS}} chats, contando los que salteaste despues de
+       abrir. Es normal que pase antes de llegar a {{N_CHATS}}: devolve lo que
+       tengas y el sistema sigue desde ahi;
+     - llegaste a chats de menos de {{ANTIGUEDAD_MIN}} dias: la ventana se
+       termino.
+
+   Lo unico que tenes que hacer bien es decir POR QUE frenaste, en dos campos:
+   "fin_de_ventana":
+     - true  = llegaste al limite de {{ANTIGUEDAD_MIN}} dias y no queda NINGUN
+               chat sin visitar entre {{ANTIGUEDAD_MIN}} y {{VENTANA_HASTA_DIAS}}
+               dias
+     - false = quedan chats por visitar, pero cortaste antes
+   Llegar a {{N_CHATS}} o a {{MAX_VISITAS}} es SIEMPRE false: quedan chats y la
+   proxima tanda sigue desde ahi. Marcar true por error hace que la proxima
+   corrida vuelva a empezar desde el fondo de la ventana. Ante la duda, false.
+   "corte": "n_chats" | "tope_de_visitas" | "fin_de_ventana" | "tiempo",
+   segun cual de las causas te freno."""
 
 RECORRIDO_BARRIDO = """2. Esta es una pasada de BARRIDO DEL HISTORIAL: la empresa esta recuperando a
    sus clientes viejos, recorriendo todos los chats desde el MAS ANTIGUO hacia
@@ -113,16 +175,39 @@ RECORRIDO_BARRIDO = """2. Esta es una pasada de BARRIDO DEL HISTORIAL: la empres
    procesaron en tandas anteriores, salteolos. Recorrelos DEL MAS VIEJO AL MAS
    NUEVO, y devolvelos en ese orden.
 
-   Frena cuando hayas dejado {{N_CHATS}} borradores. Devolver menos esta bien y
-   es preferible a no devolver nada: si la tanda se hace larga, corta y devolve
-   lo que ya tengas — el sistema sigue desde ahi en la proxima tanda. Lo unico
-   que tenes que hacer bien es decir POR QUE devolves menos, en el campo
+   Frena cuando hayas dejado {{N_CHATS}} borradores, o cuando hayas ABIERTO
+   {{MAX_VISITAS}} chats contando los que salteaste despues de abrir. Devolver
+   menos esta bien y es preferible a no devolver nada: si la tanda se hace
+   larga, corta y devolve lo que ya tengas — el sistema sigue desde ahi en la
+   proxima tanda. Lo unico que tenes que hacer bien es decir POR QUE devolves
+   menos, en dos campos:
    "fin_de_ventana":
      - true  = ya no quedan chats mas viejos sin procesar: el barrido termino
-     - false = quedan, pero cortaste antes (por tiempo, o por llegar a
-               {{N_CHATS}})
+     - false = quedan, pero cortaste antes (por tiempo, por llegar a
+               {{N_CHATS}}, o por abrir {{MAX_VISITAS}})
    Marcar true por error hace que el sistema de por terminado el barrido y no
-   vuelva a mirar el historial. Ante la duda, false."""
+   vuelva a mirar el historial. Ante la duda, false.
+   "corte": "n_chats" | "tope_de_visitas" | "fin_de_ventana" | "tiempo",
+   segun cual de las causas te freno."""
+
+# ---------------------------------------------------------------------------
+# La venta cerrada (D41): con post-venta, o sin nada
+# ---------------------------------------------------------------------------
+#
+# Lo que cambia con `mensaje_post_compra` es SOLO qué se hace con un chat donde
+# la compra ya se hizo. Lo que no cambia, en ninguna de las dos variantes: no se
+# le pregunta por esa venta, y el motivo `ya_compro` viaja igual — es lo que
+# cierra al contacto para las corridas siguientes.
+
+POST_VENTA_ACTIVO = """                        Dos opciones, y nada mas:
+                          - si el chat es claro, dejas un mensaje de
+                            POST-VENTA: preguntas si le falto algo o si quedo
+                            todo bien. Ni una palabra de volver a comprar.
+                          - si no esta claro, no dejas nada.
+                        En los dos casos anotas motivo "ya_compro"."""
+
+POST_VENTA_APAGADO = """                        NO dejes borrador. Anota el chat con motivo
+                        "ya_compro" y segui con el proximo."""
 
 
 @dataclass(frozen=True)
@@ -156,18 +241,28 @@ async def dejar_borradores(
     antiguedad_max_dias: int = 3650,
     estrategia: str = "recientes",
     barrido_hasta_dias: int = 3650,
+    orden: str = "mas_nuevos_primero",
+    ventana_hasta_dias: int = 3650,
     ya_vistos: list[str] | None = None,
     no_escribir: list[str] | None = None,
+    no_escribir_numeros: list[str] | None = None,
     solo_numeros: list[str] | None = None,
     contexto_empresa: str = "",
     largo_maximo: int = 600,
+    max_visitas: int = 20,
+    frases_prohibidas: list[str] | None = None,
+    palabras_veto: list[str] | None = None,
+    mensaje_post_compra: bool = True,
     invocador=invocar,
 ) -> Resultado:
     """Una tanda del pase único: hasta `n_chats` borradores dejados.
 
     Dos estrategias, la misma que el circuito viejo (D27):
 
-    - `recientes` — de arriba hacia abajo, dentro de la ventana de antigüedad.
+    - `recientes` — dentro de la ventana de antigüedad. Con `orden =
+      "mas_nuevos_primero"` de arriba hacia abajo, como siempre; con
+      `"mas_viejos_primero"` (D43) del extremo viejo de la ventana hacia hoy,
+      con el cursor `ventana_hasta_dias` que el backend lleva por máquina.
     - `barrido` — desde el fondo del historial hacia hoy, los más viejos con
       antigüedad menor o igual a `barrido_hasta_dias`. El cursor lo lleva el
       backend, por máquina, y avanza con cada tanda que vuelve.
@@ -177,6 +272,12 @@ async def dejar_borradores(
     de la frontera de la corrida previa—, `no_escribir` los contactos con un
     mensaje reciente del sistema (anti-duplicado), y `solo_numeros` —si no está
     vacía— restringe a chats cuyo número visible esté en la lista.
+
+    Las de redacción (D40, D41) también son datos del dueño y no del prompt:
+    `palabras_veto` marca un chat como disconforme, `frases_prohibidas` es lo
+    que el borrador no puede decir, `mensaje_post_compra` decide qué se hace
+    con una venta cerrada, y `max_visitas` es el segundo freno de la tanda
+    (D44) — chats abiertos, no borradores dejados.
     """
     if not device_id:
         # Problema #5 del MVP: con más de un Chrome conectado a la cuenta,
@@ -202,7 +303,12 @@ async def dejar_borradores(
     #  El bloque de recorrido se sustituye ANTES que el resto: lleva adentro
     #  sus propias variables ({{N_CHATS}}, {{HASTA_DIAS}}...), que se rellenan
     #  en la misma pasada que las del cuerpo del prompt.
-    recorrido = RECORRIDO_BARRIDO if estrategia == "barrido" else RECORRIDO_RECIENTES
+    if estrategia == "barrido":
+        recorrido = RECORRIDO_BARRIDO
+    elif orden == "mas_viejos_primero":
+        recorrido = RECORRIDO_VENTANA_ASCENDENTE
+    else:
+        recorrido = RECORRIDO_RECIENTES
     plantilla = (carpeta / "prompts" / "prompt-borradores.txt").read_text(encoding="utf-8")
     plantilla = plantilla.replace("{{COMO_RECORRER}}", recorrido)
 
@@ -210,16 +316,26 @@ async def dejar_borradores(
         plantilla,
         {
             "N_CHATS": str(max(1, min(int(n_chats), MAX_POR_TANDA))),
+            #  Nunca menos que la tanda: un techo de visitas más chico que
+            #  `n_chats` sería pedir 8 borradores y prohibir abrir 8 chats.
+            "MAX_VISITAS": str(max(max(1, min(int(n_chats), MAX_POR_TANDA)), int(max_visitas))),
             "RUN_ID": run_id[:64],
             "DEVICE_ID": device_id,
             "ANTIGUEDAD_MIN": str(minimo),
             "ANTIGUEDAD_MAX": str(maximo),
             "HASTA_DIAS": str(max(0, int(barrido_hasta_dias))),
-            "YA_VISTOS": _lista(ya_vistos),
+            #  El cursor de la ventana nunca pasa del máximo: si el dueño bajó
+            #  la ventana después de la última tanda, manda la ventana.
+            "VENTANA_HASTA_DIAS": str(max(minimo, min(int(ventana_hasta_dias), maximo))),
+            "YA_VISTOS": _lista(ya_vistos, tope=MAX_YA_VISTOS_EN_LISTA),
             "NO_ESCRIBIR": _lista(no_escribir, tope=MAX_NO_ESCRIBIR_EN_LISTA),
+            "NO_ESCRIBIR_NUMEROS": _lista(no_escribir_numeros, tope=MAX_NO_ESCRIBIR_EN_LISTA),
             "RESTRICCION_DESTINOS": restriccion,
             "CONTEXTO_EMPRESA": contexto_empresa.strip() or "(el dueño no dejó indicaciones)",
             "LARGO_MAXIMO": str(max(50, int(largo_maximo))),
+            "FRASES_PROHIBIDAS": _lista(frases_prohibidas),
+            "PALABRAS_VETO": _lista(palabras_veto, sangria=24),
+            "POST_VENTA": POST_VENTA_ACTIVO if mensaje_post_compra else POST_VENTA_APAGADO,
         },
     )
 
@@ -249,9 +365,10 @@ def _sustituir(texto: str, variables: dict[str, str]) -> str:
     return texto
 
 
-def _lista(nombres: list[str] | None, *, tope: int = MAX_NOMBRES_EN_LISTA) -> str:
+def _lista(nombres: list[str] | None, *, tope: int = MAX_NOMBRES_EN_LISTA, sangria: int = 2) -> str:
     limpios = [str(n).strip() for n in (nombres or []) if str(n).strip()][:tope]
-    return "\n".join(f"  - {nombre}" for nombre in limpios) or "  (ninguno)"
+    margen = " " * sangria
+    return "\n".join(f"{margen}- {nombre}" for nombre in limpios) or f"{margen}(ninguno)"
 
 
 def _desde_invocacion(invocacion: Invocacion) -> Resultado:
@@ -345,9 +462,24 @@ def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
             #  dice el modelo, no lo deduce nadie contando: una tanda corta por
             #  tiempo no es lo mismo que una ventana agotada.
             "fin_de_ventana": bool(datos.get("fin_de_ventana")),
+            #  Por qué devolvió menos (D44). Se normaliza al vocabulario: un
+            #  valor inventado no se pierde, se vuelve "otro".
+            "corte": _corte(datos.get("corte"), fin_de_ventana=bool(datos.get("fin_de_ventana"))),
         },
         **comunes,
     )
+
+
+def _corte(crudo: Any, *, fin_de_ventana: bool) -> str:
+    """El motivo del freno, dentro del vocabulario conocido.
+
+    Si el modelo no lo dijo pero marcó `fin_de_ventana`, es eso: son el mismo
+    hecho contado dos veces, y el campo nuevo no puede contradecir al viejo.
+    """
+    valor = str(crudo or "").strip()
+    if valor in CORTES:
+        return valor
+    return "fin_de_ventana" if fin_de_ventana else "otro"
 
 
 #  Cuántas entradas del reporte se aceptan. Mucho más que la tanda a propósito:
@@ -392,17 +524,25 @@ def _revisar_chat(crudo: Any) -> tuple[dict[str, Any] | None, str]:
 
     dejado = bool(crudo.get("borrador_dejado"))
     texto = str(crudo.get("texto_borrador") or "").strip()
+    crudo_motivo = str(crudo.get("motivo") or "").strip()
     if dejado and not texto:
         # Contradictorio: dice que dejó y no dice qué. No se puede registrar un
         # texto que no se conoce — se degrada a "no dejado" con motivo propio,
         # y una persona revisa ese chat.
         dejado, texto, motivo = False, "", "reporte_sin_texto"
     elif dejado:
-        motivo = None
+        #  Un post-venta (D41) es un borrador dejado en una venta cerrada: el
+        #  motivo viaja igual, porque es lo que veta al contacto después.
+        motivo = "ya_compro" if crudo_motivo == "ya_compro" else None
     else:
-        crudo_motivo = str(crudo.get("motivo") or "").strip()
         motivo = crudo_motivo if crudo_motivo in MOTIVOS_DE_SALTEO else "otro"
         texto = ""
+
+    #  El anclaje (D40): `tema` dice de qué es el borrador y `cita` es el
+    #  fragmento literal del chat en el que se apoya. En nivel B van vacíos y
+    #  está bien; un tema sin cita no se corrige acá — el backend lo señala.
+    tema = str(crudo.get("tema") or "").strip()[:60] if dejado else ""
+    cita = str(crudo.get("cita") or "").strip()[:80] if dejado else ""
 
     resumen = str(crudo.get("ultimo_mensaje_resumen") or "").strip()
     if dejado and not resumen:
@@ -420,5 +560,7 @@ def _revisar_chat(crudo: Any) -> tuple[dict[str, Any] | None, str]:
         "antiguedad_dias": min(dias, 3650),
         "borrador_dejado": dejado,
         "texto_borrador": texto[:1000],
+        "tema": tema or None,
+        "cita": cita or None,
         "motivo": motivo,
     }, ""

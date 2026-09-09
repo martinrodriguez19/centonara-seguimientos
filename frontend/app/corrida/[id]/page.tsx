@@ -11,7 +11,15 @@ import { useAvisos } from "@/components/ui/avisos-flotantes";
 import { Confirmacion } from "@/components/ui/dialogo";
 import { EsqueletoDeLista } from "@/components/ui/esqueleto";
 import { Pildora, type Nivel } from "@/components/ui/estado";
-import { Cuerpo, Encabezado, Fila, SinFilas, Tabla, Td, Th } from "@/components/ui/tabla";
+import {
+  Cuerpo,
+  Encabezado,
+  Fila,
+  SinFilas,
+  Tabla,
+  Td,
+  Th,
+} from "@/components/ui/tabla";
 import {
   cancelarCorrida,
   reanudarCorrida,
@@ -39,13 +47,18 @@ import { textos } from "@/lib/textos";
  * todo terminó. Una pantalla que consulta para siempre contra un backend que ya
  * no tiene nada que decir es ruido.
  */
-export default function DetalleDeCorrida({ params }: { params: Promise<{ id: string }> }) {
+export default function DetalleDeCorrida({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
 
   const corrida = useQuery({
     queryKey: ["corrida", id],
     queryFn: () => traerCorrida(id),
-    refetchInterval: (consulta) => (consulta.state.data?.terminada ? false : 4000),
+    refetchInterval: (consulta) =>
+      consulta.state.data?.terminada ? false : 4000,
   });
 
   const revision = useQuery({
@@ -76,7 +89,10 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
   if (corrida.isError) {
     return (
       <main className="mx-auto max-w-4xl px-6 py-8">
-        <ErrorDeCarga error={corrida.error} onReintentar={() => void corrida.refetch()} />
+        <ErrorDeCarga
+          error={corrida.error}
+          onReintentar={() => void corrida.refetch()}
+        />
       </main>
     );
   }
@@ -84,10 +100,16 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
   const datos = corrida.data;
   const mensajes = revision.data?.mensajes ?? [];
   const enviados = mensajes.filter(
-    (m) => m.estado === "ENVIADO" || m.estado === "ENVIANDO" || m.estado === "BORRADOR_DEJADO",
+    (m) =>
+      m.estado === "ENVIADO" ||
+      m.estado === "ENVIANDO" ||
+      m.estado === "BORRADOR_DEJADO",
   );
   const hayBorradores = mensajes.some(
-    (m) => m.estado === "RETENIDO" || m.estado === "EN_ESPERA" || m.estado === "BORRADOR",
+    (m) =>
+      m.estado === "RETENIDO" ||
+      m.estado === "EN_ESPERA" ||
+      m.estado === "BORRADOR",
   );
   const hechos = datos.jobs.total - datos.jobs.pendientes;
   const frenada = datos.estado === "frenada";
@@ -98,7 +120,9 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">
-            {datos.tipo === "generacion" ? textos.corrida.tituloGeneracion : textos.corrida.tituloDiagnostico}
+            {datos.tipo === "generacion"
+              ? textos.corrida.tituloGeneracion
+              : textos.corrida.tituloDiagnostico}
           </h1>
           <p className="text-sm text-muted-foreground">
             {new Date(datos.creada_en).toLocaleString("es-AR", {
@@ -111,7 +135,9 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
           {/* ⚠️ El modo, siempre visible. Mirando una corrida vieja, saber si
               quedaron borradores o salieron mensajes de verdad es lo primero. */}
           <Pildora nivel={datos.modo === "real" ? "critico" : "neutro"}>
-            {datos.modo === "real" ? textos.corrida.modoReal : textos.corrida.modoPrueba}
+            {datos.modo === "real"
+              ? textos.corrida.modoReal
+              : textos.corrida.modoPrueba}
           </Pildora>
           {/* Frenada y cancelada eran invisibles (D31): el campo estado no se
               mostraba en ninguna pantalla y una corrida frenada parecía "casi
@@ -122,7 +148,9 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
             <Pildora nivel="neutro">{textos.corrida.cancelada}</Pildora>
           ) : (
             <Pildora nivel={datos.terminada ? "ok" : "atencion"}>
-              {datos.terminada ? textos.corrida.terminada : textos.corrida.enCurso}
+              {datos.terminada
+                ? textos.corrida.terminada
+                : textos.corrida.enCurso}
             </Pildora>
           )}
           <Button variant="ghost" size="sm" asChild>
@@ -137,9 +165,19 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
         puedeCancelar={!cancelada && datos.jobs.pendientes > 0}
       />
 
-      <section className="grid gap-3 sm:grid-cols-4" aria-label={textos.corrida.resumen}>
-        <Dato titulo={textos.corrida.avance} valor={`${hechos} / ${datos.jobs.total}`} ayuda={textos.corrida.avanceAyuda} />
-        <Dato titulo={textos.corrida.maquinas} valor={String(datos.maquinas.length)} />
+      <section
+        className="grid gap-3 sm:grid-cols-4"
+        aria-label={textos.corrida.resumen}
+      >
+        <Dato
+          titulo={textos.corrida.avance}
+          valor={`${hechos} / ${datos.jobs.total}`}
+          ayuda={textos.corrida.avanceAyuda}
+        />
+        <Dato
+          titulo={textos.corrida.maquinas}
+          valor={String(datos.maquinas.length)}
+        />
         <Dato
           titulo={textos.corrida.borradores}
           valor={metricas.data ? String(metricas.data.mensajes) : "—"}
@@ -154,7 +192,9 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
           valor={`US$ ${datos.costo_usd.toFixed(3)}`}
           ayuda={
             metricas.data && metricas.data.mensajes > 0
-              ? textos.corrida.costoPorBorrador(datos.costo_usd / metricas.data.mensajes)
+              ? textos.corrida.costoPorBorrador(
+                  datos.costo_usd / metricas.data.mensajes,
+                )
               : undefined
           }
         />
@@ -174,8 +214,55 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
       {enviados.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-base font-semibold">{textos.corrida.envio}</h2>
-          <p className="text-sm text-muted-foreground">{textos.corrida.envioAyuda}</p>
+          <p className="text-sm text-muted-foreground">
+            {textos.corrida.envioAyuda}
+          </p>
           <TablaDeEnvio mensajes={enviados} />
+        </section>
+      )}
+
+      {/* El pase único, tanda por tanda (D39, D44): sin el desglose de motivos no
+          hay forma de saber si los 20 se sostienen o si hay que aflojar una regla. */}
+      {datos.tandas.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold">{textos.corrida.tandas}</h2>
+          <p className="text-sm text-muted-foreground">
+            {textos.corrida.tandasResumen(
+              datos.tandas.reduce(
+                (suma, t) => suma + t.dejados + t.salteados,
+                0,
+              ),
+              datos.tandas.reduce((suma, t) => suma + t.dejados, 0),
+            )}{" "}
+            {textos.corrida.tandasAyuda}
+          </p>
+          <Tabla etiqueta={textos.corrida.tandas}>
+            <Encabezado>
+              <Th>{textos.corrida.maquina}</Th>
+              <Th numerica>{textos.corrida.borradores}</Th>
+              <Th>{textos.corrida.salteadosPorQue}</Th>
+              <Th>{textos.corrida.comoTermino}</Th>
+            </Encabezado>
+            <Cuerpo>
+              {datos.tandas.map((tanda, i) => (
+                <Fila key={`${tanda.maquina}-${i}`}>
+                  <Td>{tanda.maquina}</Td>
+                  <Td numerica>
+                    {textos.corrida.dejadosDePedidos(
+                      tanda.dejados,
+                      tanda.pedidos,
+                    )}
+                  </Td>
+                  <Td>{describirSalteos(tanda.salteados, tanda.motivos)}</Td>
+                  <Td>
+                    {tanda.fin
+                      ? (textos.corrida.finDeTanda[tanda.fin] ?? tanda.fin)
+                      : textos.corrida.enCurso}
+                  </Td>
+                </Fila>
+              ))}
+            </Cuerpo>
+          </Tabla>
         </section>
       )}
 
@@ -188,12 +275,14 @@ export default function DetalleDeCorrida({ params }: { params: Promise<{ id: str
               <Th numerica>{textos.corrida.cuantos}</Th>
             </Encabezado>
             <Cuerpo>
-              {Object.entries(metricas.data.por_estado).map(([estado, cuantos]) => (
-                <Fila key={estado}>
-                  <Td>{textos.estados[estado] ?? estado}</Td>
-                  <Td numerica>{cuantos}</Td>
-                </Fila>
-              ))}
+              {Object.entries(metricas.data.por_estado).map(
+                ([estado, cuantos]) => (
+                  <Fila key={estado}>
+                    <Td>{textos.estados[estado] ?? estado}</Td>
+                    <Td numerica>{cuantos}</Td>
+                  </Fila>
+                ),
+              )}
             </Cuerpo>
           </Tabla>
         </section>
@@ -250,12 +339,17 @@ function AccionesDeCorrida({
       {frenada && (
         <Button disabled={reanudar.isPending} onClick={() => reanudar.mutate()}>
           <Play className="size-4" aria-hidden />
-          {reanudar.isPending ? textos.alertas.reanudando : textos.alertas.reanudar}
+          {reanudar.isPending
+            ? textos.alertas.reanudando
+            : textos.alertas.reanudar}
         </Button>
       )}
       {puedeCancelar && (
         <>
-          <Button variant="outline" onClick={() => setConfirmandoCancelar(true)}>
+          <Button
+            variant="outline"
+            onClick={() => setConfirmandoCancelar(true)}
+          >
             <X className="size-4" aria-hidden />
             {textos.boton.cancelar}
           </Button>
@@ -327,7 +421,9 @@ function TablaDeEnvio({ mensajes }: { mensajes: Mensaje[] }) {
         {mensajes.map((mensaje) => (
           <Fila key={mensaje.id}>
             <Td>
-              <span className="font-medium">{mensaje.contacto_nombre || "Sin nombre"}</span>
+              <span className="font-medium">
+                {mensaje.contacto_nombre || "Sin nombre"}
+              </span>
               <span className="block font-mono text-xs text-muted-foreground">
                 {mensaje.contacto_id}
               </span>
@@ -339,11 +435,31 @@ function TablaDeEnvio({ mensajes }: { mensajes: Mensaje[] }) {
               </Pildora>
             </Td>
             <Td className="text-muted-foreground">
-              {mensaje.motivo ? (textos.motivos[mensaje.motivo] ?? mensaje.motivo) : "—"}
+              {mensaje.motivo
+                ? (textos.motivos[mensaje.motivo] ?? mensaje.motivo)
+                : "—"}
             </Td>
           </Fila>
         ))}
       </Cuerpo>
     </Tabla>
   );
+}
+
+/**
+ * "9 con el campo ocupado, 6 sin tema, 3 disconformes". Sin desglose —tandas
+ * anteriores a D44— se dice sólo el total, que es lo que había.
+ */
+function describirSalteos(
+  salteados: number,
+  motivos?: Record<string, number>,
+): string {
+  if (salteados === 0) return "—";
+  const partes = Object.entries(motivos ?? {})
+    .sort(([, a], [, b]) => b - a)
+    .map(
+      ([motivo, cuantos]) =>
+        `${cuantos} ${textos.corrida.motivosDeSalteo[motivo] ?? motivo}`,
+    );
+  return partes.length > 0 ? partes.join(", ") : String(salteados);
 }

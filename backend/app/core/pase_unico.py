@@ -31,7 +31,7 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core import auditoria, cola, configuracion, guardrails, mensajes
+from app.core import auditoria, cola, configuracion, guardrails, mensajes, redaccion, vetados
 from app.core.contactos import NumeroInvalido, normalizar
 from app.core.estados import Estado
 from app.logging import obtener_logger
@@ -42,6 +42,11 @@ log = obtener_logger(__name__)
 # (`PayloadBorradores`) es la dura; ésta es la de armado.
 MAX_NOMBRES = 60
 
+# `ya_vistos` lleva el doble (D43). Con veinte por día y contando los
+# salteados, sesenta se llenaban en un día — y los que se caían eran los
+# primeros visitados, justo los que el modelo se vuelve a cruzar al reempezar.
+MAX_YA_VISTOS = 120
+
 # `no_escribir` tiene el doble, y no por simetría: es la lista que evita
 # escribirle dos veces a la misma persona, y la única cuyo desborde se le nota a
 # un cliente. Las otras dos desbordan hacia trabajo de más (releer un chat,
@@ -49,6 +54,11 @@ MAX_NOMBRES = 60
 #
 # 120 nombres son ~2.000 caracteres de prompt: barato al lado de lo que evita.
 MAX_NO_ESCRIBIR = 120
+
+# Cuántas frases prohibidas y palabras de veto viajan (D40, D41). Coincide con
+# la cota del esquema; el dueño no va a escribir cuarenta, y si lo hace, las
+# primeras son las que más le importan.
+MAX_REGLAS_DEL_DUENO = 40
 
 
 @dataclass(frozen=True)
@@ -131,6 +141,16 @@ class Procesado:
     salteados: int = 0
     #  El reporte ya se había procesado (idempotencia): no se registró de nuevo.
     repetidos: int = 0
+    #  Por qué se salteó cada uno de los visitados sin borrador, contado: es lo
+    #  que distingue "el prompt se puso estricto" de "el recorrido se rompió".
+    motivos: dict[str, int] = field(default_factory=dict)
+    #  Por qué la tanda devolvió lo que devolvió (D44), en palabras del agente.
+    corte: str = "otro"
+    #  Contactos que esta tanda dejó en la memoria de vetos (D42).
+    vetados: int = 0
+    #  Borradores a una persona que ya tenía uno en esta corrida, con otro
+    #  nombre de chat (D43). Se registran igual, con señal, y se cuentan acá.
+    repetidos_por_numero: int = 0
     #  La tanda siguiente, si se encoló.
     tanda_siguiente: ObjectId | None = None
     #  Por qué no hay tanda siguiente, cuando no la hay.
@@ -166,6 +186,7 @@ async def armar_payload(
     # El pase único respeta `modo_lectura` igual que el circuito viejo (D27):
     # la perilla del panel es una sola y significa lo mismo en las dos rutas.
     estrategia = str(config.get("modo_lectura", "recientes"))
+    orden = str(config.get("orden_recorrido", "mas_nuevos_primero"))
     vistos = [str(n)[:120] for n in (ya_vistos or [])]
 
     payload = {
@@ -174,12 +195,21 @@ async def armar_payload(
         "antiguedad_min_dias": int(config.get("antiguedad_min_dias", 0)),
         "antiguedad_max_dias": int(config.get("antiguedad_max_dias", 3650)),
         "estrategia": estrategia,
+        "orden": orden,
         "no_escribir": await _no_escribir(base, maquina, config=config, ahora=momento),
+        "no_escribir_numeros": await _no_escribir_numeros(
+            base, maquina, config=config, ahora=momento
+        ),
         "solo_numeros": solo_numeros,
         "largo_maximo": int(config.get("largo_maximo", 600)),
         "contexto_empresa": str(config.get("contexto_empresa", ""))[
             : configuracion.LARGO_CONTEXTO_EMPRESA
         ],
+        # Las reglas de redacción del dueño (D40, D41, D44): datos, no prompt.
+        "max_visitas": int(config.get("max_visitas_por_tanda", 20)),
+        "frases_prohibidas": _reglas(config.get("frases_prohibidas")),
+        "palabras_veto": _reglas(config.get("palabras_veto_chat")),
+        "mensaje_post_compra": bool(config.get("mensaje_post_compra", True)),
     }
 
     if estrategia == "barrido":
@@ -197,9 +227,31 @@ async def armar_payload(
         #  Los de la corrida anterior primero: si hay que recortar, se pierden
         #  los más viejos, que ya quedaron detrás del cursor igual.
         vistos = frontera + vistos
+    elif orden == "mas_viejos_primero":
+        # El cursor de la ventana (D43): la misma mecánica que el barrido pero
+        # acotada por `antiguedad_max_dias` al arrancar y por `antiguedad_min`
+        # al terminar. Sin cursor —primera corrida, o la anterior llegó al
+        # mínimo— se arranca del extremo viejo de la ventana.
+        cursor = (await base["vendedores"].find_one({"maquina": maquina}) or {}).get(
+            "ventana"
+        ) or {}
+        maximo = payload["antiguedad_max_dias"]
+        hasta = cursor.get("hasta_dias")
+        payload["ventana_hasta_dias"] = min(int(hasta), maximo) if hasta is not None else maximo
+        frontera = [str(n)[:120] for n in (cursor.get("ultima_tanda") or []) if str(n).strip()]
+        vistos = frontera + vistos
 
-    payload["ya_vistos"] = _sin_repetidos(vistos)[-MAX_NOMBRES:]
+    # La memoria de visitas (D43) va ADELANTE: si hay que recortar, se pierde
+    # lo de corridas viejas y nunca lo que esta corrida ya recorrió.
+    memoria = await _visitados_recientes(base, maquina, config=config, ahora=momento)
+    payload["ya_vistos"] = _sin_repetidos(memoria + vistos)[-MAX_YA_VISTOS:]
     return payload
+
+
+def _reglas(crudas: Any) -> list[str]:
+    """Una lista del dueño, limpia y acotada, lista para viajar en el payload."""
+    limpias = [str(r).strip()[:60] for r in (crudas or []) if str(r).strip()]
+    return _sin_repetidos(limpias)[:MAX_REGLAS_DEL_DUENO]
 
 
 def _sin_repetidos(nombres: list[str]) -> list[str]:
@@ -229,7 +281,13 @@ async def _no_escribir(base, maquina: str, *, config: dict[str, Any], ahora: dat
     Ahora se ordena por **lo más reciente primero**. Si hay que perder a
     alguien, que sea el que se contactó hace más días — el que está más cerca de
     salir de la ventana igual.
+
+    **Y los vetados van antes que todos (D42).** Un reciente que se cae de la
+    lista recibe un segundo borrador; un vetado que se cae recibe un seguimiento
+    arriba de un reclamo. `vetados.vigentes` ya viene acotada a la mitad de la
+    lista, así que nunca desplaza a todos los recientes.
     """
+    prohibidos = await vetados.vigentes(base, maquina, ahora=ahora)
     corte = ahora - timedelta(days=max(1, int(config.get("dias_anti_duplicado", 7))))
     filas = (
         await base["mensajes"]
@@ -249,7 +307,90 @@ async def _no_escribir(base, maquina: str, *, config: dict[str, Any], ahora: dat
         )
         .to_list(None)
     )
-    return [str(f["_id"])[:120] for f in filas if str(f.get("_id") or "").strip()]
+    recientes = [str(f["_id"])[:120] for f in filas if str(f.get("_id") or "").strip()]
+    return _sin_repetidos(prohibidos + recientes)[:MAX_NO_ESCRIBIR]
+
+
+async def _no_escribir_numeros(
+    base, maquina: str, *, config: dict[str, Any], ahora: datetime
+) -> list[str]:
+    """Los números a los que no se les escribe, para comparar al abrir el chat (D43).
+
+    Las listas por nombre no ven que "Juan" y "Juan Ferretería" son la misma
+    persona. Ésta sí: los `contacto_id` con mensaje vivo en la ventana
+    anti-duplicado —lo que incluye a esta corrida— y las claves de los vetados
+    que son números. Sólo E.164: un `nombre:...` no se compara con nada.
+    """
+    corte = ahora - timedelta(days=max(1, int(config.get("dias_anti_duplicado", 7))))
+    filas = (
+        await base["mensajes"]
+        .aggregate(
+            [
+                {
+                    "$match": {
+                        "maquina": maquina,
+                        "creado_en": {"$gte": corte},
+                        "estado": {"$ne": str(Estado.DESCARTADO)},
+                        "contacto_id": {"$regex": r"^\+"},
+                    }
+                },
+                {"$group": {"_id": "$contacto_id", "ultimo": {"$max": "$creado_en"}}},
+                {"$sort": {"ultimo": -1}},
+                {"$limit": MAX_NO_ESCRIBIR},
+            ]
+        )
+        .to_list(None)
+    )
+    recientes = [str(f["_id"]) for f in filas]
+    prohibidos = [
+        str(v["clave"])
+        for v in await base["vetados"]
+        .find({"maquina": maquina, "vence_en": {"$gt": ahora}, "clave": {"$regex": r"^\+"}})
+        .sort("actualizado_en", -1)
+        .limit(vetados.MAX_EN_LISTA)
+        .to_list(None)
+    ]
+    return _sin_repetidos(prohibidos + recientes)[:MAX_NO_ESCRIBIR]
+
+
+async def _visitados_recientes(
+    base, maquina: str, *, config: dict[str, Any], ahora: datetime
+) -> list[str]:
+    """Los chats que esta máquina abrió en los últimos días, los más viejos primero.
+
+    Al revés que las otras listas a propósito: `ya_vistos` se recorta por la
+    cola, así que lo más viejo tiene que ir adelante para caerse primero.
+    """
+    corte = ahora - timedelta(days=max(1, int(config.get("dias_memoria_visitados", 30))))
+    filas = (
+        await base["visitas"]
+        .find({"maquina": maquina, "visto_en": {"$gte": corte}}, {"nombre": 1})
+        .sort("visto_en", 1)
+        .limit(MAX_YA_VISTOS)
+        .to_list(None)
+    )
+    return [str(f["nombre"]) for f in filas if str(f.get("nombre") or "").strip()]
+
+
+async def _recordar_visita(base, maquina: str, *, chat: dict[str, Any], momento: datetime) -> None:
+    """Anota que este chat se abrió, con o sin borrador (D43). Silencioso."""
+    nombre = str(chat.get("contacto_nombre") or "").strip()[:120]
+    if not nombre:
+        return
+    try:
+        await base["visitas"].update_one(
+            {"maquina": maquina, "nombre": nombre},
+            {
+                "$set": {
+                    "visto_en": momento,
+                    "dejado": bool(chat.get("borrador_dejado")),
+                    "motivo": chat.get("motivo"),
+                }
+            },
+            upsert=True,
+        )
+    except Exception as error:  # pragma: no cover - defensa, no camino
+        log.warning("visita_no_recordada", contacto=nombre[:60], error=str(error)[:200])
 
 
 async def encolar_tanda(
@@ -364,6 +505,19 @@ async def procesar_reporte(
                 )
         else:
             resultado.salteados += 1
+            motivo = str(chat.get("motivo") or "otro")
+            resultado.motivos[motivo] = resultado.motivos.get(motivo, 0) + 1
+        await _vetar_si_corresponde(
+            base,
+            maquina=maquina,
+            chat=chat,
+            corrida_id=corrida_id,
+            config=config,
+            momento=momento,
+            resultado=resultado,
+        )
+        await _recordar_visita(base, maquina, chat=chat, momento=momento)
+    resultado.corte = str(detalle.get("corte") or "otro")[:32]
 
     log.info(
         "pase_unico_procesado",
@@ -379,8 +533,11 @@ async def procesar_reporte(
     # Se avanza SIEMPRE que la tanda haya visitado algo, incluso si falló a la
     # mitad: esos chats ya se recorrieron —y varios quedaron con borrador— así
     # que volver a pasarlos sería releerlos para saltearlos por campo ocupado.
-    if str((job.get("payload") or {}).get("estrategia")) == "barrido" and chats:
+    carga = job.get("payload") or {}
+    if str(carga.get("estrategia")) == "barrido" and chats:
         await _avanzar_cursor(base, maquina, chats=chats, detalle=detalle, momento=momento)
+    elif str(carga.get("orden")) == "mas_viejos_primero" and chats:
+        await _avanzar_cursor_ventana(base, maquina, chats=chats, detalle=detalle, momento=momento)
 
     # ---- La tanda siguiente ------------------------------------------------
     #
@@ -434,6 +591,43 @@ async def procesar_reporte(
     return resultado
 
 
+async def _vetar_si_corresponde(
+    base,
+    *,
+    maquina: str,
+    chat: dict[str, Any],
+    corrida_id: ObjectId,
+    config: dict[str, Any],
+    momento: datetime,
+    resultado: Procesado,
+) -> None:
+    """La memoria de D42, alimentada desde el reporte.
+
+    Vale para un salteado y también para un post-venta (dejó mensaje, motivo
+    `ya_compro`): la venta está cerrada igual. Aditivo y silencioso, como todo
+    lo que corre sobre hechos consumados — si falla, se pierde un veto y queda
+    el error nombrado, nunca el registro del borrador ni la tanda siguiente.
+    """
+    motivo = str(chat.get("motivo") or "")
+    if motivo not in vetados.MOTIVOS:
+        return
+    try:
+        if await vetados.registrar(
+            base,
+            maquina=maquina,
+            chat=chat,
+            motivo=motivo,
+            corrida_id=corrida_id,
+            config=config,
+            ahora=momento,
+        ):
+            resultado.vetados += 1
+    except Exception as error:  # pragma: no cover - defensa, no camino
+        log.error(
+            "veto_fallo", contacto=str(chat.get("contacto_nombre"))[:60], error=str(error)[:200]
+        )
+
+
 async def _anotar_tanda(
     base,
     corrida_id: ObjectId,
@@ -458,6 +652,9 @@ async def _anotar_tanda(
                         "pedidos": int((job.get("payload") or {}).get("n_chats") or 0),
                         "dejados": len(resultado.registrados),
                         "salteados": resultado.salteados,
+                        "motivos": resultado.motivos,
+                        "vetados": resultado.vetados,
+                        "corte": resultado.corte,
                         "fin": resultado.fin,
                     }
                 }
@@ -502,6 +699,36 @@ async def _avanzar_cursor(
     )
 
 
+async def _avanzar_cursor_ventana(
+    base,
+    maquina: str,
+    *,
+    chats: list[dict[str, Any]],
+    detalle: dict[str, Any],
+    momento: datetime,
+) -> None:
+    """El cursor de la ventana (D43), del extremo viejo hacia hoy.
+
+    Igual que el de barrido —la antigüedad del chat más nuevo de la tanda— con
+    una diferencia: al llegar al mínimo (`fin_de_ventana`) el cursor se borra,
+    y la corrida siguiente arranca de nuevo del extremo viejo. Un barrido
+    terminado se queda terminado; una ventana terminada vuelve a empezar.
+    """
+    from app.core import vendedores
+
+    antiguedades = [
+        int(c["antiguedad_dias"]) for c in chats if isinstance(c.get("antiguedad_dias"), int)
+    ]
+    await vendedores.registrar_ventana(
+        base,
+        maquina,
+        hasta_dias=min(antiguedades) if antiguedades else None,
+        tanda=[str(c.get("contacto_nombre", ""))[:120] for c in chats],
+        completado=bool(detalle.get("fin_de_ventana")),
+        ahora=momento,
+    )
+
+
 async def _registrar_dejado(
     base,
     *,
@@ -523,9 +750,41 @@ async def _registrar_dejado(
     """
     nombre = chat["contacto_nombre"]
     texto = str(chat["texto_borrador"])
+    tema = str(chat.get("tema") or "").strip()[:60] or None
+    cita = str(chat.get("cita") or "").strip()[:80] or None
+    resumen = str(chat.get("ultimo_mensaje_resumen") or "")
     contacto_id = await _identificar(base, maquina, nombre, chat.get("contacto_telefono"), momento)
 
+    #  Las de redacción (D40) primero: son las que una persona va a querer ver
+    #  antes —un conflicto que el modelo no vio— y la lista se muestra en orden.
     senales = [
+        str(h.senal)
+        for h in redaccion.revisar(
+            texto=texto,
+            resumen=resumen,
+            tema=tema,
+            cita=cita,
+            motivo=chat.get("motivo"),
+            config=config,
+        )
+    ]
+    #  Un segundo borrador a la misma persona en esta corrida (D43): el chat
+    #  tenía otro nombre y las listas por nombre no lo vieron. Se registra
+    #  igual —el borrador está en WhatsApp— y se marca para que alguien lo
+    #  borre a mano; esconderlo del panel sería peor que el duplicado.
+    if await base["mensajes"].count_documents(
+        {
+            "corrida_id": corrida_id,
+            "contacto_id": contacto_id,
+            "estado": {"$ne": str(Estado.DESCARTADO)},
+        },
+        limit=1,
+    ):
+        senales.append(str(redaccion.Senal.NUMERO_REPETIDO))
+        resultado.repetidos_por_numero += 1
+        log.warning("borrador_repetido_por_numero", contacto=nombre[:60], contacto_id=contacto_id)
+
+    senales += [
         str(v.guardrail)
         for v in await guardrails.revisar(
             base,
@@ -549,9 +808,11 @@ async def _registrar_dejado(
             contacto_id=contacto_id,
             contacto_nombre=nombre,
             texto=texto,
-            resumen_ultimo=chat.get("ultimo_mensaje_resumen", ""),
+            resumen_ultimo=resumen,
             quien_hablo_ultimo=chat.get("quien_hablo_ultimo", "contacto"),
             antiguedad_dias=chat.get("antiguedad_dias", 0),
+            tema=tema,
+            cita=cita,
             ahora=momento,
         )
     except mensajes.MensajeDuplicado:

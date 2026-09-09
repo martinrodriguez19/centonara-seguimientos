@@ -33,6 +33,7 @@ from app.core import (
     sesion,
     validacion,
     vendedores,
+    vetados,
 )
 from app.logging import obtener_logger
 
@@ -138,6 +139,8 @@ def _resumir_maquina(vendedor: dict[str, Any], ahora: datetime) -> dict[str, Any
         "tope_diario": vendedor.get("tope_diario", 20),
         # El avance del barrido histórico de esta máquina (D27), si arrancó.
         "barrido": vendedor.get("barrido"),
+        # El cursor de la ventana (D43), si recorre del más viejo hacia hoy.
+        "ventana": vendedor.get("ventana"),
     }
 
 
@@ -197,6 +200,9 @@ class CambioMaquina(Estricto):
     # arranca del fondo del historial otra vez. No toca el anti-duplicado, así
     # que los ya contactados siguen sin recontactarse.
     reiniciar_barrido: bool | None = None
+    # Lo mismo para el cursor de la ventana (D43): la próxima corrida del más
+    # viejo hacia hoy vuelve al extremo viejo de la ventana.
+    reiniciar_ventana: bool | None = None
 
 
 @router.post("/vendedores", status_code=status.HTTP_201_CREATED)
@@ -253,7 +259,7 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
         # cuándo sabe?", la respuesta tiene que ser una fecha.
         cambios["acepto_condiciones_en"] = datetime.now(UTC) if cuerpo.acepto_condiciones else None
 
-    if not cambios and not cuerpo.reiniciar_barrido:
+    if not cambios and not cuerpo.reiniciar_barrido and not cuerpo.reiniciar_ventana:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no hay nada que cambiar")
 
     operacion: dict[str, Any] = {}
@@ -262,8 +268,11 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
     if cuerpo.reiniciar_barrido:
         # Sin cursor, la próxima corrida en modo barrido vuelve al fondo del
         # historial. Los ya contactados siguen protegidos por el anti-duplicado.
-        operacion["$unset"] = {"barrido": ""}
+        operacion.setdefault("$unset", {})["barrido"] = ""
         cambios["reiniciar_barrido"] = True
+    if cuerpo.reiniciar_ventana:
+        operacion.setdefault("$unset", {})["ventana"] = ""
+        cambios["reiniciar_ventana"] = True
 
     resultado = await base["vendedores"].update_one({"maquina": maquina}, operacion)
     if resultado.matched_count == 0:
@@ -271,6 +280,8 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
 
     if cuerpo.reiniciar_barrido:
         log.info("barrido_reiniciado", maquina=maquina)
+    if cuerpo.reiniciar_ventana:
+        log.info("ventana_reiniciada", maquina=maquina)
 
     if cuerpo.acepto_condiciones:
         await auditoria.registrar(
@@ -622,6 +633,27 @@ async def empezar_de_cero(cuerpo: EmpezarDeCero, _: Autenticado) -> dict[str, An
 
 
 # ---------------------------------------------------------------------------
+# Vetados (D42): a quién no se le vuelve a escribir
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vetados")
+async def ver_vetados(_: Autenticado, maquina: str | None = None) -> dict[str, Any]:
+    """La memoria de vetos, vencidos incluidos. Sin pantalla por ahora: se
+    consulta por API hasta que haya datos de qué tan ruidosa es la lista."""
+    return {"vetados": await vetados.listar(db.obtener_base(), maquina=maquina)}
+
+
+@router.delete("/vetados/{veto_id}")
+async def levantar_veto(veto_id: str, _: Autenticado) -> dict[str, Any]:
+    """Saca a alguien de la lista a mano. Lo único que hace: la próxima tanda
+    puede volver a abrir ese chat, y si sigue disconforme se lo veta de nuevo."""
+    if not await vetados.levantar(db.obtener_base(), _a_id(veto_id), quien="panel"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no existe ese veto")
+    return {"levantado": True}
+
+
+# ---------------------------------------------------------------------------
 # Configuración
 # ---------------------------------------------------------------------------
 
@@ -669,6 +701,9 @@ class CambioConfiguracion(Estricto):
     # Cómo elige chats la generación (D27): los recientes de la ventana, o el
     # barrido del historial del más viejo a hoy.
     modo_lectura: Literal["recientes", "barrido"] | None = None
+    # En qué dirección se recorre la ventana en "recientes" (D43): de arriba
+    # hacia abajo como siempre, o del extremo viejo hacia hoy con cursor.
+    orden_recorrido: Literal["mas_nuevos_primero", "mas_viejos_primero"] | None = None
     # Cómo se dejan los borradores (el pase único, 01/09): el circuito de
     # siempre con Playwright, la extensión en una sola pasada, o la extensión
     # con el circuito de siempre como respaldo por máquina.
@@ -686,6 +721,21 @@ class CambioConfiguracion(Estricto):
     # Cuántas tandas encadena una máquina en una corrida. Es el tope de tiempo:
     # a 20 minutos por tanda, doce son cuatro horas.
     max_tandas_por_maquina: Annotated[int | None, Field(ge=1, le=12)] = None
+    # Cuántos chats puede abrir una tanda antes de devolver lo que tenga (D44).
+    # El techo de 60 es el del payload; más que eso no entra en el timeout.
+    max_visitas_por_tanda: Annotated[int | None, Field(ge=1, le=60)] = None
+    # La venta cerrada (D41): post-venta, o nada.
+    mensaje_post_compra: bool | None = None
+    # Las reglas de redacción del dueño (D40, D41). Editables por API; el panel
+    # las muestra cuando haya datos de qué tan seguido se encienden.
+    frases_prohibidas: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = None
+    palabras_veto_chat: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = None
+    # Cuánto dura un veto (D42), por motivo. Hasta dos años: más que eso es
+    # una lista negra, y para eso no hay perilla.
+    dias_veto_disconforme: Annotated[int | None, Field(ge=1, le=730)] = None
+    dias_veto_ya_compro: Annotated[int | None, Field(ge=1, le=730)] = None
+    # Cuánto recuerda cada máquina qué chats ya abrió (D43).
+    dias_memoria_visitados: Annotated[int | None, Field(ge=1, le=180)] = None
     # Las indicaciones del dueño sobre su empresa (D33), que viajan al REDACTAR
     # y mandan sobre el contenido y el tono del borrador.
     contexto_empresa: Annotated[

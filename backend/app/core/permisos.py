@@ -41,7 +41,18 @@ ESCRITURA = (
 # la base aplica sola.
 SOLO_AGREGAR = ("find", "insert", "createIndex", "listIndexes", "listCollections")
 
-CON_ESCRITURA = ("vendedores", "corridas", "mensajes", "jobs", "configuracion", "telefonos")
+CON_ESCRITURA = (
+    "vendedores",
+    "corridas",
+    "mensajes",
+    "jobs",
+    "configuracion",
+    "telefonos",
+    # Las memorias del pase único (D42, D43): a quién no se le vuelve a
+    # escribir, y qué chats ya se abrieron. Se renuevan con upsert.
+    "vetados",
+    "visitas",
+)
 
 SOLO_AGREGADO = ("auditoria",)
 

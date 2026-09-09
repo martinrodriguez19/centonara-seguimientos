@@ -331,3 +331,309 @@ async def test_el_prompt_prohibe_enviar() -> None:
     prompt = invocador.visto["prompt"]
     assert "NUNCA aprietes enviar" in prompt
     assert "Enter" in prompt
+
+
+# ---------------------------------------------------------------------------
+# La redacción con anclaje y las tres ramas (D40, D41)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_anclaje_viaja_normalizado() -> None:
+    """`tema` y `cita` son lo que permite saber si el modelo leyó (D40)."""
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [visitado(tema="  hierro del 8  ", cita="me pasas precio del hierro del 8?")],
+        }
+    )
+    resultado = await correr(invocador)
+
+    chat = resultado.detalle["chats"][0]
+    assert chat["tema"] == "hierro del 8"
+    assert chat["cita"] == "me pasas precio del hierro del 8?"
+
+
+async def test_el_nivel_b_va_sin_tema_ni_cita_y_es_valido() -> None:
+    """El nivel B es una respuesta correcta, no una falla: no se descarta."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": [visitado(tema=None, cita=None)]})
+    resultado = await correr(invocador)
+
+    assert resultado.ok
+    chat = resultado.detalle["chats"][0]
+    assert chat["borrador_dejado"] is True
+    assert chat["tema"] is None
+    assert chat["cita"] is None
+
+
+async def test_la_cita_se_acota_a_ochenta_caracteres() -> None:
+    """Es texto literal de un tercero: lo mínimo que sirve para verificar."""
+    invocador = responde(
+        {"run_id": RUN, "status": "ok", "chats": [visitado(tema="chapa", cita="x" * 300)]}
+    )
+    resultado = await correr(invocador)
+
+    assert len(resultado.detalle["chats"][0]["cita"]) == 80
+
+
+async def test_un_salteado_no_lleva_anclaje() -> None:
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [
+                visitado(
+                    borrador_dejado=False,
+                    texto_borrador=None,
+                    motivo="sin_tema",
+                    tema="algo",
+                    cita="algo",
+                )
+            ],
+        }
+    )
+    resultado = await correr(invocador)
+
+    chat = resultado.detalle["chats"][0]
+    assert chat["tema"] is None
+    assert chat["cita"] is None
+
+
+async def test_el_post_venta_es_un_dejado_con_motivo_ya_compro() -> None:
+    """D41: el mensaje queda, y la venta cerrada también queda dicha —es lo
+    que veta al contacto para las corridas siguientes."""
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [
+                visitado(
+                    texto_borrador="Hola, vi que al final lo compraste. Te falto algo?",
+                    motivo="ya_compro",
+                )
+            ],
+        }
+    )
+    resultado = await correr(invocador)
+
+    chat = resultado.detalle["chats"][0]
+    assert chat["borrador_dejado"] is True
+    assert chat["motivo"] == "ya_compro"
+    assert resultado.detalle["dejados"] == 1
+
+
+async def test_un_dejado_con_otro_motivo_no_lo_conserva() -> None:
+    """Sólo el post-venta lleva motivo con borrador: cualquier otro es ruido."""
+    invocador = responde(
+        {"run_id": RUN, "status": "ok", "chats": [visitado(motivo="campo_ocupado")]}
+    )
+    resultado = await correr(invocador)
+
+    assert resultado.detalle["chats"][0]["motivo"] is None
+
+
+async def test_disconforme_y_ya_compro_son_motivos_conocidos() -> None:
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [
+                visitado(
+                    contacto_nombre="Enojado",
+                    borrador_dejado=False,
+                    texto_borrador=None,
+                    motivo="disconforme",
+                ),
+                visitado(
+                    contacto_nombre="Ya compró",
+                    borrador_dejado=False,
+                    texto_borrador=None,
+                    motivo="ya_compro",
+                ),
+            ],
+        }
+    )
+    resultado = await correr(invocador)
+
+    motivos = [c["motivo"] for c in resultado.detalle["chats"]]
+    assert motivos == ["disconforme", "ya_compro"]
+
+
+# ---------------------------------------------------------------------------
+# El corte de la tanda (D44)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_corte_viaja_dentro_del_vocabulario() -> None:
+    invocador = responde(
+        {"run_id": RUN, "status": "ok", "corte": "tope_de_visitas", "chats": [visitado()]}
+    )
+    resultado = await correr(invocador)
+
+    assert resultado.detalle["corte"] == "tope_de_visitas"
+    assert resultado.detalle["fin_de_ventana"] is False
+
+
+async def test_un_corte_inventado_se_vuelve_otro() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "corte": "me cansé", "chats": []})
+    resultado = await correr(invocador)
+
+    assert resultado.detalle["corte"] == "otro"
+
+
+async def test_sin_corte_pero_con_fin_de_ventana_el_corte_es_ese() -> None:
+    """Son el mismo hecho contado dos veces: el campo nuevo no contradice al viejo."""
+    invocador = responde({"run_id": RUN, "status": "ok", "fin_de_ventana": True, "chats": []})
+    resultado = await correr(invocador)
+
+    assert resultado.detalle["corte"] == "fin_de_ventana"
+
+
+# ---------------------------------------------------------------------------
+# Lo que el prompt lleva de las reglas nuevas
+# ---------------------------------------------------------------------------
+
+
+async def test_el_techo_de_visitas_va_al_prompt_en_las_dos_estrategias() -> None:
+    for estrategia in ("recientes", "barrido"):
+        invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+        await correr(invocador, n_chats=8, max_visitas=20, estrategia=estrategia)
+
+        prompt = invocador.visto["prompt"]
+        assert "ABRISTE 20 chats" in prompt or "abrir 20" in prompt, estrategia
+        assert "tope_de_visitas" in prompt
+        assert "{{" not in prompt
+
+
+async def test_el_techo_de_visitas_nunca_queda_debajo_de_la_tanda() -> None:
+    """Pedir 8 borradores y prohibir abrir 8 chats sería una tanda imposible."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, n_chats=8, max_visitas=3)
+
+    assert "ABRISTE 8 chats" in invocador.visto["prompt"]
+
+
+async def test_las_frases_prohibidas_y_las_palabras_de_veto_viajan() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(
+        invocador,
+        frases_prohibidas=["sigue en pie", "quedo a disposicion"],
+        palabras_veto=["no me interesa", "estafa"],
+    )
+
+    prompt = invocador.visto["prompt"]
+    assert "- sigue en pie" in prompt
+    assert "- quedo a disposicion" in prompt
+    assert "- no me interesa" in prompt
+    assert "- estafa" in prompt
+
+
+async def test_el_post_venta_se_apaga_con_la_perilla() -> None:
+    """Con la perilla en `false`, la venta cerrada no recibe nada (D41)."""
+    activo = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(activo, mensaje_post_compra=True)
+    apagado = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(apagado, mensaje_post_compra=False)
+
+    assert "POST-VENTA" in activo.visto["prompt"]
+    assert "POST-VENTA" not in apagado.visto["prompt"]
+    assert '"ya_compro"' in apagado.visto["prompt"]
+
+
+async def test_el_prompt_lleva_las_reglas_contables_y_los_dos_niveles() -> None:
+    """Lo que convierte «tono cordial» en algo que se puede verificar (D40)."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador)
+
+    prompt = invocador.visto["prompt"]
+    assert "CERO signos de exclamacion" in prompt
+    assert "Nivel A" in prompt and "Nivel B" in prompt
+    assert "Si dudas entre A y B, es B" in prompt
+    assert "DISCONFORME" in prompt and "VENTA CERRADA" in prompt
+    assert "no solo el ultimo mensaje" in prompt
+
+
+# ---------------------------------------------------------------------------
+# De atrás para adelante, frenando en el mínimo (D43)
+# ---------------------------------------------------------------------------
+
+
+async def test_del_mas_viejo_hacia_hoy_dentro_de_la_ventana() -> None:
+    """Lo que pidió el dueño: los más viejos primero, pero nada de menos de 21 días."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(
+        invocador,
+        orden="mas_viejos_primero",
+        antiguedad_min_dias=21,
+        antiguedad_max_dias=90,
+        ventana_hasta_dias=60,
+    )
+
+    prompt = invocador.visto["prompt"]
+    assert "DEL MAS VIEJO AL MAS NUEVO" in prompt
+    assert "60 dias o menos" in prompt
+    assert "MENOS de 21 dias es demasiado fresco" in prompt
+    assert "BARRIDO DEL HISTORIAL" not in prompt
+    assert "desde arriba hacia abajo" not in prompt
+    assert "{{" not in prompt
+
+
+async def test_el_cursor_de_la_ventana_nunca_pasa_del_maximo() -> None:
+    """Si el dueño bajó la ventana después de la última tanda, manda la ventana."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(
+        invocador,
+        orden="mas_viejos_primero",
+        antiguedad_min_dias=21,
+        antiguedad_max_dias=90,
+        ventana_hasta_dias=3650,
+    )
+
+    assert "90 dias o menos" in invocador.visto["prompt"]
+
+
+async def test_el_orden_no_cambia_nada_en_barrido() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, estrategia="barrido", orden="mas_viejos_primero")
+
+    assert "BARRIDO DEL HISTORIAL" in invocador.visto["prompt"]
+
+
+async def test_ya_vistos_admite_ciento_veinte_nombres() -> None:
+    """Con veinte por día y contando los salteados, sesenta se llenaban en un día."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, ya_vistos=[f"Visto {i:03d}" for i in range(130)])
+
+    prompt = invocador.visto["prompt"]
+    assert "- Visto 119" in prompt
+    assert "- Visto 120" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# No repetir números (D43)
+# ---------------------------------------------------------------------------
+
+
+async def test_los_numeros_a_no_escribir_van_al_prompt_con_su_regla() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, no_escribir_numeros=["+5491100000001", "+5491100000002"])
+
+    prompt = invocador.visto["prompt"]
+    assert "- +5491100000001" in prompt
+    assert "- +5491100000002" in prompt
+    assert '"numero_repetido"' in prompt
+
+
+async def test_numero_repetido_es_un_motivo_conocido() -> None:
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [
+                visitado(borrador_dejado=False, texto_borrador=None, motivo="numero_repetido")
+            ],
+        }
+    )
+    resultado = await correr(invocador)
+
+    assert resultado.detalle["chats"][0]["motivo"] == "numero_repetido"

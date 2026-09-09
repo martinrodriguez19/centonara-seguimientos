@@ -59,12 +59,17 @@ async def crear_borrador(
     resumen_ultimo: str = "",
     quien_hablo_ultimo: str = "contacto",
     antiguedad_dias: int = 0,
+    tema: str | None = None,
+    cita: str | None = None,
     ahora: datetime | None = None,
 ) -> ObjectId:
     """Guarda un borrador recién redactado.
 
     Nace en `BORRADOR`: todavía no pasó por las reglas. Quien lo mueve a
     `EN_ESPERA` o `RETENIDO` es el paso de validación, no esto.
+
+    `tema` y `cita` son el anclaje del pase único (D40). ⚠️ `cita` es texto
+    literal de un tercero: se purga junto con `resumen_ultimo` (D1).
     """
     momento = ahora or datetime.now(UTC)
     clave = clave_idempotencia(corrida_id=corrida_id, contacto_id=contacto_id, texto=texto)
@@ -75,6 +80,8 @@ async def crear_borrador(
         "contacto_id": contacto_id,
         "contacto_nombre": contacto_nombre,
         "resumen_ultimo": resumen_ultimo,
+        "tema": tema or None,
+        "cita": cita or None,
         "quien_hablo_ultimo": quien_hablo_ultimo,
         "antiguedad_dias": antiguedad_dias,
         "texto": texto,

@@ -53,10 +53,16 @@ TIMEOUT = 600.0
 TIMEOUT_LISTAR = 25 * 60.0
 
 # El pase único (BORRADORES): leer, redactar y tipear una tanda entera en una
-# sola sesión. La tanda es corta a propósito —el backend manda de a
-# `chats_por_tanda`— así que 20 minutos sobran; si no alcanzaran, la respuesta
-# es achicar la tanda, no agrandar esto contra el techo del backend.
-TIMEOUT_BORRADORES = 20 * 60.0
+# sola sesión. Eran 20 minutos con la nota "si no alcanzan, achicar la tanda";
+# ese criterio se escribió cuando la tanda sólo leía y tipeaba. Desde D40/D41
+# cada chat cuesta más —leer diez mensajes, clasificar en tres ramas, sacar una
+# cita literal— y desde D44 el freno normal de la tanda es `max_visitas`, no
+# este número: esto es la red de abajo.
+#
+# ⚠️ Sigue valiendo el techo de arriba: tiene que quedar por debajo de
+# `cola.SEGUNDOS_PARA_DAR_POR_COLGADO` (60 min) con margen. Si esto alguna vez
+# pasa de ~45, primero se sube el del backend y recién después éste.
+TIMEOUT_BORRADORES = 35 * 60.0
 
 
 @dataclass(frozen=True)

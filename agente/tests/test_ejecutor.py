@@ -129,9 +129,16 @@ async def test_borradores_va_al_pase_unico_con_su_payload(monkeypatch) -> None:
                 "run_id": "r1",
                 "ya_vistos": ["Corralón"],
                 "no_escribir": ["Pinturería"],
+                "no_escribir_numeros": ["+5491100000001"],
                 "solo_numeros": ["+5491123231151"],
                 "contexto_empresa": "hierro y chapa",
                 "largo_maximo": 300,
+                "max_visitas": 15,
+                "orden": "mas_viejos_primero",
+                "ventana_hasta_dias": 60,
+                "frases_prohibidas": ["sigue en pie"],
+                "palabras_veto": ["estafa"],
+                "mensaje_post_compra": False,
             },
         )
     )
@@ -140,9 +147,16 @@ async def test_borradores_va_al_pase_unico_con_su_payload(monkeypatch) -> None:
     assert visto["n_chats"] == 4
     assert visto["ya_vistos"] == ["Corralón"]
     assert visto["no_escribir"] == ["Pinturería"]
+    assert visto["no_escribir_numeros"] == ["+5491100000001"]
     assert visto["solo_numeros"] == ["+5491123231151"]
     assert visto["contexto_empresa"] == "hierro y chapa"
     assert visto["largo_maximo"] == 300
+    assert visto["max_visitas"] == 15
+    assert visto["orden"] == "mas_viejos_primero"
+    assert visto["ventana_hasta_dias"] == 60
+    assert visto["frases_prohibidas"] == ["sigue en pie"]
+    assert visto["palabras_veto"] == ["estafa"]
+    assert visto["mensaje_post_compra"] is False
 
 
 def job_enviar(destinos=None, **cambios) -> Job:

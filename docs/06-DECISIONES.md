@@ -844,6 +844,177 @@ despliegue: por eso vive en la configuración y no en el código.
 
 ---
 
+### D40 — La redacción tiene dos niveles de personalización, y el bajo es una respuesta correcta *(extiende D33 y D38)*
+
+**Contexto (09/09).** Después de una semana de pase único, el dueño trajo siete observaciones
+sobre lo que escribía el sistema: recontactaba a clientes con un reclamo abierto, preguntaba por
+una venta que el cliente ya había cerrado en otro lado, escribía *"¿sigue en pie esa
+necesidad?"* y otras fórmulas de oficina, abusaba de los signos de exclamación, y —la más
+grave— *"no analiza nada: manda mensajes de chats que encuentra a mano"*. Al leer el prompt, cuatro
+de las siete no eran el modelo escribiendo mal: **eran cosas que el prompt no le pedía**. No
+mencionaba el conflicto en ningún lado (`palabras_conflicto` sólo la lee `triage`, que corre en el
+circuito viejo), no tenía una rama para la venta cerrada, pedía *"tono cordial y directo"* sin un
+ejemplo ni una frase prohibida, y no obligaba a leer más que el último mensaje.
+
+Y el dueño puso una condición que ordena todo: *"no quiero que seamos excesivos en el
+personalizado — muchos chats no llegan a verse — pero sí una ligera personalización"*. Un modelo al
+que se le exige personalizar y no tiene contexto, **lo inventa**. Arreglar "no analiza nada"
+exigiendo más personalización habría empeorado exactamente lo que se quería arreglar.
+
+**Decisión.** El prompt del pase único define **dos niveles** y autoriza el bajo por escrito:
+
+- **Nivel A** — hay un tema comercial concreto. Se retoma en una cláusula y se pregunta. No se
+  reconstruye la conversación ni se mencionan fechas viejas.
+- **Nivel B** — el chat es flaco. Se escribe corto y humano **sin inventar tema**. Es una respuesta
+  correcta, no una falla; ante la duda, es B.
+
+Para saber si leyó, cada borrador de nivel A trae un `tema` (3-6 palabras) y una **`cita`
+literal** del chat de hasta 80 caracteres: es el detector más barato que existe, porque es difícil
+producir una cita sin haber leído. El tono se fija con **seis ejemplos** (tres buenos, tres malos
+con su porqué) y una lista de `frases_prohibidas` editable desde la configuración; los signos pasan
+de opinión a **regla contable**: cero exclamaciones, un signo de pregunta como máximo, sin puntos
+suspensivos ni emojis.
+
+**Las señales viven en un módulo aparte, `redaccion.py`, y nunca bloquean.** `EXCESO_DE_SIGNOS`,
+`TONO_FORMAL`, `SIN_ANCLAJE` y `CHAT_DISCONFORME` son informativas: cuando el reporte llega el
+borrador ya está en WhatsApp, y una señal no lo des-escribe — marca la fila para que alguien lo
+borre a mano. No van en `guardrails.py` porque ahí las señales tienen semántica de bloqueo en el
+circuito viejo y el CI exige 100% de cobertura: meterlas ahí sería cambiar el significado de un
+archivo que funciona, por comodidad.
+
+**`cita` es texto literal de un tercero** y entra a `purgar_resumenes` junto con `resumen_ultimo`
+(D1, 90 días). Guardarla sin purgarla rompería la retención en silencio.
+
+**Qué la revertiría.** Que el nivel B se vuelva la respuesta por defecto —un modelo que se refugia
+en el mensaje genérico para no arriesgar— o que la `cita` no correlacione con la calidad del
+borrador. Las dos se ven en el panel: el desglose de niveles por corrida y la tasa de descarte.
+
+---
+
+### D41 — La venta cerrada es una rama propia: post-venta o nada, nunca seguimiento *(extiende D40)*
+
+**Contexto (09/09).** Dos de las siete observaciones eran la misma: *"si ya compró en otro lado, no
+preguntarle por la misma venta"* y *"si en el chat aparece 'ya compré', no escribirle este tipo de
+mensaje"*. El prompt sólo conocía dos finales para un chat —dejar un seguimiento, o saltearlo por
+`sin_tema`— y una venta cerrada caía en el primero: el sistema le preguntaba al cliente si seguía
+interesado en algo que ya había comprado.
+
+**Decisión.** Antes de redactar, el modelo clasifica el chat en tres: **venta abierta** (el caso
+normal), **venta cerrada** (se ve que la compra ya se hizo, con nosotros o en otro lado) y
+**disconforme** (reclamo, queja, cancelación, "no me escriban más", o cualquiera de las
+`palabras_veto_chat` del dueño). Una venta cerrada **nunca recibe seguimiento**: si el chat es
+claro, recibe un mensaje de post-venta —*¿te faltó algo? ¿quedó todo bien?*—, y si no, nada. Un
+disconforme no recibe nada, nunca. Los dos motivos (`ya_compro`, `disconforme`) viajan en el
+reporte, se cuentan en el panel, y son los que alimentan el veto memorizado de D42.
+
+El post-venta se apaga con un solo campo (`mensaje_post_compra`): es la perilla para el día que
+uno salga raro, sin esperar un despliegue. Arranca en `true` porque es lo que el dueño pidió.
+
+**Qué la revertiría.** Que los post-venta molesten más de lo que sirven —se apaga la perilla y la
+rama queda en "nada"—, o que el modelo clasifique mal en una dirección sistemática. Lo segundo se
+ve en `CHAT_DISCONFORME`: es la señal que se enciende cuando dejó borrador en un chat que las
+palabras del dueño marcaban como conflicto.
+
+---
+
+### D42 — Los vetos se memorizan por contacto, con vencimiento, y entran primeros a `no_escribir` *(extiende D41)*
+
+**Contexto (09/09).** Con D41 el modelo saltea el chat con reclamo y el del cliente que ya compró.
+Pero saltear es una decisión de *esa* tanda: la corrida siguiente vuelve a abrir el chat, vuelve a
+pagar la lectura, y vuelve a decidir — y puede decidir distinto. El dueño lo dijo así: *"no
+recontactar clientes problemáticos o que hayan expresado disconformidad"*. Eso es memoria, no
+criterio.
+
+**Decisión.** Colección `vetados`, una fila por `(maquina, clave)`, donde la clave es el número
+si se vio y el nombre si no — la misma escalera que `pase_unico._identificar`, sin deducir nunca
+un número. **Se llena sola** desde `procesar_reporte`: cada chat con motivo `disconforme` o
+`ya_compro` deja su fila con la cita que lo justifica, incluido el post-venta (dejó mensaje, pero
+la venta está cerrada igual). **Vence por motivo**: 365 días un disconforme, 180 un ya-compró,
+los dos en configuración. Un veto perpetuo es una lista negra que nadie decidió armar.
+
+**El orden en `no_escribir` es la parte que importa.** Esa lista se trunca en 120 nombres y el
+orden decide quién se cae. Los vetados van **primero**, y como máximo 60, para que nunca desplacen
+a todos los recientes: un reciente que se cae recibe un segundo borrador; un vetado que se cae
+recibe un seguimiento arriba de un reclamo. Los dos son errores, pero no del mismo tamaño.
+
+**Lo que no se hizo:** una pantalla. Hay `GET /vetados` y `DELETE /vetados/{id}` para sacar a
+alguien a mano. Si en un mes la lista resulta ruidosa, la pantalla se hace ahí, con datos reales.
+
+**Qué la revertiría.** Que la lista crezca con falsos positivos —clientes sanos vetados por una
+palabra— más rápido de lo que alguien la depura por API. Se vería en `GET /vetados` y en la tasa
+de `disconforme` por tanda; la respuesta es afinar `palabras_veto_chat`, no borrar la memoria.
+
+---
+
+### D43 — El recorrido del pase único tiene eje de dirección propio, con cursor por máquina *(extiende D27 y D38)*
+
+**Contexto (09/09).** El dueño pidió *"buscar de atrás para adelante, y para adelante como máximo a
+3 semanas de cercanía"*: del más viejo hacia hoy, sin tocar a nadie de menos de 21 días. Y ninguno
+de los dos modos lo podía hacer. `recientes` va de arriba hacia abajo y **no tiene cursor** —cada
+corrida arranca en el mismo lugar, y un chat visitado y salteado no deja rastro de ninguna clase,
+así que la corrida siguiente lo vuelve a abrir y lo vuelve a pagar—; `barrido` va del fondo hacia
+hoy pero **ignora la ventana**: se va a 3.650 días. "Los más viejos, pero no los de este mes" no se
+podía pedir. Esto explica, además, la mitad de *"repitió chats que ya había agarrado"*.
+
+**Decisión.** Un eje nuevo, `orden_recorrido` (`mas_nuevos_primero` | `mas_viejos_primero`), que
+sólo afecta al modo `recientes` y arranca en lo de siempre para que la migración no cambie nada.
+Con `mas_viejos_primero` el prompt lleva un tercer bloque de recorrido: scrollear hasta pasar
+`antiguedad_max_dias`, y desde ahí subir hacia hoy hasta `antiguedad_min_dias`. Y un **cursor de
+ventana por máquina** (`vendedores.ventana`), hermano del de barrido y **separado** de él — son dos
+recorridos con extremos distintos, y compartir el campo haría que cambiar de modo salte tramos
+enteros. Avanza con cada tanda igual que el de barrido, con una diferencia: al llegar al mínimo se
+**borra**, y la corrida siguiente vuelve a arrancar del extremo viejo. Un barrido terminado se
+queda terminado; una ventana terminada vuelve a empezar — los ya contactados los protege
+`no_escribir`, y los salteados merecen otra mirada.
+
+**`antiguedad_min_dias` se pone en 21 desde el panel, no de fábrica.** Ese valor también rige el
+circuito viejo, y la regla de todo lo de D40-D44 es que ese circuito no cambie — ni siquiera en una
+base nueva. El panel ahora dice qué significa el campo: hasta dónde se acerca a hoy el recorrido,
+no un detalle técnico. Activar lo que pidió el dueño son dos cambios en "Qué chats se siguen":
+el orden, y 21 en el silencio mínimo.
+
+**`ya_vistos` pasa de 60 a 120.** Se truncaba con `[-60:]`: se quedaba con los últimos y tiraba
+los primeros visitados — que yendo de arriba hacia abajo son justo los que el modelo se vuelve a
+cruzar. Con 6 borradores nunca se llegó a 60; con 20 por día y contando los salteados, sí.
+
+**Qué la revertiría.** Que el scroll hasta el extremo viejo de la ventana cueste más de lo que
+rinde —se mide en el tiempo por tanda— o que el cursor se pierda entre corridas y el recorrido
+reempiece sin que nadie lo haya pedido. Las dos se ven en la tarjeta de la máquina, que muestra por
+dónde va y permite reiniciarlo a mano.
+
+---
+
+### D44 — La tanda del pase único frena por techo de visitas, no por timeout *(revisa el criterio de `claude_code.py` para `TIMEOUT_BORRADORES`)*
+
+**Contexto (09/09).** El prompt dice *"frená cuando hayas dejado `n_chats` borradores"* — cuenta
+**borradores dejados, no chats abiertos**. Con las reglas de D40 y D41 hay cuatro motivos nuevos
+para saltear un chat, así que una tanda puede abrir veinticinco buscando sus ocho y morir en el
+timeout. Una tanda que muere en el timeout **no reporta**: no registra lo que dejó, no avanza el
+cursor, y la siguiente relee lo mismo. Y el comentario junto a `TIMEOUT_BORRADORES` decía *"si no
+alcanzaran los 20 minutos, la respuesta es achicar la tanda"* — un criterio escrito cuando la tanda
+sólo leía y tipeaba, antes de que clasificara en tres ramas y extrajera una cita.
+
+**Decisión.** Dos cosas, juntas:
+
+- **`max_visitas_por_tanda`** (20) es un segundo motivo de freno en el prompt, con su propio
+  `fin_de_ventana: false` y motivo `tope_de_visitas`. Es el freno *normal*: una tanda que no
+  encuentra a quién escribirle vuelve igual, con lo que leyó, y el sistema sigue desde ahí.
+- **`TIMEOUT_BORRADORES` sube de 20 a 35 minutos** y pasa a ser lo que siempre debió ser: la red
+  de abajo, no el plan. Queda a 25 minutos de `cola.SEGUNDOS_PARA_DAR_POR_COLGADO` (60), que tiene
+  que ser mayor o el backend devuelve a la cola un job que el agente todavía está haciendo. Un test
+  del agente lee esa constante del backend y falla si alguien sube una sin la otra.
+
+**El costo del caso malo sube, el esperado no.** `INTENTOS_POR_CODIGO["TIMEOUT"] = 2`: un timeout
+con su reintento pasan de 40 a 70 minutos de máquina. Con el techo de visitas, ese caso deja de ser
+el normal. **Si alguna vez el timeout pasa de ~45 minutos, primero se sube el techo del backend y
+recién después el del agente** — al revés hay una ventana en la que los jobs se duplican.
+
+**Qué la revertiría.** Que las tandas sigan muriendo en el timeout con el techo de visitas puesto:
+sería que el trabajo por chat creció más de lo que se midió, y la respuesta ahí sí es achicar la
+tanda o el techo, no seguir subiendo el tiempo.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

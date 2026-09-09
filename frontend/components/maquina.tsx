@@ -10,7 +10,12 @@ import { CampoNumero } from "@/components/ui/campo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Confirmacion, Dialogo } from "@/components/ui/dialogo";
 import { Aviso, Pildora, type Nivel } from "@/components/ui/estado";
-import { bajaMaquina, editarMaquina, rotarToken, type Maquina } from "@/lib/panel";
+import {
+  bajaMaquina,
+  editarMaquina,
+  rotarToken,
+  type Maquina,
+} from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
 /**
@@ -70,12 +75,15 @@ export function TarjetaMaquina({
   const [consintiendo, setConsintiendo] = useState(false);
   const [viendoChequeos, setViendoChequeos] = useState(false);
 
-  const refrescar = () => clienteQuery.invalidateQueries({ queryKey: ["estado"] });
+  const refrescar = () =>
+    clienteQuery.invalidateQueries({ queryKey: ["estado"] });
 
   const activar = useMutation({
     mutationFn: (activo: boolean) => editarMaquina(maquina.maquina, { activo }),
     onSuccess: (_, activo) =>
-      avisar(activo ? textos.maquina.avisoActivada : textos.maquina.avisoDesactivada),
+      avisar(
+        activo ? textos.maquina.avisoActivada : textos.maquina.avisoDesactivada,
+      ),
     onError: () => avisar(textos.maquina.avisoFallo, "critico"),
     onSettled: refrescar,
   });
@@ -89,13 +97,16 @@ export function TarjetaMaquina({
     mutationFn: (hasta: string | null) =>
       editarMaquina(maquina.maquina, { pausado_hasta: hasta }),
     onSuccess: (_, hasta) =>
-      avisar(hasta ? textos.maquina.avisoPausada : textos.maquina.avisoDespausada),
+      avisar(
+        hasta ? textos.maquina.avisoPausada : textos.maquina.avisoDespausada,
+      ),
     onError: () => avisar(textos.maquina.avisoFallo, "critico"),
     onSettled: refrescar,
   });
 
   const tope = useMutation({
-    mutationFn: (tope_diario: number) => editarMaquina(maquina.maquina, { tope_diario }),
+    mutationFn: (tope_diario: number) =>
+      editarMaquina(maquina.maquina, { tope_diario }),
     onSuccess: () => avisar(textos.maquina.avisoTope),
     onError: () => avisar(textos.maquina.avisoFallo, "critico"),
     onSettled: refrescar,
@@ -112,7 +123,17 @@ export function TarjetaMaquina({
   // vuelve al fondo del historial. El anti-duplicado sigue protegiendo a los
   // ya contactados, así que reiniciar no re-escribe a nadie.
   const reiniciarBarrido = useMutation({
-    mutationFn: () => editarMaquina(maquina.maquina, { reiniciar_barrido: true }),
+    mutationFn: () =>
+      editarMaquina(maquina.maquina, { reiniciar_barrido: true }),
+    onError: () => avisar(textos.maquina.avisoFallo, "critico"),
+    onSettled: refrescar,
+  });
+
+  // Lo mismo para el cursor de la ventana (D43), cuando se recorre del más
+  // viejo hacia hoy: la próxima corrida arranca del extremo viejo otra vez.
+  const reiniciarVentana = useMutation({
+    mutationFn: () =>
+      editarMaquina(maquina.maquina, { reiniciar_ventana: true }),
     onError: () => avisar(textos.maquina.avisoFallo, "critico"),
     onSettled: refrescar,
   });
@@ -128,7 +149,8 @@ export function TarjetaMaquina({
   });
 
   const consentir = useMutation({
-    mutationFn: () => editarMaquina(maquina.maquina, { acepto_condiciones: true }),
+    mutationFn: () =>
+      editarMaquina(maquina.maquina, { acepto_condiciones: true }),
     onSuccess: () => {
       setConsintiendo(false);
       avisar(textos.maquina.avisoConsentimiento);
@@ -146,7 +168,9 @@ export function TarjetaMaquina({
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <div className="min-w-0">
           <CardTitle className="truncate text-base">{maquina.nombre}</CardTitle>
-          <p className="truncate font-mono text-xs text-muted-foreground">{maquina.maquina}</p>
+          <p className="truncate font-mono text-xs text-muted-foreground">
+            {maquina.maquina}
+          </p>
         </div>
         <Pildora nivel={estado.nivel}>{estado.texto}</Pildora>
       </CardHeader>
@@ -154,9 +178,13 @@ export function TarjetaMaquina({
       <CardContent className="space-y-3 text-sm">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <dt>{textos.maquina.ultimoLatido}</dt>
-          <dd className="text-right tabular-nums">{haceCuanto(maquina.ultimo_latido)}</dd>
+          <dd className="text-right tabular-nums">
+            {haceCuanto(maquina.ultimo_latido)}
+          </dd>
           <dt>{textos.maquina.version}</dt>
-          <dd className="text-right font-mono">{maquina.version_agente ?? "—"}</dd>
+          <dd className="text-right font-mono">
+            {maquina.version_agente ?? "—"}
+          </dd>
           <dt>{textos.maquina.modo}</dt>
           {/* En `simulado` todos los envíos fallan con CHAT_NO_ABRE: si quedó
               así después de instalar, éste es el lugar donde se ve. */}
@@ -198,6 +226,37 @@ export function TarjetaMaquina({
               </dd>
             </>
           )}
+          {/* El cursor de la ventana (D43), cuando se recorre del más viejo hacia hoy. */}
+          {maquina.ventana && (
+            <>
+              <dt>Recorrido de la ventana</dt>
+              <dd className="text-right tabular-nums">
+                {maquina.ventana.hasta_dias != null
+                  ? `va por ~${maquina.ventana.hasta_dias} días atrás`
+                  : maquina.ventana.completado_en
+                    ? "llegó al mínimo: la próxima vuelve a empezar"
+                    : "arrancando"}
+                {" · "}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+                  disabled={reiniciarVentana.isPending}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "¿Reiniciar el recorrido? La próxima corrida vuelve al extremo viejo " +
+                          "de la ventana. No se re-escribe a nadie ya contactado.",
+                      )
+                    ) {
+                      reiniciarVentana.mutate();
+                    }
+                  }}
+                >
+                  reiniciar
+                </button>
+              </dd>
+            </>
+          )}
         </dl>
 
         {/* ⚠️ Lo que separa esto del HTTP 502 mudo del MVP: el panel dice QUÉ
@@ -209,7 +268,11 @@ export function TarjetaMaquina({
             titulo={textos.maquina.fallando}
             className="p-3"
             accion={
-              <Button variant="outline" size="sm" onClick={() => setViendoChequeos(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setViendoChequeos(true)}
+              >
                 {textos.maquina.verChequeos}
               </Button>
             }
@@ -230,7 +293,11 @@ export function TarjetaMaquina({
             titulo={textos.maquina.sinConsentimiento}
             className="p-3"
             accion={
-              <Button variant="outline" size="sm" onClick={() => setConsintiendo(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConsintiendo(true)}
+              >
                 {textos.maquina.registrarConsentimiento}
               </Button>
             }
@@ -260,7 +327,9 @@ export function TarjetaMaquina({
             disabled={activar.isPending}
             onClick={() => activar.mutate(!maquina.activo)}
           >
-            {maquina.activo ? textos.maquina.desactivar : textos.maquina.activar}
+            {maquina.activo
+              ? textos.maquina.desactivar
+              : textos.maquina.activar}
           </Button>
 
           {maquina.activo && (
@@ -270,7 +339,9 @@ export function TarjetaMaquina({
               disabled={pausar.isPending}
               onClick={() => pausar.mutate(pausadaPorHoy ? null : finDelDia())}
             >
-              {pausadaPorHoy ? textos.maquina.reanudarHoy : textos.maquina.pausarPorHoy}
+              {pausadaPorHoy
+                ? textos.maquina.reanudarHoy
+                : textos.maquina.pausarPorHoy}
             </Button>
           )}
 
@@ -313,7 +384,11 @@ export function TarjetaMaquina({
           {Object.entries(maquina.diagnostico).map(([clave, resultado]) => {
             const texto = textos.chequeos[clave];
             const nivel: Nivel =
-              resultado === "ok" ? "ok" : resultado === "falla" ? "atencion" : "neutro";
+              resultado === "ok"
+                ? "ok"
+                : resultado === "falla"
+                  ? "atencion"
+                  : "neutro";
             return (
               <li key={clave} className="space-y-1">
                 <div className="flex items-center justify-between gap-2">
@@ -328,7 +403,8 @@ export function TarjetaMaquina({
                 </div>
                 {resultado === "falla" && texto && (
                   <p className="text-xs text-muted-foreground">
-                    {texto.detalle} <span className="text-foreground">{texto.queHacer}</span>
+                    {texto.detalle}{" "}
+                    <span className="text-foreground">{texto.queHacer}</span>
                   </p>
                 )}
               </li>
@@ -364,7 +440,9 @@ export function TarjetaMaquina({
         ocupado={consentir.isPending}
       >
         <p>{textos.maquina.confirmarConsentimiento(maquina.nombre)}</p>
-        <p className="text-muted-foreground">{textos.maquina.confirmarConsentimientoNota}</p>
+        <p className="text-muted-foreground">
+          {textos.maquina.confirmarConsentimientoNota}
+        </p>
       </Confirmacion>
     </Card>
   );

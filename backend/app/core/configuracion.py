@@ -49,6 +49,11 @@ POR_DEFECTO: dict[str, Any] = {
     # uso del sistema son los clientes que quedaron fríos, no el que escribió
     # hoy. En días desde el último mensaje; fuera de la ventana no se redacta.
     # ⚠️ Sólo aplica al modo "recientes": el barrido es su propia estrategia.
+    #
+    # Para el pase único el dueño pidió 21 (D43): "de atrás para adelante, y
+    # para adelante como máximo a 3 semanas de cercanía". Se pone desde el
+    # panel y no acá: este valor también rige el circuito viejo, y la regla de
+    # todo lo de D40-D44 es que ese circuito no cambie ni en una base nueva.
     "antiguedad_min_dias": 0,
     "antiguedad_max_dias": 90,
     # Cómo elige chats una corrida de generación (D27):
@@ -58,6 +63,16 @@ POR_DEFECTO: dict[str, Any] = {
     #               para recuperar a los clientes viejos que quedaron sin
     #               recontactar.
     "modo_lectura": "recientes",
+    # En qué dirección se recorre la ventana en modo "recientes" (D43):
+    #   mas_nuevos_primero — de arriba hacia abajo, como siempre. Sin cursor:
+    #                        cada corrida arranca en el mismo lugar y lo único
+    #                        que evita repetir es `no_escribir`.
+    #   mas_viejos_primero — del extremo viejo de la ventana hacia hoy, con un
+    #                        cursor por máquina (`vendedores.ventana`) que avanza
+    #                        con cada tanda y se reinicia al llegar al mínimo.
+    # Es lo que el dueño pidió para el pase único. Arranca en lo de siempre
+    # para que la migración no cambie nada hasta que alguien toque el switch.
+    "orden_recorrido": "mas_nuevos_primero",
     # Cómo se dejan los borradores en los chats (el pase único, 01/09):
     #   playwright            — el circuito de siempre: LISTAR → RESOLVER →
     #                           REDACTAR → ENVIAR en modo prueba. Es el default
@@ -70,13 +85,14 @@ POR_DEFECTO: dict[str, Any] = {
     #                           siempre (la cascada B1 → B3).
     "modo_borrador": "playwright",
     # Cuántos borradores deja cada job del pase único antes de reportar. Corto
-    # a propósito: una tanda entra cómoda en el timeout del agente (20 min) y
-    # una falla pierde una tanda, no la corrida.
+    # a propósito: una tanda entra cómoda en el timeout del agente (35 min) y
+    # una falla pierde una tanda, no la corrida. Ocho desde D44: con 35 minutos
+    # entran, y con las reglas de redacción una tanda rinde 4-5 de esos 8.
     #
     # ⚠️ Éste NO es el volumen. El volumen se sube con más tandas, no con tandas
     # más grandes: `tope_diario_borradores` manda, y esto sólo dice de a cuánto
     # se llega. Ver `tope_diario_borradores` abajo.
-    "chats_por_tanda": 6,
+    "chats_por_tanda": 8,
     # El volumen del pase único: cuántos borradores puede dejar UNA MÁQUINA en
     # un día, sumando todas las corridas (D39).
     #
@@ -95,14 +111,70 @@ POR_DEFECTO: dict[str, Any] = {
     # No sobra con tener los topes de borradores: una tanda que visita chats y
     # no deja ninguno (campo ocupado, sin tema) no mueve esos contadores y
     # encadenaría igual. Esto es lo que garantiza que una corrida termine.
-    # A 20 min por tanda, 5 son ~100 minutos por máquina en el peor caso.
-    "max_tandas_por_maquina": 5,
+    # A 35 min por tanda (D44), 6 son ~3 h 30 por máquina en el peor caso; el
+    # esperado son 4-5 tandas de ~25 min, y ahí salen los 20.
+    "max_tandas_por_maquina": 6,
+    # El segundo freno de la tanda (D44): cuántos chats puede ABRIR antes de
+    # devolver lo que tenga, contando los que saltea. Existe porque
+    # `chats_por_tanda` cuenta borradores dejados, y con las reglas de redacción
+    # una tanda puede abrir treinta buscando sus ocho y morir en el timeout —
+    # sin reportar, sin avanzar el cursor. Esto hace que vuelva igual.
+    "max_visitas_por_tanda": 20,
+    # Qué se hace con una venta que ya se cerró (D41): con `True`, si el chat es
+    # claro se deja un mensaje de post-venta ("¿te faltó algo?"); con `False`,
+    # nada. En los dos casos, nunca un seguimiento de esa venta. Es la perilla
+    # para el día que un post-venta salga raro, sin esperar un despliegue.
+    "mensaje_post_compra": True,
+    # Las frases de oficina que el borrador no puede usar (D40). Viajan al
+    # prompt como lista y se verifican después sobre lo escrito (`TONO_FORMAL`).
+    # Editables por API: el criterio es del dueño y no necesita un despliegue.
+    "frases_prohibidas": [
+        "sigue en pie",
+        "quedo a disposicion",
+        "estimado",
+        "estimada",
+        "no dude",
+        "aguardo su respuesta",
+        "cordial saludo",
+        "me comunico con usted",
+        "por este medio",
+        "atentamente",
+    ],
+    # Lo que convierte un chat en DISCONFORME para el pase único (D41): si
+    # aparece, no se deja borrador y el contacto queda vetado. Es distinta de
+    # `palabras_conflicto` a propósito: aquélla es la lista para que una
+    # persona *mire* ("factura", "problema" — comunes en un chat sano de
+    # corralón), ésta es la lista para *no escribir*. Mezclarlas haría que
+    # "factura" saltee medio WhatsApp.
+    # Cuánto dura un veto (D42), por motivo. Con vencimiento y no perpetuo: un
+    # cliente que reclamó en marzo puede volver a interesar el año que viene, y
+    # un tope sin fecha es una lista negra que nadie decidió armar.
+    "dias_veto_disconforme": 365,
+    "dias_veto_ya_compro": 180,
+    # Cuánto recuerda cada máquina qué chats ya abrió (D43): un chat visitado y
+    # salteado —campo ocupado, sin tema— no deja mensaje, y sin esto la corrida
+    # siguiente lo vuelve a abrir y a pagar. Corto a propósito: pasado un mes,
+    # un chat que se salteó merece otra mirada.
+    "dias_memoria_visitados": 30,
+    "palabras_veto_chat": [
+        "no me interesa",
+        "no me escriban",
+        "no me escribas",
+        "dejen de escribir",
+        "sacame de la lista",
+        "denme de baja",
+        "estafa",
+        "denuncia",
+        "abogado",
+    ],
     # Lo que el dueño quiere que el redactor sepa de su empresa: qué vende, qué
     # ofrece, promociones, tono. Viaja al REDACTAR como dato acotado y el prompt
     # lo enmarca como referencia — no como instrucciones. Vacío = no se usa.
     "contexto_empresa": "",
     "tope_diario_maquina": 20,
-    "tope_por_corrida": 25,
+    # 30 y no 25: que no recorte los 20 del día cuando una tanda rinde bien.
+    # Sigue siendo el paraguas de una corrida, no el volumen.
+    "tope_por_corrida": 30,
     "largo_maximo": 600,
     "dias_anti_duplicado": 7,
     "ventana": {"inicio": "09:00", "fin": "19:00", "dias": [1, 2, 3, 4, 5]},

@@ -330,7 +330,7 @@ async def test_con_la_perilla_en_extension_sale_una_tanda(base) -> None:
 
     job = await base["jobs"].find_one({"tipo": str(cola.Tipo.BORRADORES)})
     assert job is not None
-    assert job["payload"]["n_chats"] == 6
+    assert job["payload"]["n_chats"] == configuracion.POR_DEFECTO["chats_por_tanda"]
     validar_payload("BORRADORES", job["payload"])
 
 
@@ -829,6 +829,9 @@ async def test_cada_tanda_deja_su_renglon_en_la_corrida(base) -> None:
             "pedidos": 6,
             "dejados": 1,
             "salteados": 0,
+            "motivos": {},
+            "vetados": 0,
+            "corte": "otro",
             "fin": "fin_de_ventana",
         }
     ]
@@ -866,3 +869,500 @@ async def test_no_escribir_conserva_a_los_mas_recientes_al_truncar(base) -> None
     assert "Cliente 000" not in payload["no_escribir"], "el más viejo es el que se cae"
     #  Y la cota dura del esquema tiene que dejar pasar la lista larga.
     validar_payload("BORRADORES", payload)
+
+
+# ---------------------------------------------------------------------------
+# La redacción con reglas del dueño (D40, D41, D44)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_las_reglas_del_dueno_viajan_en_el_payload(base) -> None:
+    """Datos, no prompt: el modelo obedece la lista que el dueño escribió."""
+    await configuracion.actualizar(
+        base,
+        {
+            "destinos_permitidos": ["*"],
+            "max_visitas_por_tanda": 15,
+            "mensaje_post_compra": False,
+            "frases_prohibidas": ["sigue en pie", " sigue en pie ", "", "quedo a disposicion"],
+            "palabras_veto_chat": ["estafa"],
+        },
+    )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["max_visitas"] == 15
+    assert payload["mensaje_post_compra"] is False
+    #  Sin repetidos ni vacíos: cada renglón del prompt cuesta.
+    assert payload["frases_prohibidas"] == ["sigue en pie", "quedo a disposicion"]
+    assert payload["palabras_veto"] == ["estafa"]
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_las_reglas_por_defecto_pasan_el_esquema_del_payload(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["max_visitas"] == 20
+    assert payload["mensaje_post_compra"] is True
+    assert "sigue en pie" in payload["frases_prohibidas"]
+    assert "no me interesa" in payload["palabras_veto"]
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_el_anclaje_se_guarda_con_el_borrador(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={
+            "chats": [visitado(tema="hierro del 8", cita="me pasas precio del hierro del 8?")]
+        },
+        ahora=AHORA,
+    )
+
+    mensaje = await base["mensajes"].find_one({"corrida_id": corrida_id})
+    assert mensaje["tema"] == "hierro del 8"
+    assert mensaje["cita"] == "me pasas precio del hierro del 8?"
+    assert mensaje["senales"] == []
+
+
+@sin_mongo
+async def test_las_senales_de_redaccion_quedan_en_el_mensaje_sin_bloquear(base) -> None:
+    """El borrador ya está en WhatsApp: la señal marca la fila, no lo des-escribe."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+
+    resultado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={
+            "chats": [
+                visitado(
+                    texto_borrador="Estimado, sigue en pie esa necesidad?",
+                    ultimo_mensaje_resumen="hizo un reclamo por la entrega",
+                    tema="entrega",
+                    cita=None,
+                )
+            ]
+        },
+        ahora=AHORA,
+    )
+
+    assert len(resultado.registrados) == 1
+    mensaje = await base["mensajes"].find_one({"corrida_id": corrida_id})
+    assert mensaje["estado"] == str(Estado.BORRADOR_DEJADO)
+    assert mensaje["senales"][0] == "CHAT_DISCONFORME"
+    assert {"SIN_ANCLAJE", "TONO_FORMAL"} <= set(mensaje["senales"])
+
+
+@sin_mongo
+async def test_el_post_venta_se_registra_con_su_motivo(base) -> None:
+    """D41: el mensaje queda, y la venta cerrada queda dicha en el reporte."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+
+    resultado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={
+            "chats": [
+                visitado(
+                    texto_borrador="Hola, vi que al final lo compraste. Te falto algo?",
+                    ultimo_mensaje_resumen="ya compró y pidió la factura",
+                    motivo="ya_compro",
+                )
+            ]
+        },
+        ahora=AHORA,
+    )
+
+    assert len(resultado.registrados) == 1
+    assert resultado.salteados == 0
+    mensaje = await base["mensajes"].find_one({"corrida_id": corrida_id})
+    assert mensaje["senales"] == [], "un post-venta que menciona la factura no es un conflicto"
+
+
+@sin_mongo
+async def test_cada_tanda_cuenta_sus_motivos_y_su_corte(base) -> None:
+    """Lo que distingue «el prompt se puso estricto» de «el recorrido se rompió»."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    resultado = await base["corridas"].insert_one(
+        {
+            "tipo": str(corridas.TipoCorrida.GENERACION),
+            "modo": "prueba",
+            "estado": str(corridas.EstadoCorrida.GENERANDO),
+            "maquinas": ["mac-rocio"],
+            "creada_en": AHORA,
+            "terminada_en": None,
+        }
+    )
+    corrida_id = resultado.inserted_id
+
+    def salteado(nombre, motivo):
+        return visitado(
+            contacto_nombre=nombre, borrador_dejado=False, texto_borrador=None, motivo=motivo
+        )
+
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={
+            "chats": [
+                visitado(),
+                salteado("Enojado", "disconforme"),
+                salteado("Otro enojado", "disconforme"),
+                salteado("Ya compró", "ya_compro"),
+                salteado("Ocupado", "campo_ocupado"),
+            ],
+            "fin_de_ventana": False,
+            "corte": "tope_de_visitas",
+        },
+        ahora=AHORA,
+    )
+
+    assert procesado.motivos == {"disconforme": 2, "ya_compro": 1, "campo_ocupado": 1}
+    assert procesado.corte == "tope_de_visitas"
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    assert corrida["tandas"][0]["motivos"] == procesado.motivos
+    assert corrida["tandas"][0]["corte"] == "tope_de_visitas"
+
+
+# ---------------------------------------------------------------------------
+# De atrás para adelante, con cursor de ventana (D43)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_por_defecto_el_orden_es_el_de_siempre_y_no_hay_cursor(base) -> None:
+    """La migración no cambia nada hasta que alguien toque el switch."""
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["orden"] == "mas_nuevos_primero"
+    assert "ventana_hasta_dias" not in payload
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_del_mas_viejo_hacia_hoy_sin_cursor_arranca_del_extremo_viejo(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base,
+        {
+            "destinos_permitidos": ["*"],
+            "orden_recorrido": "mas_viejos_primero",
+            "antiguedad_min_dias": 21,
+            "antiguedad_max_dias": 90,
+        },
+    )
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["orden"] == "mas_viejos_primero"
+    assert payload["ventana_hasta_dias"] == 90
+    assert payload["antiguedad_min_dias"] == 21
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_el_cursor_de_la_ventana_viaja_con_su_frontera(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base, {"destinos_permitidos": ["*"], "orden_recorrido": "mas_viejos_primero"}
+    )
+    await vendedores.registrar_ventana(
+        base, "mac-rocio", hasta_dias=55, tanda=["Frontera"], completado=False, ahora=AHORA
+    )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ya_vistos=["De esta"], ahora=AHORA
+    )
+
+    assert payload["ventana_hasta_dias"] == 55
+    assert payload["ya_vistos"] == ["Frontera", "De esta"]
+
+
+@sin_mongo
+async def test_el_cursor_de_la_ventana_no_pasa_del_maximo_si_el_dueno_lo_bajo(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base,
+        {
+            "destinos_permitidos": ["*"],
+            "orden_recorrido": "mas_viejos_primero",
+            "antiguedad_max_dias": 40,
+        },
+    )
+    await vendedores.registrar_ventana(
+        base, "mac-rocio", hasta_dias=80, tanda=[], completado=False, ahora=AHORA
+    )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["ventana_hasta_dias"] == 40
+
+
+@sin_mongo
+async def test_procesar_reporte_avanza_el_cursor_de_la_ventana(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+    job = job_borradores(corrida_id)
+    job["payload"]["orden"] = "mas_viejos_primero"
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job,
+        detalle={
+            "chats": [
+                visitado(contacto_nombre="Viejo", antiguedad_dias=80),
+                visitado(contacto_nombre="Menos viejo", antiguedad_dias=62),
+            ],
+            "fin_de_ventana": False,
+        },
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedor["ventana"]["hasta_dias"] == 62
+    assert vendedor["ventana"]["ultima_tanda"] == ["Viejo", "Menos viejo"]
+    assert vendedor["ventana"]["completado_en"] is None
+    #  El de barrido no se toca: son dos recorridos distintos.
+    assert "barrido" not in vendedor
+
+
+@sin_mongo
+async def test_al_llegar_al_minimo_la_ventana_vuelve_a_empezar(base) -> None:
+    """Un barrido terminado se queda terminado; una ventana terminada reempieza."""
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base, {"destinos_permitidos": ["*"], "orden_recorrido": "mas_viejos_primero"}
+    )
+    await vendedores.registrar_ventana(
+        base, "mac-rocio", hasta_dias=40, tanda=["Anterior"], completado=False, ahora=AHORA
+    )
+    corrida_id = ObjectId()
+    job = job_borradores(corrida_id)
+    job["payload"]["orden"] = "mas_viejos_primero"
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job,
+        detalle={"chats": [visitado(antiguedad_dias=22)], "fin_de_ventana": True},
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert "hasta_dias" not in vendedor["ventana"]
+    assert vendedor["ventana"]["completado_en"] == AHORA
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    assert payload["ventana_hasta_dias"] == 90, "la próxima arranca del extremo viejo"
+    assert payload["ya_vistos"] == ["Corralón San Justo"], "la frontera sigue valiendo"
+
+
+@sin_mongo
+async def test_en_orden_de_siempre_el_cursor_de_la_ventana_no_se_toca(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(ObjectId()),
+        detalle={"chats": [visitado(antiguedad_dias=30)]},
+        ahora=AHORA,
+    )
+
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert "ventana" not in vendedor
+
+
+@sin_mongo
+async def test_ya_vistos_conserva_ciento_veinte(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    payload = await pase_unico.armar_payload(
+        base,
+        corrida_id=ObjectId(),
+        maquina="mac-rocio",
+        ya_vistos=[f"Visto {i:03d}" for i in range(150)],
+        ahora=AHORA,
+    )
+
+    assert len(payload["ya_vistos"]) == 120
+    assert payload["ya_vistos"][-1] == "Visto 149"
+    validar_payload("BORRADORES", payload)
+
+
+# ---------------------------------------------------------------------------
+# No repetir números ni chats (D43)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_los_numeros_con_mensaje_reciente_viajan_aparte(base) -> None:
+    """Las listas por nombre no ven que "Juan" y "Juan Ferretería" son la misma
+    persona: el número sí, y se compara al abrir el chat."""
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+    await _dejar(base, maquina="mac-rocio", corrida_id=corrida_id, i=1)
+    #  Uno por nombre, sin número: no entra en la lista de números.
+    await mensajes.crear_borrador(
+        base,
+        corrida_id=corrida_id,
+        maquina="mac-rocio",
+        contacto_id="nombre:Sin Número",
+        contacto_nombre="Sin Número",
+        texto="Hola",
+        ahora=AHORA,
+    )
+    #  Un vetado con número (D42) también.
+    await base["vetados"].insert_one(
+        {
+            "maquina": "mac-rocio",
+            "clave": "+5491199999999",
+            "nombre": "Enojado",
+            "motivo": "disconforme",
+            "actualizado_en": AHORA,
+            "vence_en": AHORA + timedelta(days=300),
+        }
+    )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+
+    assert payload["no_escribir_numeros"][0] == "+5491199999999", "los vetados van primero"
+    assert any(
+        n.startswith("+54911") and n != "+5491199999999" for n in payload["no_escribir_numeros"]
+    )
+    assert not any(n.startswith("nombre:") for n in payload["no_escribir_numeros"])
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_un_segundo_borrador_a_la_misma_persona_se_registra_con_senal(base) -> None:
+    """El borrador está en WhatsApp: esconderlo del panel sería peor que el duplicado."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado(contacto_nombre="Juan")]},
+        ahora=AHORA,
+    )
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={
+            "chats": [
+                visitado(
+                    contacto_nombre="Juan Ferretería",
+                    texto_borrador="Hola Juan, seguis con lo del hierro?",
+                )
+            ]
+        },
+        ahora=AHORA,
+    )
+
+    assert procesado.repetidos_por_numero == 1
+    assert len(procesado.registrados) == 1
+    segundo = await base["mensajes"].find_one({"contacto_nombre": "Juan Ferretería"})
+    assert segundo["estado"] == str(Estado.BORRADOR_DEJADO)
+    assert "NUMERO_REPETIDO" in segundo["senales"]
+    primero = await base["mensajes"].find_one({"contacto_nombre": "Juan"})
+    assert "NUMERO_REPETIDO" not in primero["senales"]
+
+
+@sin_mongo
+async def test_cada_chat_abierto_queda_en_la_memoria_de_visitas(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(ObjectId()),
+        detalle={
+            "chats": [
+                visitado(contacto_nombre="Con borrador"),
+                visitado(
+                    contacto_nombre="Salteado",
+                    borrador_dejado=False,
+                    texto_borrador=None,
+                    motivo="campo_ocupado",
+                ),
+            ]
+        },
+        ahora=AHORA,
+    )
+
+    visitas = {v["nombre"]: v async for v in base["visitas"].find({"maquina": "mac-rocio"})}
+    assert set(visitas) == {"Con borrador", "Salteado"}
+    assert visitas["Salteado"]["dejado"] is False
+    assert visitas["Salteado"]["motivo"] == "campo_ocupado"
+
+
+@sin_mongo
+async def test_la_memoria_de_visitas_entra_a_ya_vistos_y_vence(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    await base["visitas"].insert_many(
+        [
+            {"maquina": "mac-rocio", "nombre": "Reciente", "visto_en": AHORA - timedelta(days=2)},
+            {"maquina": "mac-rocio", "nombre": "Vencida", "visto_en": AHORA - timedelta(days=45)},
+            {"maquina": "mac-sofia", "nombre": "De otra", "visto_en": AHORA},
+        ]
+    )
+
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ya_vistos=["De esta"], ahora=AHORA
+    )
+
+    assert payload["ya_vistos"] == ["Reciente", "De esta"]
+
+
+@sin_mongo
+async def test_al_truncar_ya_vistos_se_pierde_la_memoria_y_no_la_corrida(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    await base["visitas"].insert_many(
+        [
+            {
+                "maquina": "mac-rocio",
+                "nombre": f"Memoria {i:03d}",
+                "visto_en": AHORA - timedelta(hours=i),
+            }
+            for i in range(110)
+        ]
+    )
+
+    payload = await pase_unico.armar_payload(
+        base,
+        corrida_id=ObjectId(),
+        maquina="mac-rocio",
+        ya_vistos=[f"Corrida {i:02d}" for i in range(20)],
+        ahora=AHORA,
+    )
+
+    assert len(payload["ya_vistos"]) == 120
+    assert all(f"Corrida {i:02d}" in payload["ya_vistos"] for i in range(20))
+    assert "Memoria 000" in payload["ya_vistos"], "la más nueva de la memoria queda"
+    assert "Memoria 109" not in payload["ya_vistos"], "la más vieja se cae primero"

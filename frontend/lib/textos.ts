@@ -25,7 +25,8 @@ export const textos = {
     entrar: "Entrar",
     entrando: "Entrando…",
     incorrecta: "Contraseña incorrecta.",
-    sinBackend: "No se pudo hablar con el servidor. Probá de nuevo en un momento.",
+    sinBackend:
+      "No se pudo hablar con el servidor. Probá de nuevo en un momento.",
   },
 
   // Las dos pantallas que aparecen cuando algo sale mal. Escritas para quien
@@ -73,7 +74,8 @@ export const textos = {
     pruebaDetalle:
       "El sistema no le puede escribir a nadie fuera de la lista de destinos permitidos.",
     real: "ENVÍO REAL HABILITADO",
-    realDetalle: "El sistema puede escribirle a cualquier contacto de los chats leídos.",
+    realDetalle:
+      "El sistema puede escribirle a cualquier contacto de los chats leídos.",
   },
 
   killSwitch: {
@@ -82,7 +84,8 @@ export const textos = {
     frenado: "Sistema frenado",
     frenadoDetalle: "Ninguna máquina está recibiendo trabajo.",
     confirmarTitulo: "Frenar todo el sistema",
-    confirmar: "Las máquinas van a dejar de recibir trabajo en menos de 10 segundos.",
+    confirmar:
+      "Las máquinas van a dejar de recibir trabajo en menos de 10 segundos.",
     // Que frenar es reversible tiene que estar escrito: si alguien duda de eso,
     // duda justo cuando no hay tiempo para dudar.
     confirmarNota: "Se puede reanudar en cualquier momento, con un solo click.",
@@ -95,7 +98,8 @@ export const textos = {
     disparar: "Generar seguimientos",
     disparando: "Arrancando…",
     diagnostico: "Correr diagnóstico",
-    diagnosticoAyuda: "Revisa que las máquinas estén listas. No lee ningún chat ni cuesta nada.",
+    diagnosticoAyuda:
+      "Revisa que las máquinas estén listas. No lee ningún chat ni cuesta nada.",
     sinMaquinas: "No hay ninguna máquina activa y sin pausar.",
     enCurso: "Corrida en curso",
     progreso: (hechos: number, total: number) => `${hechos} de ${total} listos`,
@@ -166,7 +170,8 @@ export const textos = {
     avisoDespausada: "Pausa quitada.",
     avisoTope: "Tope diario actualizado.",
     avisoConsentimiento: "Consentimiento registrado.",
-    avisoBaja: (nombre: string) => `${nombre} se dio de baja y su token quedó revocado.`,
+    avisoBaja: (nombre: string) =>
+      `${nombre} se dio de baja y su token quedó revocado.`,
     avisoFallo: "No se pudo guardar el cambio. Probá de nuevo.",
   },
 
@@ -256,53 +261,68 @@ export const textos = {
   chequeos: {
     claude_bin: {
       nombre: "Claude Code",
-      detalle: "El programa que lee los chats no está donde el agente lo busca.",
-      queHacer: "Correr el instalador de nuevo en esa Mac (paso 2.2 del instructivo).",
+      detalle:
+        "El programa que lee los chats no está donde el agente lo busca.",
+      queHacer:
+        "Correr el instalador de nuevo en esa Mac (paso 2.2 del instructivo).",
     },
     permiso_mcp: {
       nombre: "Permiso del navegador",
       detalle: "Claude no tiene permiso para manejar Chrome en esta máquina.",
-      queHacer: "Lo deja listo el instalador. Si sigue en rojo, correrlo de nuevo.",
+      queHacer:
+        "Lo deja listo el instalador. Si sigue en rojo, correrlo de nuevo.",
     },
     permiso_sitio: {
       nombre: "Permiso de WhatsApp Web",
-      detalle: "La extensión de Chrome necesita permiso para entrar a WhatsApp Web.",
-      queHacer: "Se concede a mano en Chrome, una sola vez (paso 2.1 del instructivo).",
+      detalle:
+        "La extensión de Chrome necesita permiso para entrar a WhatsApp Web.",
+      queHacer:
+        "Se concede a mano en Chrome, una sola vez (paso 2.1 del instructivo).",
     },
     device_id: {
       nombre: "Chrome de esta máquina",
-      detalle: "El agente no sabe cuál de los Chrome abiertos es el de esta computadora.",
+      detalle:
+        "El agente no sabe cuál de los Chrome abiertos es el de esta computadora.",
       queHacer: "Correr el instalador de nuevo: lo averigua solo.",
     },
     chrome: {
       nombre: "Chrome responde",
       detalle: "Chrome no contestó cuando el agente le habló.",
-      queHacer: "Reiniciar la Mac suele alcanzar. Si no, avisar al equipo técnico.",
+      queHacer:
+        "Reiniciar la Mac suele alcanzar. Si no, avisar al equipo técnico.",
     },
     navegador_envio: {
       nombre: "Navegador de envío",
-      detalle: "La ventana propia que usa para escribir todavía no se vinculó con WhatsApp.",
-      queHacer: "Escanear el QR desde el teléfono del vendedor (paso 2.4 del instructivo).",
+      detalle:
+        "La ventana propia que usa para escribir todavía no se vinculó con WhatsApp.",
+      queHacer:
+        "Escanear el QR desde el teléfono del vendedor (paso 2.4 del instructivo).",
     },
     whatsapp_sesion: {
       nombre: "Sesión de WhatsApp",
-      detalle: "WhatsApp Web cerró la sesión. Pasa cada tantos días y no es una falla.",
+      detalle:
+        "WhatsApp Web cerró la sesión. Pasa cada tantos días y no es una falla.",
       queHacer: "Escanear el QR de nuevo desde el teléfono del vendedor.",
     },
     claude_md: {
       nombre: "Instrucciones de la máquina",
-      detalle: "Falta el archivo que le explica al modelo qué hace este sistema.",
+      detalle:
+        "Falta el archivo que le explica al modelo qué hace este sistema.",
       queHacer: "Correr el instalador de nuevo.",
     },
     permisos_macos: {
       nombre: "Permisos de macOS",
-      detalle: "macOS no le dio permiso al agente para manejar otros programas.",
-      queHacer: "Ajustes del Sistema → Privacidad y seguridad → Automatización.",
+      detalle:
+        "macOS no le dio permiso al agente para manejar otros programas.",
+      queHacer:
+        "Ajustes del Sistema → Privacidad y seguridad → Automatización.",
     },
     selectores: {
       nombre: "Lectura de WhatsApp",
-      detalle: "WhatsApp Web cambió por dentro y el sistema dejó de reconocer la pantalla.",
-      queHacer: "Es para el equipo técnico: hay que recalibrar antes de la próxima corrida.",
+      detalle:
+        "WhatsApp Web cambió por dentro y el sistema dejó de reconocer la pantalla.",
+      queHacer:
+        "Es para el equipo técnico: hay que recalibrar antes de la próxima corrida.",
     },
   } as Record<string, { nombre: string; detalle: string; queHacer: string }>,
 
@@ -367,6 +387,36 @@ export const textos = {
       "Se actualiza sola mientras haya algo saliendo. Los mensajes salen espaciados, así que esto tarda.",
     sinEnvios: "Todavía no se envió ninguno.",
     reparto: "Cómo quedaron los borradores",
+    tandas: "Las tandas del pase único",
+    tandasAyuda:
+      "Cada tanda es una pasada del modelo por el navegador. Lo que importa es el desglose: distingue «el prompt se puso estricto» de «el recorrido se rompió».",
+    tandasResumen: (visitados: number, dejados: number) =>
+      `Se abrieron ${visitados} chats y quedaron ${dejados} borradores.`,
+    salteadosPorQue: "Salteados, y por qué",
+    comoTermino: "Cómo terminó",
+    dejadosDePedidos: (dejados: number, pedidos: number) =>
+      `${dejados} de ${pedidos}`,
+    // Los nombres técnicos de los motivos de salteo, en castellano.
+    motivosDeSalteo: {
+      campo_ocupado: "con el campo ocupado",
+      sin_tema: "sin tema",
+      fuera_de_lista: "fuera de la lista",
+      disconforme: "disconformes",
+      ya_compro: "con la venta ya cerrada",
+      numero_repetido: "con el número repetido",
+      reporte_sin_texto: "reportados sin texto",
+      otro: "por otro motivo",
+    } as Record<string, string>,
+    // Por qué no hubo tanda siguiente.
+    finDeTanda: {
+      fin_de_ventana: "No quedan chats en la ventana",
+      tope_de_tandas: "Se llegó al tope de tandas",
+      tope_diario_borradores: "Se llegó al tope del día",
+      tope_por_corrida: "Se llegó al tope de la corrida",
+      tanda_vacia: "No visitó ningún chat",
+      tanda_fallida: "La tanda falló",
+      tanda_viva_o_sin_destinos: "Ya había otra tanda en curso",
+    } as Record<string, string>,
     estado: "Estado",
     cuantos: "Cuántos",
     contacto: "Contacto",
@@ -385,7 +435,9 @@ export const textos = {
     diagnostico: "Diagnóstico",
     ninguna: "Todavía no se disparó ninguna corrida.",
     conFallas: (cuantas: number) =>
-      cuantas === 1 ? "Terminada, 1 con falla" : `Terminada, ${cuantas} con fallas`,
+      cuantas === 1
+        ? "Terminada, 1 con falla"
+        : `Terminada, ${cuantas} con fallas`,
     costoTotal: (total: number, cuantas: number) =>
       `${cuantas} ${cuantas === 1 ? "corrida" : "corridas"}, US$ ${total.toFixed(2)} en total.`,
   },
@@ -426,17 +478,23 @@ export const textos = {
   motivos: {
     CONTACTO_NO_COINCIDE:
       "El chat no era el de esa persona. El sistema abortó antes de escribir nada.",
-    NUMERO_NO_RESOLUBLE: "No se pudo leer el número del contacto con certeza. No se escribió nada.",
-    DESTINO_NO_PERMITIDO: "El número no está en la lista de destinos permitidos.",
+    NUMERO_NO_RESOLUBLE:
+      "No se pudo leer el número del contacto con certeza. No se escribió nada.",
+    DESTINO_NO_PERMITIDO:
+      "El número no está en la lista de destinos permitidos.",
     SIN_CONFIRMAR:
       "Se apretó enviar y no se pudo confirmar. Puede haber salido: conviene mirar el teléfono del vendedor antes de hacer nada.",
-    SELECTOR_ROTO: "WhatsApp Web cambió por dentro. La corrida se frenó a propósito.",
-    CAMPO_NO_VACIO: "Había algo escrito en el chat. No se tocó para no pisar lo del vendedor.",
+    SELECTOR_ROTO:
+      "WhatsApp Web cambió por dentro. La corrida se frenó a propósito.",
+    CAMPO_NO_VACIO:
+      "Había algo escrito en el chat. No se tocó para no pisar lo del vendedor.",
     CHAT_NO_ABRE:
       "No se pudo abrir el chat. Si les pasa a todos los de una máquina, mirá su tarjeta: puede estar corriendo en simulado (sólo pasa en desarrollo).",
-    SESION_CAIDA: "La sesión de WhatsApp de esa máquina venció. Hay que escanear el QR de nuevo.",
+    SESION_CAIDA:
+      "La sesión de WhatsApp de esa máquina venció. Hay que escanear el QR de nuevo.",
     TIMEOUT: "WhatsApp tardó demasiado en responder.",
-    ERROR_INESPERADO: "Algo falló y no está clasificado. El detalle está en el log de la máquina.",
+    ERROR_INESPERADO:
+      "Algo falló y no está clasificado. El detalle está en el log de la máquina.",
     rechazado: "Una regla lo frenó.",
     vetado: "Lo frenaste vos.",
     vencido: "Quedó viejo antes de salir.",
@@ -451,7 +509,8 @@ export const textos = {
     PALABRA_CONFLICTO: "El chat tiene un reclamo abierto",
     SIN_RESPUESTA_PREVIA: "Ya le escribimos y no contestó",
     IDENTIDAD_AMBIGUA: "No está claro a quién se le escribiría",
-    COMPROMISO_CONCRETO: "El mensaje promete un precio, una fecha o una cantidad",
+    COMPROMISO_CONCRETO:
+      "El mensaje promete un precio, una fecha o una cantidad",
     CHAT_NO_COMERCIAL: "No parece una conversación de trabajo",
     SIN_CONTEXTO: "No había con qué escribir: hay que redactarlo a mano",
     G1_IDENTIDAD: "El contacto del chat no coincide",
@@ -462,6 +521,16 @@ export const textos = {
     G6_FUERA_DE_VENTANA: "Fuera del horario",
     G7_PAUSA: "La máquina está pausada o sin consentimiento",
     G8_CAMPO_NO_VACIO: "Había algo escrito en el chat",
+    // Las de redacción del pase único (D40): informativas, el borrador ya está en el chat.
+    CHAT_DISCONFORME:
+      "El chat tenía un reclamo y se le escribió igual: revisar antes de mandar",
+    SIN_ANCLAJE:
+      "Dice de qué habla pero no cita el chat: puede no haberlo leído",
+    TONO_FORMAL: "Usa una frase de oficina de las prohibidas",
+    EXCESO_DE_SIGNOS:
+      "Tiene signos de más (exclamaciones, dobles preguntas, emojis)",
+    NUMERO_REPETIDO:
+      "Esta persona ya tiene otro borrador en esta corrida, con otro nombre de chat",
   } as Record<string, string>,
 
   alta: {
@@ -478,7 +547,8 @@ export const textos = {
     duplicada: "Ya existe una máquina con ese identificador.",
     identificadorInvalido:
       "El identificador sólo admite minúsculas, números y guiones. «PC Principal» no sirve; «pc-principal» sí. El nombre con mayúsculas va en el campo de abajo.",
-    errorDesconocido: "No se pudo dar de alta la máquina. Revisá la conexión y probá de nuevo.",
+    errorDesconocido:
+      "No se pudo dar de alta la máquina. Revisá la conexión y probá de nuevo.",
     tokenTitulo: "Token de la máquina",
     tokenAviso: "Copialo ahora: no se va a volver a mostrar.",
     tokenListo: "Ya lo copié",
@@ -496,10 +566,10 @@ export const textos = {
     indice: "Ir a",
     copiar: "Copiar",
     copiado: "Copiado",
-    noSePudoCopiar: "No se pudo copiar solo. Seleccioná el texto y copialo con el mouse.",
+    noSePudoCopiar:
+      "No se pudo copiar solo. Seleccioná el texto y copialo con el mouse.",
     reemplazar: "Reemplazar",
     cuando: "Cuándo",
     pie: "Instalación paso a paso en la guía de puesta en marcha.",
   },
-
 } as const;

@@ -300,3 +300,33 @@ def test_los_dos_prompts_estan_en_disco_y_tienen_sus_variables() -> None:
         assert variable in listar
     for variable in ("{{CONTACTO_NOMBRE}}", "{{ULTIMO_MENSAJE_RESUMEN}}", "{{LARGO_MAXIMO}}"):
         assert variable in redactar
+
+
+# ---------------------------------------------------------------------------
+# El techo del backend (D44)
+# ---------------------------------------------------------------------------
+
+
+def test_el_timeout_del_pase_unico_queda_debajo_del_techo_del_backend() -> None:
+    """`cola.SEGUNDOS_PARA_DAR_POR_COLGADO` tiene que ser mayor que el timeout
+    más largo del agente: si no, el backend devuelve a la cola un job que el
+    agente todavía está haciendo y el trabajo se paga dos veces.
+
+    Se lee del archivo del backend a propósito —son dos paquetes que no se
+    importan— igual que el contrato del panel lee `panel.ts`. Si alguien sube
+    una constante sin la otra, esto lo agarra.
+    """
+    import re
+
+    from agente.jobs.claude_code import TIMEOUT_BORRADORES, TIMEOUT_LISTAR
+
+    cola = CARPETA.parent / "backend" / "app" / "core" / "cola.py"
+    encontrado = re.search(
+        r"^SEGUNDOS_PARA_DAR_POR_COLGADO\s*=\s*(.+)$", cola.read_text(encoding="utf-8"), re.M
+    )
+    assert encontrado, "no se encontró el techo en cola.py"
+    techo = eval(encontrado.group(1))  # una expresión aritmética del repo, no entrada ajena
+
+    margen = 10 * 60
+    assert TIMEOUT_BORRADORES + margen <= techo
+    assert TIMEOUT_LISTAR + margen <= techo

@@ -224,6 +224,11 @@ async def progreso(base, corrida_id: ObjectId) -> dict[str, Any] | None:
         "jobs": {"total": len(jobs), "pendientes": pendientes, **por_estado},
         "terminada": pendientes == 0 and len(jobs) > 0,
         "costo_usd": corrida.get("costo_usd", 0.0),
+        # Las tandas del pase único (D39, D44): cuántos pidió, dejó y salteó
+        # cada una, con el desglose de motivos. Es lo que distingue "el prompt
+        # se puso estricto" de "el recorrido se rompió". Vacía en el circuito
+        # viejo y en los diagnósticos.
+        "tandas": [t for t in (corrida.get("tandas") or []) if isinstance(t, dict)],
     }
 
 

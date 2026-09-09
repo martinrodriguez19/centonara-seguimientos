@@ -85,7 +85,7 @@ def test_ninguna_coleccion_esta_en_las_dos_listas() -> None:
     assert not set(permisos.CON_ESCRITURA) & set(permisos.SOLO_AGREGADO)
 
 
-def test_el_rol_cubre_las_seis_colecciones_del_esquema() -> None:
+def test_el_rol_cubre_todas_las_colecciones_del_esquema() -> None:
     """Una colección sin privilegio declarado rompería en producción y no acá."""
     from app.core.esquema import COLECCIONES
 

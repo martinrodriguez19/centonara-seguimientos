@@ -40,7 +40,7 @@ def indices_de(coleccion: str) -> dict[str, Indice]:
 # ---------------------------------------------------------------------------
 
 
-def test_estan_las_siete_colecciones() -> None:
+def test_estan_las_colecciones_declaradas() -> None:
     assert set(POR_NOMBRE) == {
         "vendedores",
         "corridas",
@@ -53,6 +53,8 @@ def test_estan_las_siete_colecciones() -> None:
         # permisos en el rol — o sea, andaba en Atlas y habría fallado en una
         # instalación local nueva.
         "telefonos",
+        "vetados",
+        "visitas",
     }
 
 
@@ -245,6 +247,42 @@ async def test_purgar_resumenes_borra_el_viejo_y_deja_el_mensaje(base) -> None:
     documento = await base["mensajes"].find_one({"clave_idempotencia": "viejo"})
     assert "resumen_ultimo" not in documento
     assert documento["texto"] == "Hola Marcelo, quedamos en pasarte el precio."
+
+
+@sin_mongo
+async def test_purgar_resumenes_tambien_borra_la_cita(base) -> None:
+    """D40: la cita es un fragmento literal del chat, dato de un tercero como
+    el resumen — y con la misma retención."""
+    await inicializar(base)
+    viejo = datetime.now(UTC) - timedelta(days=RETENCION_RESUMEN_DIAS + 1)
+    await base["mensajes"].insert_one(
+        {
+            "clave_idempotencia": "con-cita",
+            "creado_en": viejo,
+            "resumen_ultimo": "preguntó por chapa",
+            "tema": "chapa galvanizada",
+            "cita": "me pasas precio de la chapa galvanizada?",
+            "texto": "Hola, seguís con lo de la chapa?",
+        }
+    )
+    await base["mensajes"].insert_one(
+        {
+            "clave_idempotencia": "solo-cita",
+            "creado_en": viejo,
+            "resumen_ultimo": None,
+            "cita": "quedó pendiente el presupuesto",
+            "texto": "Hola, retomamos?",
+        }
+    )
+
+    assert await purgar_resumenes(base) == 2
+
+    con_cita = await base["mensajes"].find_one({"clave_idempotencia": "con-cita"})
+    assert "cita" not in con_cita and "resumen_ultimo" not in con_cita
+    assert con_cita["tema"] == "chapa galvanizada", "el tema no es dato del cliente"
+    assert con_cita["texto"] == "Hola, seguís con lo de la chapa?"
+    solo_cita = await base["mensajes"].find_one({"clave_idempotencia": "solo-cita"})
+    assert "cita" not in solo_cita
 
 
 @sin_mongo

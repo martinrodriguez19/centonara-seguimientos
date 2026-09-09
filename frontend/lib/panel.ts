@@ -30,6 +30,9 @@ export type Maquina = {
    * En una línea a propósito: el test de contrato lee estos tipos plano. */
   // prettier-ignore
   barrido?: { hasta_dias?: number | null; ultima_tanda?: string[]; completado_en?: string | null; actualizado_en?: string | null } | null;
+  /** El cursor de la ventana (D43), si esta máquina recorre del más viejo hacia hoy. */
+  // prettier-ignore
+  ventana?: { hasta_dias?: number | null; ultima_tanda?: string[]; completado_en?: string | null; actualizado_en?: string | null } | null;
 };
 
 export type Corrida = {
@@ -42,6 +45,10 @@ export type Corrida = {
   jobs: { total: number; pendientes: number } & Record<string, number>;
   terminada: boolean;
   costo_usd: number;
+  /** Las tandas del pase único (D39, D44), con el desglose de por qué se salteó cada chat.
+   * En una línea a propósito: el test de contrato lee estos tipos plano. */
+  // prettier-ignore
+  tandas: { maquina: string; pedidos: number; dejados: number; salteados: number; motivos?: Record<string, number>; vetados?: number; corte?: string | null; fin: string | null }[];
 };
 
 export type Estado = {
@@ -80,6 +87,12 @@ export type Configuracion = {
    */
   modo_lectura: "recientes" | "barrido";
   /**
+   * En qué dirección se recorre la ventana en "recientes" (D43): de arriba
+   * hacia abajo como siempre, o del extremo viejo hacia hoy con cursor por
+   * máquina. Lo segundo es lo que el dueño pidió para el pase único.
+   */
+  orden_recorrido: "mas_nuevos_primero" | "mas_viejos_primero";
+  /**
    * Cómo se dejan los borradores (el pase único, 01/09): "playwright" es el
    * circuito de siempre; "extension" lee cada chat y deja el borrador ahí
    * mismo en una sola pasada; "extension_con_respaldo" cae al circuito de
@@ -96,6 +109,29 @@ export type Configuracion = {
   tope_diario_borradores: number;
   /** Cuántas tandas encadena una máquina en una corrida. Es el tope de tiempo. */
   max_tandas_por_maquina: number;
+  /**
+   * Cuántos chats puede abrir una tanda antes de devolver lo que tenga (D44).
+   * Es el freno normal: `chats_por_tanda` cuenta borradores dejados, y con las
+   * reglas de redacción una tanda abre más de los que llena.
+   */
+  max_visitas_por_tanda: number;
+  /**
+   * La venta cerrada (D41): con `true`, si el chat es claro se deja un mensaje
+   * de post-venta ("¿te faltó algo?"); con `false`, nada. Nunca un seguimiento.
+   */
+  mensaje_post_compra: boolean;
+  /** Las frases de oficina que el borrador no puede usar (D40). Editables por API. */
+  frases_prohibidas: string[];
+  /**
+   * Lo que convierte un chat en disconforme para el pase único (D41): si
+   * aparece, no se deja borrador y el contacto queda vetado. Editables por API.
+   */
+  palabras_veto_chat: string[];
+  /** Cuánto dura un veto (D42), por motivo. Con vencimiento, no perpetuo. */
+  dias_veto_disconforme: number;
+  dias_veto_ya_compro: number;
+  /** Cuánto recuerda cada máquina qué chats ya abrió (D43), para no reabrirlos. */
+  dias_memoria_visitados: number;
   /**
    * Lo que el redactor sabe de la empresa: qué vende, qué ofrece, tono. Lo
    * escribe el dueño y viaja a cada redacción como referencia.
@@ -310,7 +346,8 @@ const conCuerpo = (metodo: string, datos?: unknown): RequestInit => ({
 export const ingresar = (clave: string) =>
   pedir<{ ok: boolean }>("/sesion", conCuerpo("POST", { clave }));
 
-export const salir = () => pedir<{ ok: boolean }>("/sesion", { method: "DELETE" });
+export const salir = () =>
+  pedir<{ ok: boolean }>("/sesion", { method: "DELETE" });
 
 // --- Estado ----------------------------------------------------------------
 
@@ -337,8 +374,11 @@ export const editarMaquina = (
     acepto_condiciones?: boolean;
     /** Borra el cursor del barrido: la próxima corrida vuelve al fondo. */
     reiniciar_barrido?: boolean;
+    /** Borra el cursor de la ventana (D43): la próxima corrida vuelve al extremo viejo. */
+    reiniciar_ventana?: boolean;
   },
-) => pedir<{ ok: boolean }>(`/vendedores/${maquina}`, conCuerpo("PATCH", cambios));
+) =>
+  pedir<{ ok: boolean }>(`/vendedores/${maquina}`, conCuerpo("PATCH", cambios));
 
 /**
  * Vaciar el sistema para entregarlo (D28).
@@ -362,8 +402,13 @@ export const bajaMaquina = (maquina: string) =>
 
 // --- El botón --------------------------------------------------------------
 
-export const dispararCorrida = (tipo: "diagnostico" | "generacion" = "diagnostico") =>
-  pedir<{ id: string; maquinas: string[]; jobs: number }>("/corridas", conCuerpo("POST", { tipo }));
+export const dispararCorrida = (
+  tipo: "diagnostico" | "generacion" = "diagnostico",
+) =>
+  pedir<{ id: string; maquinas: string[]; jobs: number }>(
+    "/corridas",
+    conCuerpo("POST", { tipo }),
+  );
 
 export const traerCorrida = (id: string) => pedir<Corrida>(`/corridas/${id}`);
 
@@ -390,7 +435,10 @@ export const traerMetricasDeCorrida = (id: string) =>
   pedir<MetricasDeCorrida>(`/corridas/${id}/metricas`);
 
 export const cancelarCorrida = (id: string) =>
-  pedir<{ ok: boolean; jobs_cortados: number }>(`/corridas/${id}/cancelar`, conCuerpo("POST"));
+  pedir<{ ok: boolean; jobs_cortados: number }>(
+    `/corridas/${id}/cancelar`,
+    conCuerpo("POST"),
+  );
 
 /** El "ya lo miré, continuar" de una corrida que el canario frenó (D31).
  * Vuelve la corrida a `enviando` y suelta el kill switch. */
@@ -408,7 +456,8 @@ export const validarCorrida = (id: string) =>
     en_pausa: number;
   }>(`/corridas/${id}/validar`, conCuerpo("POST"));
 
-export const traerMensajes = (id: string) => pedir<Revision>(`/corridas/${id}/mensajes`);
+export const traerMensajes = (id: string) =>
+  pedir<Revision>(`/corridas/${id}/mensajes`);
 
 export const editarMensaje = (id: string, texto: string) =>
   pedir<{ ok: boolean }>(`/mensajes/${id}`, conCuerpo("PATCH", { texto }));
@@ -435,9 +484,11 @@ export const enviarCorrida = (id: string, modo: "prueba" | "real" = "prueba") =>
 
 // --- Alertas y métricas ----------------------------------------------------
 
-export const traerAlertas = () => pedir<{ alertas: Alerta[]; urgentes: number }>("/alertas");
+export const traerAlertas = () =>
+  pedir<{ alertas: Alerta[]; urgentes: number }>("/alertas");
 
-export const traerMetricas = (dias = 30) => pedir<Metricas>(`/metricas?dias=${dias}`);
+export const traerMetricas = (dias = 30) =>
+  pedir<Metricas>(`/metricas?dias=${dias}`);
 
 // --- Kill switch -----------------------------------------------------------
 
