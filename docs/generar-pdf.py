@@ -22,8 +22,23 @@ import markdown
 # La raíz del repositorio, deducida de dónde vive este archivo. Antes era una
 # ruta absoluta a la máquina de quien lo escribió: el script sólo corría ahí.
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-ORIGEN = RAIZ / "docs" / "SOP-instalar-mac.md"
-SALIDA = RAIZ / "docs" / "SOP-instalar-mac.pdf"
+
+# Qué documento: el SOP de Mac por defecto, o el que se pase como argumento
+# (`--origen docs/COMANDOS-MAQUINAS.md`). El PDF sale al lado, con el mismo nombre.
+import argparse  # noqa: E402
+
+_parser = argparse.ArgumentParser(description="Un .md de docs/ a PDF.")
+_parser.add_argument("--origen", type=pathlib.Path, default=RAIZ / "docs" / "SOP-instalar-mac.md")
+_parser.add_argument("--titulo", default="Instalar el agente en la Mac de un vendedor")
+_parser.add_argument("html_temporal", nargs="?", default="sop.html")
+# Con qué navegador se imprime: el Chromium de Playwright (hay que tenerlo
+# bajado: `playwright install chromium`), o el Chrome / Edge de la máquina.
+_parser.add_argument("--navegador", choices=["chromium", "chrome", "msedge"], default="chromium")
+_ARGS = _parser.parse_args()
+
+ORIGEN = _ARGS.origen.resolve()
+SALIDA = ORIGEN.with_suffix(".pdf")
+TITULO = _ARGS.titulo
 
 ESTILO = """
 @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
@@ -151,12 +166,12 @@ def construir_html() -> str:
     )
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
-<title>Instalar el agente en la Mac de un vendedor</title>
+<title>{TITULO}</title>
 <style>{ESTILO}</style></head>
 <body>
 {cuerpo}
 <p class="pie">
-  Sistema de Seguimiento Comercial · <code>docs/SOP-instalar-mac.md</code><br>
+  Sistema de Seguimiento Comercial · <code>docs/{ORIGEN.name}</code><br>
   {sello()}<br>
   <strong>La versión que manda es la del repositorio, no este PDF.</strong> Si la fecha de arriba
   quedó vieja, volvé a generarlo: <code>docs/generar-pdf.py</code>
@@ -168,11 +183,13 @@ async def main() -> None:
     from playwright.async_api import async_playwright
 
     html = construir_html()
-    tmp = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path("sop.html")
+    tmp = pathlib.Path(_ARGS.html_temporal)
     tmp.write_text(html, encoding="utf-8")
 
     async with async_playwright() as p:
-        navegador = await p.chromium.launch()
+        navegador = await p.chromium.launch(
+            channel=None if _ARGS.navegador == "chromium" else _ARGS.navegador
+        )
         pagina = await navegador.new_page()
         await pagina.goto(tmp.resolve().as_uri(), wait_until="networkidle")
         await pagina.pdf(
@@ -185,7 +202,7 @@ async def main() -> None:
             footer_template=(
                 '<div style="width:100%;font-size:8pt;color:#888;'
                 'padding:0 16mm;display:flex;justify-content:space-between">'
-                f"<span>Instalar el agente en la Mac de un vendedor · {sello()}</span>"
+                f"<span>{TITULO} · {sello()}</span>"
                 '<span class="pageNumber"></span></div>'
             ),
         )
