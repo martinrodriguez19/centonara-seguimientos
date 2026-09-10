@@ -29,7 +29,13 @@ import pytest
 from app import db
 from app.api import panel
 from app.api.panel import AltaMaquina, CambioMaquina, NuevaCorrida
+from app.config import Configuracion
 from app.core.esquema import inicializar
+
+# Los ajustes del backend que piden los endpoints que resuelven la versión
+# esperada del agente (D45). Sin `.env`: lo que cuenta es el contrato, no la
+# máquina de quien corre esto.
+AJUSTES = Configuracion(_env_file=None)
 
 sin_mongo = pytest.mark.skipif(
     not os.environ.get("MONGO_URL_TESTS"), reason="necesita un Mongo real"
@@ -113,7 +119,7 @@ async def test_el_panel_ts_declara_los_tipos_que_se_comparan() -> None:
 @sin_mongo
 async def test_estado_vacio_coincide(base) -> None:
     """Sin datos: es lo primero que ve el panel la primera vez que se abre."""
-    comparar("Estado", await panel.estado(None))
+    comparar("Estado", await panel.estado(None, AJUSTES))
 
 
 @sin_mongo
@@ -129,7 +135,7 @@ async def test_metricas_coinciden(base) -> None:
 @sin_mongo
 async def test_maquina_coincide(base) -> None:
     await panel.alta_maquina(AltaMaquina(maquina="pc-1", nombre="Prueba"), None)
-    estado = await panel.estado(None)
+    estado = await panel.estado(None, AJUSTES)
     comparar("Maquina", estado["maquinas"][0])
 
 

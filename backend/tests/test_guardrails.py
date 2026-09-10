@@ -161,6 +161,23 @@ def test_g3_las_llaves_de_un_emoji_o_una_cuenta_no_son_placeholders() -> None:
     assert revisar_texto("Te debo $1.500 (mil quinientos)", largo_maximo=600) is None
 
 
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Hola, vi que al final lo compraste. Te falto algo o quedo todo bien?",
+        "Todo bien con la entrega?",
+        "Quedo todo listo, avisame si necesitas algo mas.",
+    ],
+)
+def test_g3_la_palabra_todo_no_es_el_placeholder_todo(texto: str) -> None:
+    """Regresión del 09/09: con `re.IGNORECASE`, `TODO` matcheaba "todo".
+
+    Cada post-venta —que pregunta, textual, "¿quedó todo bien?"— salía marcado
+    como texto inválido. Los placeholders son convenciones en mayúscula.
+    """
+    assert revisar_texto(texto, largo_maximo=600) is None
+
+
 @sin_mongo
 async def test_g3_llega_hasta_la_revision_completa(base) -> None:
     assert Guardrail.TEXTO in codigos(await revisar(base, texto="Hola {nombre}"))

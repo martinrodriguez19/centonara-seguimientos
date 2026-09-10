@@ -174,6 +174,9 @@ async def registrar_latido(
         cambios["diagnostico"] = diagnostico
     if version_agente is not None:
         cambios["version_agente"] = version_agente
+        #  Cuándo la reportó: las alertas le dan un margen desde acá antes de
+        #  decir que está atrasada (el actualizador corre cada hora, no ya).
+        cambios["version_registrada_en"] = cambios["ultimo_latido"]
     if modo_agente is not None:
         cambios["modo_agente"] = modo_agente
 

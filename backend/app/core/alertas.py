@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from app.core import cola, vendedores
+from app.core import cola, vendedores, versiones
 from app.core.estados import Estado, Motivo
 from app.logging import obtener_logger
 
@@ -29,6 +29,16 @@ log = obtener_logger(__name__)
 # Más largo que el corte del panel (90 s): que una Mac parpadee no es noticia,
 # que lleve diez minutos caída con trabajo encolado sí.
 MINUTOS_CAIDA = 10
+
+# Cuántos jobs seguidos tiene que fallar una máquina para que sea "falla
+# siempre". Tres es lo que la cola reintenta un job: una máquina que perdió
+# tres seguidos perdió una tanda entera, y las que siguen van a ir igual.
+JOBS_SEGUIDOS_FALLIDOS = 3
+
+# Cuánto se le da a una máquina para ponerse al día antes de avisar que está
+# atrasada. El actualizador corre al iniciar sesión y cada hora: si pasaron dos
+# y sigue con otro commit, no es que no le tocó — es que no pudo.
+HORAS_PARA_ACTUALIZARSE = 2
 
 
 class Nivel(StrEnum):
@@ -59,11 +69,16 @@ class Alerta:
         }
 
 
-async def revisar(base, *, ahora: datetime | None = None) -> list[Alerta]:
+async def revisar(
+    base, *, ahora: datetime | None = None, version_esperada: str = ""
+) -> list[Alerta]:
     """Todo lo que está mal ahora mismo, de lo más urgente a lo menos.
 
     La pausa global ya no genera alerta: el kill switch del panel muestra su
     propio cartel, y con los dos a la vez el freno aparecía duplicado (D31).
+
+    `version_esperada` es el sha al que deberían converger las máquinas (D45);
+    vacío, no se revisa quién está atrasado — no hay con qué comparar.
     """
     momento = ahora or datetime.now(UTC)
 
@@ -72,6 +87,8 @@ async def revisar(base, *, ahora: datetime | None = None) -> list[Alerta]:
     alertas += await _sin_confirmar(base, momento)
     alertas += await _canario(base)
     alertas += await _maquinas(base, momento)
+    alertas += await _maquinas_que_fallan_siempre(base)
+    alertas += await _maquinas_desactualizadas(base, momento, version_esperada)
 
     urgentes = sum(1 for a in alertas if a.nivel is Nivel.URGENTE)
     if urgentes:
@@ -247,4 +264,95 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
                 )
             )
 
+    return alertas
+
+
+async def _maquinas_que_fallan_siempre(base) -> list[Alerta]:
+    """Una máquina cuyos últimos jobs fallaron todos, con el motivo del último.
+
+    Existe por el 09/09: dos de tres máquinas fallaron cada tanda de la tarde
+    con `ERROR_INESPERADO` y el panel no dijo nada — la corrida terminó en
+    verde con lo que dejó la tercera. El motivo lo había mandado el agente en
+    cada reporte; nadie lo miraba.
+    """
+    alertas: list[Alerta] = []
+    for vendedor in await base["vendedores"].find({}).to_list(None):
+        maquina = vendedor["maquina"]
+        ultimos = (
+            await base["jobs"]
+            .find(
+                {
+                    "maquina": maquina,
+                    "estado": {"$in": [str(cola.EstadoJob.LISTO), str(cola.EstadoJob.FALLIDO)]},
+                },
+                {"estado": 1, "codigo": 1, "detalle.motivo": 1, "tipo": 1},
+            )
+            .sort("terminado_en", -1)
+            .limit(JOBS_SEGUIDOS_FALLIDOS)
+            .to_list(None)
+        )
+        if len(ultimos) < JOBS_SEGUIDOS_FALLIDOS:
+            continue
+        if any(j.get("estado") != str(cola.EstadoJob.FALLIDO) for j in ultimos):
+            continue
+        #  Cancelados a mano no cuentan: eso lo decidió una persona.
+        if all(j.get("codigo") == str(cola.Codigo.CANCELADO) for j in ultimos):
+            continue
+
+        ultimo = ultimos[0]
+        motivo = str((ultimo.get("detalle") or {}).get("motivo") or "").strip()
+        codigo = str(ultimo.get("codigo") or "sin código")
+        alertas.append(
+            Alerta(
+                Nivel.URGENTE,
+                "maquina_falla_siempre",
+                f"{vendedor.get('nombre') or maquina} falla todo lo que toma",
+                f"Sus últimos {len(ultimos)} trabajos terminaron en {codigo}"
+                + (f": {motivo[:160]}" if motivo else ".")
+                + " Las corridas siguen sin ella y nadie lo nota hasta contar los borradores.",
+                "Mirá el motivo en la corrida y los chequeos de la máquina. Si habla de "
+                "Chrome o del deviceId, es esa computadora; si no, avisá.",
+            )
+        )
+    return alertas
+
+
+async def _maquinas_desactualizadas(base, ahora: datetime, version_esperada: str) -> list[Alerta]:
+    """Máquinas que corren otro commit que el que fija el panel (D45).
+
+    Sólo las que reportaron un sha y están vivas: una apagada se va a poner al
+    día cuando la prendan, y una que dice `0.1.0` nunca se instaló con el
+    actualizador — eso lo dice la tarjeta, no una alerta. Y se les da
+    `HORAS_PARA_ACTUALIZARSE` desde su último arranque: el actualizador corre
+    cada hora, no al instante.
+    """
+    if not version_esperada:
+        return []
+    alertas: list[Alerta] = []
+    corte = ahora - timedelta(hours=HORAS_PARA_ACTUALIZARSE)
+    for vendedor in await base["vendedores"].find({}).to_list(None):
+        latido = vendedor.get("ultimo_latido")
+        if latido is None or latido < ahora - timedelta(minutes=MINUTOS_CAIDA):
+            continue
+        reportada = vendedor.get("version_agente")
+        if versiones.coincide(reportada, version_esperada) is not False:
+            continue
+        #  Cuándo reportó esa versión: el registro es al arrancar, y arranca
+        #  cuando el actualizador lo reinicia. Si fue hace poco, todavía puede
+        #  estar bajando la nueva.
+        registrada_en = vendedor.get("version_registrada_en")
+        if registrada_en is not None and registrada_en > corte:
+            continue
+        maquina = vendedor["maquina"]
+        alertas.append(
+            Alerta(
+                Nivel.AVISO,
+                "maquina_desactualizada",
+                f"{vendedor.get('nombre') or maquina} corre otra versión",
+                f"Reporta {str(reportada)[:20]} y el panel fija {version_esperada[:7]}. "
+                f"Lleva más de {HORAS_PARA_ACTUALIZARSE} horas sin ponerse al día.",
+                "En esa computadora, mirá el log del actualizador "
+                "(~/Library/Logs/centonara/actualizador.log en Mac): ahí dice por qué no pudo.",
+            )
+        )
     return alertas

@@ -5,9 +5,15 @@
 #   curl -fsSL https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.sh | bash
 #
 # Es seguro correrlo las veces que haga falta: lo que ya está hecho lo saltea,
-# lo que falta lo dice en castellano, y correrlo de nuevo es además la forma de
-# actualizar el programa. Cuando algo corta la instalación, la respuesta es
-# siempre la misma: arreglar lo que dijo y volver a correr el mismo comando.
+# y lo que falta lo dice en castellano. Cuando algo corta la instalación, la
+# respuesta es siempre la misma: arreglar lo que dijo y volver a correr el
+# mismo comando.
+#
+# Actualizar NO requiere volver a correr esto: el instalador deja un
+# actualizador (agente/instalador/actualizar.py, D46) que corre solo al
+# iniciar sesión y cada hora, y pone el agente en el commit que fija el panel.
+# Volver a correr el instalador sigue sirviendo —arregla lo que falte— y
+# termina llamando al mismo actualizador.
 #
 # Qué hace:
 #   1. Instala las herramientas que falten (uv y Claude Code). Sin npm, sin
@@ -133,9 +139,14 @@ fi
 titulo "[3/8] El proyecto"
 
 if [ -d "$REPO/.git" ]; then
-  # Un repositorio git es de alguien que desarrolla: no se le pisa nada.
+  # Un repositorio git es de alguien que desarrolla: no se le pisa nada, y
+  # tampoco se hace un `git pull` callado. Eso era lo de antes: si la rama
+  # era otra, había cambios locales o la credencial venció, el pull fallaba
+  # en silencio y esto seguía instalando código viejo como si fuera nuevo.
   echo "  ok  ya está clonado con git en $REPO — se usa como está"
-  git -C "$REPO" pull --ff-only 2>/dev/null || true
+  echo "      (no se hace git pull: quien tiene un clon actualiza con git.)"
+  echo "      rama: $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  echo "      commit: $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo '?')"
 else
   echo "  bajando la última versión a $REPO"
   mkdir -p "$REPO"
@@ -329,11 +340,23 @@ titulo "[7/8] Arrancar ahora"
 uid=$(id -u)
 launchctl bootout "gui/$uid/com.centonara.agente" 2>/dev/null || true
 launchctl bootout "gui/$uid/com.centonara.chrome" 2>/dev/null || true
+launchctl bootout "gui/$uid/com.centonara.actualizador" 2>/dev/null || true
 
 launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.chrome.plist"
 echo "  ok  Chrome al iniciar sesión"
 launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.agente.plist"
 echo "  ok  agente corriendo"
+
+# El actualizador (D46) se corre UNA vez acá, a mano y sin esperar al agente:
+# deja agente/VERSION con el commit que fija el panel —lo que se bajó arriba
+# es "lo último de main", que puede no ser lo que el panel pide— y así la
+# tarjeta de la máquina muestra desde el primer minuto qué versión corre.
+# Después queda el LaunchAgent, que lo corre al iniciar sesión y cada hora.
+echo "  poniéndose en la versión que fija el panel..."
+"$PYTHON" "$HOME/.centonara/bin/actualizar.py" --repo "$REPO" --sin-verificar \
+  || echo "  aviso: el actualizador no pudo terminar; lo va a reintentar solo en una hora"
+launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.actualizador.plist"
+echo "  ok  actualizador al iniciar sesión y cada hora"
 
 # ---------------------------------------------------------------------------
 titulo "[8/8] El navegador que escribe los mensajes"
@@ -385,7 +408,9 @@ titulo "INSTALACIÓN COMPLETA"
 cat <<FIN
   A partir de ahora, cada vez que el vendedor prenda esta Mac e inicie sesión,
   Chrome y el agente arrancan solos. Si el agente se cae, se vuelve a levantar
-  solo. No hay que tocar nada más en esta computadora.
+  solo. Y una vez por hora se pone en la versión que fija el panel: para
+  actualizar no hay que volver a correr esto. No hay que tocar nada más en
+  esta computadora.
 
   Lo que queda, y NO se hace desde acá:
 

@@ -172,6 +172,8 @@ class PayloadBorradores(PayloadBase):
         list[Annotated[str, Field(min_length=1, max_length=60)]], Field(max_length=40)
     ] = []
     mensaje_post_compra: bool = True
+    # Qué ofrecer en el post-venta, si el dueño escribió algo. Vacío = nada.
+    post_venta_ofrecer: Annotated[str, Field(max_length=500)] = ""
 
 
 class PayloadDiagnostico(PayloadBase):

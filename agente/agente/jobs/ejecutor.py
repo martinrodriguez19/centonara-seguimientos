@@ -46,7 +46,7 @@ log = obtener_logger(__name__)
 def construir(
     *,
     claude_bin: str,
-    device_id: str,
+    device_id: str | Callable[[], str],
     carpeta: Path,
     modo: str,
     diagnosticar: Callable[[], Diagnostico],
@@ -68,6 +68,10 @@ def construir(
 
     async def ejecutar(job: Job) -> dict[str, Any]:
         carga = job.payload or {}
+        # D47: el deviceId se resuelve cuando LLEGA el job, no cuando arrancó el
+        # proceso. Una máquina instalada sin él lo encuentra apenas alguien usa
+        # la extensión, sin reinstalar ni reiniciar nada.
+        dispositivo = device_id() if callable(device_id) else device_id
 
         if job.tipo == "LISTAR":
             # ⚠️ Antes de pagarle a un modelo. Con el Chrome del vendedor
@@ -96,7 +100,7 @@ def construir(
                 estrategia=str(carga.get("estrategia", "recientes")),
                 barrido_hasta_dias=carga.get("barrido_hasta_dias", 3650),
                 ya_vistos=list(carga.get("ya_vistos", [])),
-                device_id=device_id,
+                device_id=dispositivo,
                 claude_bin=claude_bin,
                 carpeta=carpeta,
             )
@@ -141,7 +145,8 @@ def construir(
                 frases_prohibidas=list(carga.get("frases_prohibidas", [])),
                 palabras_veto=list(carga.get("palabras_veto", [])),
                 mensaje_post_compra=bool(carga.get("mensaje_post_compra", True)),
-                device_id=device_id,
+                post_venta_ofrecer=str(carga.get("post_venta_ofrecer", "")),
+                device_id=dispositivo,
                 claude_bin=claude_bin,
                 carpeta=carpeta,
             )

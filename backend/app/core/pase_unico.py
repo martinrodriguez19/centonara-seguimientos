@@ -155,6 +155,11 @@ class Procesado:
     tanda_siguiente: ObjectId | None = None
     #  Por qué no hay tanda siguiente, cuando no la hay.
     fin: str | None = None
+    #  Si la tanda falló, con qué código y por qué, en palabras del agente. Es
+    #  lo que el panel muestra en la fila: el 09/09 dos máquinas fallaron seis
+    #  veces con `ERROR_INESPERADO` y el motivo —que el agente sí mandó— sólo
+    #  se podía leer entrando a Mongo.
+    error: dict[str, str | None] | None = None
 
 
 async def armar_payload(
@@ -210,6 +215,7 @@ async def armar_payload(
         "frases_prohibidas": _reglas(config.get("frases_prohibidas")),
         "palabras_veto": _reglas(config.get("palabras_veto_chat")),
         "mensaje_post_compra": bool(config.get("mensaje_post_compra", True)),
+        "post_venta_ofrecer": str(config.get("post_venta_ofrecer") or "").strip()[:500],
     }
 
     if estrategia == "barrido":
@@ -548,6 +554,10 @@ async def procesar_reporte(
         #  una tanda nueva. Se nombra igual: el panel tiene que poder decir por
         #  qué la máquina no siguió.
         resultado.fin = "tanda_fallida"
+        resultado.error = {
+            "codigo": str(job.get("codigo") or "") or None,
+            "motivo": str(detalle.get("motivo") or "")[:200] or None,
+        }
     elif bool(detalle.get("fin_de_ventana")):
         resultado.fin = "fin_de_ventana"
     elif not chats:
@@ -656,6 +666,7 @@ async def _anotar_tanda(
                         "vetados": resultado.vetados,
                         "corte": resultado.corte,
                         "fin": resultado.fin,
+                        "error": resultado.error,
                     }
                 }
             },
@@ -813,6 +824,9 @@ async def _registrar_dejado(
             antiguedad_dias=chat.get("antiguedad_dias", 0),
             tema=tema,
             cita=cita,
+            #  Un post-venta (venta cerrada, D41) se muestra como tal en el
+            #  panel, no como un seguimiento cualquiera.
+            post_venta=str(chat.get("motivo") or "") == "ya_compro",
             ahora=momento,
         )
     except mensajes.MensajeDuplicado:

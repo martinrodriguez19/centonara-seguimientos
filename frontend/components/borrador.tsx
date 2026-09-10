@@ -74,6 +74,12 @@ export function Borrador({ mensaje, corridaId }: { mensaje: Mensaje; corridaId: 
           {mensaje.estado === "BORRADOR_DEJADO" && (
             <Pildora nivel="ok">{textos.revision.enElChat}</Pildora>
           )}
+          {/* Un post-venta (D41) no es un seguimiento: se lee distinto. */}
+          {mensaje.post_venta && (
+            <Pildora nivel="neutro" conIcono={false}>
+              {textos.revision.postVenta}
+            </Pildora>
+          )}
           {mensaje.estado === "ENVIANDO" && (
             <Pildora nivel="neutro" conIcono={false}>
               {textos.revision.escribiendose}

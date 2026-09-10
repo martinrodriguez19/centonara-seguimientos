@@ -258,6 +258,16 @@ export default function DetalleDeCorrida({
                     {tanda.fin
                       ? (textos.corrida.finDeTanda[tanda.fin] ?? tanda.fin)
                       : textos.corrida.enCurso}
+                    {/* Por qué falló, en palabras del agente. El 09/09 el
+                        motivo estaba en Mongo y en ningún otro lado. */}
+                    {tanda.error && (
+                      <span className="block text-xs text-muted-foreground">
+                        {textos.corrida.porQueFallo(
+                          tanda.error.codigo,
+                          tanda.error.motivo,
+                        )}
+                      </span>
+                    )}
                   </Td>
                 </Fila>
               ))}

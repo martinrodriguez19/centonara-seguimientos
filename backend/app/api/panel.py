@@ -33,6 +33,7 @@ from app.core import (
     sesion,
     validacion,
     vendedores,
+    versiones,
     vetados,
 )
 from app.logging import obtener_logger
@@ -109,12 +110,18 @@ async def salir(respuesta: Response) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _resumir_maquina(vendedor: dict[str, Any], ahora: datetime) -> dict[str, Any]:
+def _resumir_maquina(
+    vendedor: dict[str, Any], ahora: datetime, *, version_esperada: str = ""
+) -> dict[str, Any]:
     """Una máquina, como la necesita la pantalla.
 
     El campo que importa es `chequeos_fallando`: el panel tiene que poder decir
     **qué** falta, no "error". Es la diferencia entre esto y el HTTP 502 mudo
     del MVP.
+
+    `version_esperada` es el sha al que deberían converger todas (D45); con él
+    se calcula `actualizada`, que es la respuesta a "¿cuál está atrasada?" — la
+    pregunta que el 09/09 hubo que contestar leyendo logs.
     """
     latido = vendedor.get("ultimo_latido")
     online = latido is not None and (ahora - latido) < timedelta(seconds=SEGUNDOS_SIN_LATIDO)
@@ -132,6 +139,11 @@ def _resumir_maquina(vendedor: dict[str, Any], ahora: datetime) -> dict[str, Any
         "chequeos_fallando": fallando,
         "diagnostico": diagnostico,
         "version_agente": vendedor.get("version_agente"),
+        # El commit que debería correr, y si lo corre. `None` cuando no hay con
+        # qué comparar: una máquina que nunca reportó un sha no está
+        # "desactualizada", está sin instalar con el actualizador.
+        "version_esperada": version_esperada or None,
+        "actualizada": versiones.coincide(vendedor.get("version_agente"), version_esperada),
         # El modo resuelto que reportó el agente al arrancar (D30). Una Mac en
         # `simulado` falla todos los envíos con CHAT_NO_ABRE: verlo acá evita
         # diagnosticarlo por ssh, como pasó el 26/08.
@@ -145,16 +157,22 @@ def _resumir_maquina(vendedor: dict[str, Any], ahora: datetime) -> dict[str, Any
 
 
 @router.get("/estado")
-async def estado(_: Autenticado) -> dict[str, Any]:
+async def estado(
+    _: Autenticado,
+    ajustes: Annotated[Configuracion, Depends(obtener_configuracion)],
+) -> dict[str, Any]:
     """Todo lo que la pantalla principal necesita, en una sola llamada."""
     base = db.obtener_base()
     ahora = datetime.now(UTC)
+    config = await configuracion.obtener(base)
 
+    # Una sola resolución para todas las máquinas (D45): con caché, así que
+    # pintar el panel no le pega a GitHub cada vez.
+    esperada = await versiones.esperada(config, repo=ajustes.repo_github, rama=ajustes.rama_agente)
     maquinas = [
-        _resumir_maquina(v, ahora)
+        _resumir_maquina(v, ahora, version_esperada=esperada.sha)
         for v in await base["vendedores"].find({}).sort("maquina", 1).to_list(None)
     ]
-    config = await configuracion.obtener(base)
 
     desde_medianoche = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
     enviados_hoy = await auditoria.contar(
@@ -461,6 +479,7 @@ async def mensajes_de_la_corrida(corrida_id: str, _: Autenticado) -> dict[str, A
                 "motivo": m.get("motivo"),
                 "senales": m.get("senales", []),
                 "editado_por": m.get("editado_por"),
+                "post_venta": bool(m.get("post_venta")),
             }
             for m in todos
         ],
@@ -726,6 +745,8 @@ class CambioConfiguracion(Estricto):
     max_visitas_por_tanda: Annotated[int | None, Field(ge=1, le=60)] = None
     # La venta cerrada (D41): post-venta, o nada.
     mensaje_post_compra: bool | None = None
+    # Qué ofrecer en el post-venta, en palabras del dueño. Vacío = nada cambia.
+    post_venta_ofrecer: Annotated[str | None, Field(max_length=500)] = None
     # Las reglas de redacción del dueño (D40, D41). Editables por API; el panel
     # las muestra cuando haya datos de qué tan seguido se encienden.
     frases_prohibidas: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = None
@@ -734,6 +755,9 @@ class CambioConfiguracion(Estricto):
     # una lista negra, y para eso no hay perilla.
     dias_veto_disconforme: Annotated[int | None, Field(ge=1, le=730)] = None
     dias_veto_ya_compro: Annotated[int | None, Field(ge=1, le=730)] = None
+    # Qué commit del agente corren las máquinas (D45): un sha, o vacío para
+    # "lo último de la rama". Es el rollback desde el panel.
+    version_agente_esperada: Annotated[str | None, Field(max_length=40)] = None
     # Cuánto recuerda cada máquina qué chats ya abrió (D43).
     dias_memoria_visitados: Annotated[int | None, Field(ge=1, le=180)] = None
     # Las indicaciones del dueño sobre su empresa (D33), que viajan al REDACTAR
@@ -754,6 +778,23 @@ class CambioConfiguracion(Estricto):
     # PALABRA_CONFLICTO protege del seguimiento sobre un reclamo abierto.
     palabras_conflicto: list[Annotated[str, Field(max_length=60)]] | None = None
     destinos_permitidos: list[Annotated[str, Field(max_length=25)]] | None = None
+
+    @field_validator("version_agente_esperada")
+    @classmethod
+    def _un_sha_o_nada(cls, valor: str | None) -> str | None:
+        """Vacío es "la rama"; cualquier otra cosa tiene que ser un sha de git.
+
+        Un texto que no es un sha no se guarda: el actualizador lo pediría a
+        GitHub como commit y fallaría en todas las máquinas a la vez.
+        """
+        if valor is None:
+            return None
+        if not valor.strip():
+            return ""
+        normalizado = versiones.normalizar(valor)
+        if not normalizado:
+            raise ValueError(f"{valor!r} no es un sha de git (7 a 40 dígitos hexadecimales)")
+        return normalizado
 
     @field_validator("destinos_permitidos")
     @classmethod
@@ -846,13 +887,20 @@ async def cambiar_configuracion(cuerpo: CambioConfiguracion, _: Autenticado) -> 
 
 
 @router.get("/alertas")
-async def ver_alertas(_: Autenticado) -> dict[str, Any]:
+async def ver_alertas(
+    _: Autenticado,
+    ajustes: Annotated[Configuracion, Depends(obtener_configuracion)],
+) -> dict[str, Any]:
     """Lo que está mal ahora mismo. No se guarda: se calcula al preguntar.
 
     Una alerta guardada hay que acordarse de borrarla cuando el problema se
     resuelve, y la que nadie borró es la que enseña a ignorarlas todas.
     """
-    encontradas = await alertas.revisar(db.obtener_base())
+    base = db.obtener_base()
+    esperada = await versiones.esperada(
+        await configuracion.obtener(base), repo=ajustes.repo_github, rama=ajustes.rama_agente
+    )
+    encontradas = await alertas.revisar(base, version_esperada=esperada.sha)
     return {
         "alertas": [a.a_dict() for a in encontradas],
         "urgentes": sum(1 for a in encontradas if a.nivel is alertas.Nivel.URGENTE),

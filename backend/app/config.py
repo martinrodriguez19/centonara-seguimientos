@@ -56,6 +56,13 @@ class Configuracion(BaseSettings):
     # Por defecto, JSON en todo lo que no sea local.
     log_json: bool | None = None
 
+    # De dónde se actualizan los agentes (D45): el repositorio público en
+    # GitHub y la rama que se toma como "lo último" cuando el panel no fija un
+    # commit. Las máquinas nunca hablan con GitHub para saber qué instalar: le
+    # preguntan al backend, que resuelve la rama a un sha y lo cachea.
+    repo_github: str = "martinrodriguez19/centonara-seguimientos"
+    rama_agente: str = "main"
+
     @property
     def logs_en_json(self) -> bool:
         if self.log_json is not None:

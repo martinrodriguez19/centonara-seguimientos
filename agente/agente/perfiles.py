@@ -173,3 +173,55 @@ def recomendar(perfiles: list[Perfil] | None = None) -> Recomendacion:
         "Instalá la extensión Claude in Chrome y entrá a web.whatsapp.com "
         "con la línea del vendedor.",
     )
+
+
+# ---------------------------------------------------------------------------
+# El deviceId en caliente (D47)
+# ---------------------------------------------------------------------------
+#
+# Antes el deviceId era un requisito de instalación: si la extensión no se
+# había usado todavía, el `.env` quedaba sin él y había que volver a correr el
+# instalador después de abrirla a mano. El 09/09 dos Macs fallaron cada tanda
+# por eso, con el dato ya escrito en el disco por la extensión.
+#
+# Ahora se resuelve cuando hace falta —al arrancar, y otra vez cuando llega un
+# job— con tres fuentes en orden: el `.env`, lo que se memorizó la última vez,
+# y el perfil de Chrome ahora mismo. Lo que se encuentra en el perfil se
+# memoriza fuera del repositorio, porque el `.env` lo reescribe el instalador.
+
+ARCHIVO_DEVICE_ID = "device_id"
+
+
+def _memoria(casa: Path | None) -> Path:
+    from agente.reinicio import carpeta_estado
+
+    return carpeta_estado(casa) / ARCHIVO_DEVICE_ID
+
+
+def resolver_device_id(configurado: str, *, perfil_dir: str, casa: Path | None = None) -> str:
+    """El deviceId de esta máquina, o vacío si todavía no existe en ningún lado."""
+    if configurado.strip():
+        return configurado.strip()
+
+    memoria = _memoria(casa)
+    try:
+        memorizado = memoria.read_text(encoding="utf-8").strip()
+    except OSError:
+        memorizado = ""
+    if _UUID.fullmatch(memorizado):
+        return memorizado
+
+    carpeta = carpeta_chrome() / perfil_dir
+    encontrado = _device_id_de(carpeta) if carpeta.is_dir() else None
+    if encontrado is None:
+        #  El perfil configurado puede no ser el que tiene la extensión: se mira
+        #  el que recomienda `recomendar`, que es lo que hace el instalador.
+        recomendado = recomendar()
+        encontrado = recomendado.perfil.device_id if recomendado.perfil else None
+    if encontrado is None:
+        return ""
+    try:
+        memoria.write_text(encontrado + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return encontrado

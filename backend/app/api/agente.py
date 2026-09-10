@@ -18,7 +18,17 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import db
-from app.core import cola, configuracion, corridas, generacion, mensajes, pase_unico, vendedores
+from app.config import Configuracion, obtener_configuracion
+from app.core import (
+    cola,
+    configuracion,
+    corridas,
+    generacion,
+    mensajes,
+    pase_unico,
+    vendedores,
+    versiones,
+)
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -62,7 +72,9 @@ class Estricto(BaseModel):
 
 
 class Registro(Estricto):
-    version: Annotated[str, Field(max_length=32)]
+    # Lo que escribió el actualizador en `agente/VERSION`: el sha corto y la
+    # fecha (`7912e13 2026-09-09`), o `0.1.0-dev` donde nadie instaló nada.
+    version: Annotated[str, Field(max_length=64)]
     diagnostico: dict[str, str] = Field(default_factory=dict)
     # Cómo está corriendo el agente: "operativo", o "simulado" si alguien lo
     # arrancó con el flag de desarrollo `--simulado` (D32). Se muestra en el
@@ -290,7 +302,13 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
         try:
             await pase_unico.procesar_reporte(
                 base,
-                job={**job, "estado": str(reporte.estado)},
+                #  El `codigo` va fresco del reporte, como en el respaldo de
+                #  abajo: es lo que la fila de la tanda muestra cuando falló.
+                job={
+                    **job,
+                    "estado": str(reporte.estado),
+                    "codigo": str(cuerpo.codigo) if cuerpo.codigo else None,
+                },
                 detalle=cuerpo.detalle,
             )
         except Exception as error:
@@ -342,6 +360,27 @@ async def latido(cuerpo: Latido, maquina: Maquina) -> dict[str, Any]:
         db.obtener_base(), maquina["maquina"], diagnostico=cuerpo.diagnostico
     )
     return {"ok": True, "pausada": vendedores.esta_pausada(maquina)}
+
+
+@router.get("/version-esperada")
+async def version_esperada(
+    maquina: Maquina,
+    ajustes: Annotated[Configuracion, Depends(obtener_configuracion)],
+) -> dict[str, str]:
+    """Qué commit tiene que correr esta máquina (D45). Lo consulta el actualizador.
+
+    `sha` vacío significa "no se pudo saber" y el actualizador no hace nada:
+    seguir con lo instalado es mejor que saltar a algo que nadie fijó. La
+    respuesta es la misma para todas las máquinas; el token sólo autentica.
+    """
+    config = await configuracion.obtener(db.obtener_base())
+    esperada = await versiones.esperada(config, repo=ajustes.repo_github, rama=ajustes.rama_agente)
+    return {
+        **esperada.a_dict(),
+        "repo": ajustes.repo_github,
+        "rama": ajustes.rama_agente,
+        "maquina": maquina["maquina"],
+    }
 
 
 # ---------------------------------------------------------------------------

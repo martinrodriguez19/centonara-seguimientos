@@ -391,3 +391,79 @@ async def test_el_latido_respeta_la_cantidad_pedida(vueltas: int) -> None:
 
     mandados = await latir(cliente, Estado(), dormir=dormir, parar=parar, vueltas=vueltas or None)
     assert mandados == vueltas
+
+
+# ---------------------------------------------------------------------------
+# D46: el código en disco cambió, y la marca de vida
+# ---------------------------------------------------------------------------
+
+
+async def test_si_el_codigo_en_disco_cambio_el_bucle_para_para_reiniciar() -> None:
+    """Entre jobs, nunca en el medio de uno: la consulta ni siquiera se hace."""
+    cliente = ClienteFalso([Job(id="j1", tipo="DIAGNOSTICO", payload={})])
+    bucle = armar(cliente, debe_reiniciar=lambda: True)
+
+    estado = await bucle.arrancar()
+
+    assert estado.reiniciar is True
+    assert cliente.consultas == 0
+    assert cliente.reportes == []
+
+
+async def test_mientras_el_codigo_no_cambie_el_bucle_sigue() -> None:
+    cliente = ClienteFalso([])
+    bucle = armar(cliente, debe_reiniciar=lambda: False)
+    estado = await bucle.arrancar(vueltas=2)
+    assert estado.reiniciar is False
+    assert cliente.consultas == 2
+
+
+async def test_al_registrarse_deja_la_marca_de_vida() -> None:
+    marcas: list[int] = []
+    bucle = armar(ClienteFalso([]), al_registrar=lambda: marcas.append(1))
+    await bucle.arrancar(vueltas=1)
+    assert marcas == [1]
+
+
+async def test_si_el_registro_falla_no_hay_marca() -> None:
+    marcas: list[int] = []
+    cliente = ClienteFalso([], registro=httpx.ConnectError("sin red"))
+    bucle = armar(cliente, al_registrar=lambda: marcas.append(1))
+    await bucle.arrancar(vueltas=1)
+    assert marcas == []
+
+
+async def test_el_estado_dice_ocupado_mientras_corre_un_job() -> None:
+    """Lo lee la marca de vida: el actualizador no da por muerta a una tanda larga."""
+    visto: list[bool] = []
+    job = Job(id="j1", tipo="DIAGNOSTICO", payload={})
+    cliente = ClienteFalso([job])
+    bucle = armar(cliente)
+
+    async def ejecutor(recibido: Job) -> dict:
+        visto.append(bucle.estado.ocupado)
+        return {"ok": True}
+
+    bucle._ejecutar = ejecutor
+    estado = await bucle.arrancar(vueltas=1)
+
+    assert visto == [True]
+    assert estado.ocupado is False
+
+
+async def test_el_latido_deja_la_marca_de_vida_aunque_no_llegue() -> None:
+    marcas: list[int] = []
+
+    class ClienteSinRed(ClienteFalso):
+        async def latido(self, diagnostico=None) -> dict:
+            raise httpx.ConnectError("sin red")
+
+    mandados = await latir(
+        ClienteSinRed([]),
+        Estado(),
+        vueltas=3,
+        dormir=sin_dormir()[0],
+        al_latir=lambda: marcas.append(1),
+    )
+    assert mandados == 0
+    assert marcas == [1, 1, 1]

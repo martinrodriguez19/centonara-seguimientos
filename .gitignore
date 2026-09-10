@@ -26,6 +26,12 @@ next-env.d.ts        # lo regenera `next typegen` en cada build
 *.archive
 *.age
 
+# --- lo que escribe el actualizador en cada máquina: qué commit quedó ---
+# No se versiona: en el repo no hay "versión instalada", y un VERSION viejo
+# commiteado haría que todas las máquinas reporten lo mismo, que es justo el
+# problema que existe para resolver.
+agente/VERSION
+
 # --- sistema ---
 .DS_Store
 

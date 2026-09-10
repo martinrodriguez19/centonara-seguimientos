@@ -24,11 +24,16 @@ def roto() -> Diagnostico:
 
 
 def construir(
-    *, modo: str = "simulado", diagnosticar=sano, claude_bin: str = "", asegurar_navegador=None
+    *,
+    modo: str = "simulado",
+    diagnosticar=sano,
+    claude_bin: str = "",
+    asegurar_navegador=None,
+    device_id="dev-1",
 ):
     return ejecutor.construir(
         claude_bin=claude_bin,
-        device_id="dev-1",
+        device_id=device_id,
         carpeta=CARPETA,
         modo=modo,
         diagnosticar=diagnosticar,
@@ -379,3 +384,40 @@ async def test_un_payload_incompleto_usa_los_valores_por_defecto(monkeypatch) ->
     await construir()(Job("1", "LISTAR", {}))
 
     assert visto["n_chats"] == 20
+
+
+# ---------------------------------------------------------------------------
+# D47: el deviceId se resuelve cuando llega el job
+# ---------------------------------------------------------------------------
+
+
+async def test_el_device_id_se_resuelve_al_llegar_el_job(monkeypatch) -> None:
+    """Instalada sin deviceId, la máquina lo encuentra apenas alguien usa la extensión."""
+    from agente.jobs import borradores as borradores_job
+
+    encontrado = {"valor": ""}
+    recibidos: list[str] = []
+
+    async def dejar_falso(**kwargs):
+        recibidos.append(kwargs["device_id"])
+        return borradores_job.Resultado(True, None, {"chats": []})
+
+    monkeypatch.setattr(borradores_job, "dejar_borradores", dejar_falso)
+
+    async def navegador_listo():
+        class Listo:
+            utilizable = True
+            detalle = ""
+
+        return Listo()
+
+    ejecutar = construir(
+        modo="operativo",
+        device_id=lambda: encontrado["valor"],
+        asegurar_navegador=navegador_listo,
+    )
+    await ejecutar(Job("1", "BORRADORES", {"run_id": "r1"}))
+    encontrado["valor"] = "dev-recien-encontrado"
+    await ejecutar(Job("2", "BORRADORES", {"run_id": "r2"}))
+
+    assert recibidos == ["", "dev-recien-encontrado"]

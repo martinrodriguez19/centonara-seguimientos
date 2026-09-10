@@ -479,3 +479,32 @@ Para que nadie lo busque:
 - Los escenarios de caos **están probados**: apagar una Mac a mitad de corrida,
   ocho agentes sobre la misma cola, apretar enviar dos veces, reiniciar el
   backend con trabajo pendiente.
+
+---
+
+## E — El actualizador (D45–D48) · **10 de septiembre de 2026**
+
+Todo lo que se podía probar sin una máquina está probado: el actualizador entero corre en
+`tests/test_actualizador.py` con un backend, un tarball y un agente de mentira, y el reinicio
+por cambio de `VERSION` en `test_bucle.py` y `test_reinicio.py`. Lo que queda necesita hierro:
+
+- [ ] **En una Mac de prueba, la vuelta entera.** Correr `instalar.sh`; ver el sha en la tarjeta
+      del panel; fijar en Configuración → *Versión del agente* el commit anterior y ver que baja
+      sola en menos de una hora (o ya, con `actualizar.sh`); vaciar el campo y ver que vuelve.
+      Es lo que dice "funcionó" en `PLAN-ACTUALIZADOR.md` §6.
+- [ ] **El rollback con un commit roto.** Fijar un sha cuyo agente no arranque: la máquina tiene
+      que quedar en el anterior, tomando trabajo, y el log del actualizador decirlo.
+- [ ] **Actualizar en el medio de una tanda.** Disparar una corrida, fijar otra versión mientras
+      corre, y verificar que el agente termina y reporta la tanda antes de reiniciarse.
+- [ ] **La PC de Sofía: sólo el actualizador.** `instalar.ps1 -SoloActualizador`, y ver que la
+      tarjeta pase de `sin actualizador` a un sha. **No reinstalar nada más ahí.**
+- [ ] **Windows, el reinicio.** Que al cambiar `VERSION` el agente se relance solo como proceso
+      desacoplado (log en `%LOCALAPPDATA%\Centonara\logs\agente.log`) y el panel lo vea volver
+      con el sha nuevo — en la PC de Sofía, que corre sin tarea programada. El camino de
+      respaldo (salir con 75 y que la tarea lo reintente) sólo aplica donde hay tarea.
+- [ ] **`pnpm typecheck` del frontend**, que en la máquina de desarrollo no tiene red al registry.
+      Se tocaron `panel.ts`, `maquina.tsx`, `borrador.tsx`, `config/page.tsx` y
+      `corrida/[id]/page.tsx`; el test de contrato del backend ya verifica que los campos nuevos
+      de `Maquina`, `Corrida`, `Configuracion` y `Mensaje` coincidan con lo que se devuelve.
+- [ ] **Windows y el envío.** Nadie corrió `--vincular` ni `--verificar-selectores` en una PC:
+      la que anda usa la extensión, que es el circuito que no los necesita.

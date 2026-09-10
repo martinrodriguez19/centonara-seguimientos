@@ -182,8 +182,42 @@ export function TarjetaMaquina({
             {haceCuanto(maquina.ultimo_latido)}
           </dd>
           <dt>{textos.maquina.version}</dt>
-          <dd className="text-right font-mono">
-            {maquina.version_agente ?? "—"}
+          {/* Qué commit corre, y si es el que fija el panel (D45). Es la
+              respuesta a "¿cuál está atrasada?", que el 09/09 hubo que
+              contestar leyendo logs porque las tres decían 0.1.0. */}
+          <dd className="text-right">
+            <span className="font-mono">
+              {maquina.version_agente?.split(" ")[0] ?? "—"}
+            </span>
+            {maquina.actualizada === true && (
+              <>
+                {" "}
+                <Pildora nivel="ok">{textos.maquina.versionAlDia}</Pildora>
+              </>
+            )}
+            {maquina.actualizada === false && (
+              <>
+                {" "}
+                <Pildora nivel="atencion">
+                  {textos.maquina.versionAtrasada}
+                </Pildora>
+                {maquina.version_esperada && (
+                  <span className="block text-[11px]">
+                    {textos.maquina.versionEsperada(maquina.version_esperada)}
+                  </span>
+                )}
+              </>
+            )}
+            {maquina.actualizada === null &&
+              maquina.version_agente &&
+              maquina.version_esperada && (
+                <>
+                  {" "}
+                  <Pildora nivel="neutro">
+                    {textos.maquina.versionSinActualizador}
+                  </Pildora>
+                </>
+              )}
           </dd>
           <dt>{textos.maquina.modo}</dt>
           {/* En `simulado` todos los envíos fallan con CHAT_NO_ABRE: si quedó

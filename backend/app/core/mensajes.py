@@ -61,6 +61,7 @@ async def crear_borrador(
     antiguedad_dias: int = 0,
     tema: str | None = None,
     cita: str | None = None,
+    post_venta: bool = False,
     ahora: datetime | None = None,
 ) -> ObjectId:
     """Guarda un borrador recién redactado.
@@ -82,6 +83,8 @@ async def crear_borrador(
         "resumen_ultimo": resumen_ultimo,
         "tema": tema or None,
         "cita": cita or None,
+        #  D41: escrito sobre una venta cerrada. Pregunta cómo le fue, no vende.
+        "post_venta": bool(post_venta),
         "quien_hablo_ultimo": quien_hablo_ultimo,
         "antiguedad_dias": antiguedad_dias,
         "texto": texto,

@@ -152,8 +152,12 @@ arranque automático y lo enciende. En el camino:
 
 Si algo falta, el instalador **lo dice en castellano y se detiene**. La
 respuesta es siempre la misma: hacer lo que dice y **volver a pegar el mismo
-comando**. Es seguro correrlo las veces que haga falta — y correrlo de nuevo es
-además la forma de **actualizar** el programa más adelante.
+comando**. Es seguro correrlo las veces que haga falta.
+
+**Actualizar no requiere volver a correrlo.** El instalador deja un tercer
+servicio, el actualizador, que corre al iniciar sesión y cada hora y pone el
+agente en la versión que fija el panel (Configuración → *Versión del agente*).
+La tarjeta de cada máquina muestra qué versión corre y si está al día.
 
 Cuando termina dice **INSTALACIÓN COMPLETA**.
 
@@ -276,9 +280,11 @@ vendedor tenía escrito.
 # Apéndice para quien mantiene el sistema
 
 **Qué quedó instalado en la Mac:** el proyecto en `~/centonara-seguimientos`,
-dos servicios de arranque automático (`com.centonara.agente` y
-`com.centonara.chrome`, en `~/Library/LaunchAgents/`), y las herramientas `uv` y
-`claude` en `~/.local/bin`. Los logs, en `~/Library/Logs/centonara/`.
+tres servicios de arranque automático (`com.centonara.agente`,
+`com.centonara.chrome` y `com.centonara.actualizador`, en
+`~/Library/LaunchAgents/`), una copia del actualizador en `~/.centonara/bin/`, y
+las herramientas `uv` y `claude` en `~/.local/bin`. Los logs, en
+`~/Library/Logs/centonara/`; el del actualizador es `actualizador.log`.
 
 **El agente no tiene modo (D32).** Instalado, está siempre operativo: si un
 mensaje queda como borrador o se envía lo decide el botón que se apretó en el
@@ -305,5 +311,18 @@ números que el sistema había averiguado, y deja la lista de destinos vacía ot
 vez. No borra el historial de auditoría — ese registro es inmutable a propósito,
 ni siquiera el sistema puede borrarlo — ni toca los chats de WhatsApp de nadie.
 
-**Actualizar el programa:** volver a correr el comando del paso 2.2. No vuelve a
-preguntar nada.
+**Actualizar el programa:** no hay que hacer nada. El actualizador
+(`com.centonara.actualizador`) corre al iniciar sesión y cada hora, pregunta al
+panel qué versión toca, y si es otra la baja, la instala y espera a que el
+agente vuelva con ella; si no vuelve, restaura la anterior. Para no esperar la
+hora:
+
+```bash
+bash ~/centonara-seguimientos/agente/instalador/actualizar.sh
+```
+
+**Volver a una versión anterior:** desde el panel, Configuración → *Versión del
+agente* → pegar el commit. Todas las máquinas van a ése en menos de una hora,
+sin tocar ninguna. Vaciar el campo las devuelve a lo último publicado.
+
+**Una PC con Windows:** ver [`SOP-instalar-windows.md`](SOP-instalar-windows.md).

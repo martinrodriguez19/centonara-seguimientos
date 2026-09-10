@@ -184,3 +184,63 @@ def test_todo_problema_trae_su_solucion(chrome) -> None:
     if not recomendacion.listo:
         assert recomendacion.problema
         assert recomendacion.solucion
+
+
+# ---------------------------------------------------------------------------
+# El deviceId en caliente (D47)
+# ---------------------------------------------------------------------------
+
+
+def test_el_env_manda_sobre_todo(chrome, tmp_path) -> None:
+    armar(
+        chrome,
+        "Default",
+        extension=True,
+        whatsapp=True,
+        device_id="11111111-1111-1111-1111-111111111111",
+    )
+    assert (
+        perfiles.resolver_device_id("  configurado-en-env ", perfil_dir="Default", casa=tmp_path)
+        == "configurado-en-env"
+    )
+
+
+def test_sin_env_lo_busca_en_el_perfil_y_lo_memoriza(chrome, tmp_path) -> None:
+    uuid = "22222222-2222-2222-2222-222222222222"
+    armar(chrome, "Default", extension=True, whatsapp=True, device_id=uuid)
+
+    assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == uuid
+    memoria = tmp_path / ".centonara" / "estado" / "device_id"
+    assert memoria.read_text("utf-8").strip() == uuid
+
+
+def test_lo_memorizado_vale_aunque_el_perfil_ya_no_lo_tenga(chrome, tmp_path) -> None:
+    uuid = "33333333-3333-3333-3333-333333333333"
+    memoria = tmp_path / ".centonara" / "estado"
+    memoria.mkdir(parents=True)
+    (memoria / "device_id").write_text(uuid + "\n", "utf-8")
+    armar(chrome, "Default", extension=True, whatsapp=True)
+
+    assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == uuid
+
+
+def test_una_memoria_rota_se_ignora(chrome, tmp_path) -> None:
+    memoria = tmp_path / ".centonara" / "estado"
+    memoria.mkdir(parents=True)
+    (memoria / "device_id").write_text("esto no es un uuid", "utf-8")
+    armar(chrome, "Default", extension=True, whatsapp=True)
+    assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == ""
+
+
+def test_si_el_perfil_configurado_no_lo_tiene_se_mira_el_recomendado(chrome, tmp_path) -> None:
+    """El .env puede decir Default y la extensión vivir en Profile 3."""
+    uuid = "44444444-4444-4444-4444-444444444444"
+    armar(chrome, "Default")
+    armar(chrome, "Profile 3", extension=True, whatsapp=True, device_id=uuid)
+    assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == uuid
+
+
+def test_sin_nada_en_ningun_lado_queda_vacio_y_no_memoriza_basura(chrome, tmp_path) -> None:
+    armar(chrome, "Default", extension=True, whatsapp=True)
+    assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == ""
+    assert not (tmp_path / ".centonara" / "estado" / "device_id").exists()

@@ -24,8 +24,8 @@ from types import FrameType
 
 from pydantic import ValidationError
 
-from agente import __version__, diagnostico, sonda, vigia_sesion
-from agente.bucle import Bucle, latir
+from agente import __version__, diagnostico, perfiles, reinicio, sonda, vigia_sesion
+from agente.bucle import Bucle, Estado, latir
 from agente.cliente import Cliente
 from agente.config import CARPETA_AGENTE, Configuracion, Modo, obtener_configuracion
 from agente.jobs import ejecutor
@@ -378,7 +378,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         ejecutar_simulado(config, parar=parar)
         return SALIDA_OK
 
-    asyncio.run(_trabajar(config, parar, modo=modo))
+    estado = asyncio.run(_trabajar(config, parar, modo=modo))
+    if estado.reiniciar:
+        # D46: el actualizador dejó otro commit en disco y el bucle paró entre
+        # dos jobs. Volver a arrancar con ese código es cosa de este proceso.
+        return reinicio.reejecutar()
     return SALIDA_OK
 
 
@@ -595,14 +599,30 @@ def _abrir_pagina(config: Configuracion):
     return abrir
 
 
-async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str) -> None:
-    """El bucle y el latido, en paralelo, hasta que alguien pida parar."""
+async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str) -> Estado:
+    """El bucle y el latido, en paralelo, hasta que alguien pida parar.
+
+    Devuelve el estado final del bucle: `reiniciar` dice si paró porque el
+    código en disco cambió (D46) y hay que volver a levantarlo.
+    """
     cliente = Cliente(config.backend_url, config.token)
+
+    # El deviceId en caliente (D47): el .env, lo memorizado, o el perfil de
+    # Chrome ahora mismo. Se vuelve a preguntar en cada job y en cada
+    # diagnóstico, así una máquina instalada sin él se pone en verde sola.
+    def device_id() -> str:
+        return perfiles.resolver_device_id(config.device_id, perfil_dir=config.chrome_perfil_dir)
+
+    # La marca de vida (D46): al registrarse y en cada latido. Es lo que el
+    # actualizador mira para saber si el agente estaba vivo y si volvió.
+    # `trabajo` se asigna más abajo; la primera llamada es recién al registrar.
+    def marcar_vivo() -> None:
+        reinicio.marcar_vivo(__version__, ocupado=trabajo.estado.ocupado)
 
     def diagnosticar():
         return diagnostico.ejecutar(
             claude_bin=config.claude_bin,
-            device_id=config.device_id,
+            device_id=device_id(),
             carpeta_agente=CARPETA_AGENTE,
             navegador_dir=config.navegador_dir,
         )
@@ -617,9 +637,11 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
         version=__version__,
         modo=modo,
         diagnosticar=diagnosticar,
+        debe_reiniciar=lambda: reinicio.cambio_la_version(CARPETA_AGENTE, __version__),
+        al_registrar=marcar_vivo,
         ejecutor=ejecutor.construir(
             claude_bin=config.claude_bin,
-            device_id=config.device_id,
+            device_id=device_id,
             carpeta=CARPETA_AGENTE,
             # El modo RESUELTO, no el de la configuración: `--simulado` tiene que
             # ganarle al entorno, que es para lo único que existe esa opción.
@@ -641,7 +663,19 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
 
     threading.Thread(target=vigilar_apagado, daemon=True).start()
 
-    tareas = [trabajo.arrancar(), latir(cliente, trabajo.estado, parar=fin)]
+    async def bucle_hasta_el_fin() -> None:
+        # Si el bucle para por su cuenta —el código en disco cambió (D46)—,
+        # el latido y la vigía tienen que enterarse: sin esto, `gather` los
+        # esperaría para siempre.
+        try:
+            await trabajo.arrancar()
+        finally:
+            fin.set()
+
+    tareas = [
+        bucle_hasta_el_fin(),
+        latir(cliente, trabajo.estado, parar=fin, al_latir=marcar_vivo),
+    ]
     if abrir_pagina is not None:
         # La vigía de la sesión dedicada (D24): revisa al arrancar y cada unas
         # horas, y el latido lleva el resultado al panel. En simulado no hay
@@ -652,7 +686,12 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
         await asyncio.gather(*tareas)
     finally:
         await cliente.cerrar()
-        log.info("agente_detenido", jobs=trabajo.estado.jobs_hechos)
+        log.info(
+            "agente_detenido",
+            jobs=trabajo.estado.jobs_hechos,
+            para_reiniciar=trabajo.estado.reiniciar,
+        )
+    return trabajo.estado
 
 
 if __name__ == "__main__":

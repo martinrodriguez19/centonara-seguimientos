@@ -457,3 +457,55 @@ async def test_los_otros_tipos_no_cargan_configuracion_de_mas(
     ).json()
 
     assert entregado["vigente"] == {}
+
+
+# ---------------------------------------------------------------------------
+# La versión esperada (D45): lo que consulta el actualizador
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_el_registro_acepta_la_version_que_escribe_el_actualizador(
+    cliente, base, maquina_activa
+) -> None:
+    respuesta = await cliente.post(
+        "/api/agente/registrar",
+        json={"version": "7912e13c5d3f 2026-09-09T21:14:10Z"},
+        headers=auth(maquina_activa.token),
+    )
+    assert respuesta.status_code == 200
+    vendedor = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert vendedor["version_agente"] == "7912e13c5d3f 2026-09-09T21:14:10Z"
+    assert vendedor["version_registrada_en"] is not None
+
+
+@sin_mongo
+async def test_la_version_esperada_sale_de_la_rama_si_el_panel_no_fija_nada(
+    cliente, base, maquina_activa
+) -> None:
+    from tests.conftest import SHA_DE_LA_RAMA
+
+    respuesta = await cliente.get(
+        "/api/agente/version-esperada", headers=auth(maquina_activa.token)
+    )
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo["sha"] == SHA_DE_LA_RAMA
+    assert cuerpo["origen"] == "rama"
+    assert cuerpo["rama"] == "main"
+    assert cuerpo["maquina"] == "mac-rocio"
+
+
+@sin_mongo
+async def test_la_version_fijada_en_el_panel_manda(cliente, base, maquina_activa) -> None:
+    await configuracion.actualizar(base, {"version_agente_esperada": "4decc8c"})
+    respuesta = await cliente.get(
+        "/api/agente/version-esperada", headers=auth(maquina_activa.token)
+    )
+    assert respuesta.json()["sha"] == "4decc8c"
+    assert respuesta.json()["origen"] == "panel"
+
+
+@sin_mongo
+async def test_la_version_esperada_pide_token(cliente, base) -> None:
+    assert (await cliente.get("/api/agente/version-esperada")).status_code == 401

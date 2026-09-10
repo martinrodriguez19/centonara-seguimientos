@@ -637,3 +637,32 @@ async def test_numero_repetido_es_un_motivo_conocido() -> None:
     resultado = await correr(invocador)
 
     assert resultado.detalle["chats"][0]["motivo"] == "numero_repetido"
+
+
+async def test_sin_oferta_el_prompt_es_identico_al_de_siempre() -> None:
+    """La perilla nueva, vacía, no cambia ni una letra: preparado y apagado."""
+    sin_parametro = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(sin_parametro)
+    vacia = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(vacia, post_venta_ofrecer="   \n ")
+
+    assert vacia.visto["prompt"] == sin_parametro.visto["prompt"]
+    assert "ofreces" not in vacia.visto["prompt"]
+
+
+async def test_con_oferta_el_post_venta_la_lleva_con_las_palabras_del_dueno() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, post_venta_ofrecer="10% en accesorios\n  hasta fin de mes")
+
+    prompt = invocador.visto["prompt"]
+    assert "POST-VENTA" in prompt
+    assert "- 10% en accesorios hasta fin de mes" in prompt
+    assert "Ni una palabra de la venta ya cerrada" in prompt
+    assert "{{" not in prompt
+
+
+async def test_con_el_post_venta_apagado_la_oferta_no_viaja() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, mensaje_post_compra=False, post_venta_ofrecer="10% en accesorios")
+    assert "10% en accesorios" not in invocador.visto["prompt"]
+    assert "POST-VENTA" not in invocador.visto["prompt"]

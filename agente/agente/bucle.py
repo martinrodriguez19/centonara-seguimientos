@@ -56,6 +56,12 @@ class Estado:
     fallos_seguidos: int = 0
     ultimo_error: str = ""
     diagnostico: Diagnostico = field(default_factory=Diagnostico)
+    #  El bucle paró porque el código en disco cambió (D46): quien lo arrancó
+    #  tiene que volver a levantarlo, no apagarse.
+    reiniciar: bool = False
+    #  Hay un job en curso. Lo lee la marca de vida: el actualizador no da por
+    #  muerto a un agente que está en el medio de una tanda de 35 minutos.
+    ocupado: bool = False
 
     @property
     def color(self) -> str:
@@ -99,6 +105,8 @@ class Bucle:
         espera_maxima: float = ESPERA_MAXIMA,
         dormir: Callable[[float], Awaitable[None]] | None = None,
         modo: str = "",
+        debe_reiniciar: Callable[[], bool] | None = None,
+        al_registrar: Callable[[], None] | None = None,
     ) -> None:
         self._cliente = cliente
         self._version = version
@@ -112,6 +120,13 @@ class Bucle:
         self._espera_pausado = espera_pausado
         self._espera_maxima = espera_maxima
         self._dormir = dormir or asyncio.sleep
+        # D46: se pregunta ENTRE jobs si el código en disco cambió. Si cambió,
+        # el bucle para con `estado.reiniciar` y quien lo arrancó lo vuelve a
+        # levantar con el código nuevo. Nunca en el medio de un job.
+        self._debe_reiniciar = debe_reiniciar
+        # Qué hacer apenas el backend acepta el registro: el agente deja su
+        # marca de vida para que el actualizador sepa que volvió.
+        self._al_registrar = al_registrar
         self.estado = Estado()
         self._parar = asyncio.Event()
 
@@ -147,13 +162,28 @@ class Bucle:
             )
             self.estado.conectado = True
             self.estado.pausado = bool(respuesta.get("pausada"))
-            log.info("agente_registrado", **{k: respuesta.get(k) for k in ("maquina", "pausada")})
+            log.info(
+                "agente_registrado",
+                version=self._version,
+                **{k: respuesta.get(k) for k in ("maquina", "pausada")},
+            )
+            if self._al_registrar is not None:
+                self._al_registrar()
         except NoAutorizado:
             self._token_rechazado()
         except (httpx.HTTPError, OSError) as error:
             log.warning("registro_fallido", error=str(error))
 
     async def _una_vuelta(self) -> None:
+        # Antes de tomar trabajo, no después: un job tomado se termina y se
+        # reporta con el código con el que empezó. Si el actualizador ya dejó
+        # otro commit en disco, este proceso se va y vuelve el nuevo.
+        if self._debe_reiniciar is not None and self._debe_reiniciar():
+            log.info("codigo_actualizado_en_disco", version_vieja=self._version)
+            self.estado.reiniciar = True
+            self.detener()
+            return
+
         try:
             job = await self._cliente.proximo_job()
         except SinTrabajo:
@@ -185,6 +215,7 @@ class Bucle:
         y deja al panel mostrando una corrida que no termina.
         """
         log.info("job_tomado", job=job.id, tipo=job.tipo)
+        self.estado.ocupado = True
         try:
             resultado = await self._ejecutar(job)
         except Exception as error:
@@ -195,6 +226,8 @@ class Bucle:
                 "detalle": {"excepcion": type(error).__name__, "mensaje": str(error)[:500]},
                 "stderr": str(error)[:2000],
             }
+        finally:
+            self.estado.ocupado = False
 
         try:
             await self._cliente.reportar(job.id, **resultado)
@@ -250,8 +283,12 @@ async def latir(
     parar: asyncio.Event | None = None,
     dormir: Callable[[float], Awaitable[None]] | None = None,
     vueltas: int | None = None,
+    al_latir: Callable[[], None] | None = None,
 ) -> int:
     """Manda un latido cada `intervalo`, en paralelo al bucle.
+
+    `al_latir` corre en cada intento, llegue o no el latido: es la marca de
+    vida local (D46), y el proceso está vivo aunque la red no.
 
     Existe para el caso pausado: ahí el agente no pregunta por trabajo, así que
     no hay consulta que valga como latido, y sin esto el panel mostraría en rojo
@@ -271,6 +308,8 @@ async def latir(
 
     while not fin.is_set():
         intentos += 1
+        if al_latir is not None:
+            al_latir()
         try:
             await cliente.latido(estado.diagnostico.a_dict())
             mandados += 1

@@ -74,10 +74,14 @@ Con pocas máquinas de una misma oficina, el camino más corto es mejor:
 └── logs/
 ```
 
-Actualizar es `git pull && launchctl kickstart -k gui/$(id -u)/com.centonara.agente`, y eso se
-puede hacer como un job `ACTUALIZAR` que el propio agente ejecuta cuando el panel lo pide.
+Actualizar lo hace el **actualizador** (D45, D46): `agente/instalador/actualizar.py`, un solo
+archivo de biblioteca estándar que corre desde `~/.centonara/bin/` al iniciar sesión y cada hora,
+pregunta al backend qué commit fija el panel, lo baja de GitHub, respalda, sincroniza, hace
+`uv sync` y escribe `agente/VERSION`. El agente mira ese archivo entre job y job y se reinicia
+solo cuando cambia (`agente/reinicio.py`); si no vuelve con la versión nueva, el actualizador
+restaura la anterior. La versión que corre cada máquina se ve en su tarjeta del panel.
 
-Se revisa el día que haya suficientes máquinas como para que eso moleste.
+Se revisa el día que haya suficientes máquinas como para que un binario firmado valga la pena.
 
 ### Permisos de macOS que hay que conceder una vez
 

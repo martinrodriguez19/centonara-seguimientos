@@ -56,6 +56,23 @@ def entorno_limpio(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(variable, raising=False)
 
 
+# El sha que "está en la rama" durante los tests. Ningún test le pega a GitHub:
+# el panel y las alertas resuelven la versión esperada (D45) y sin esto cada
+# `GET /estado` sería una llamada de red, lenta y con cupo.
+SHA_DE_LA_RAMA = "abc1234def5678"
+
+
+@pytest.fixture(autouse=True)
+def sin_github(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core import versiones
+
+    async def _resuelto(repo: str, rama: str) -> str:
+        return SHA_DE_LA_RAMA
+
+    monkeypatch.setattr(versiones, "_resolver_en_github", _resuelto)
+    versiones.olvidar_cache()
+
+
 @pytest.fixture
 def configurar() -> Iterator[Callable[..., Configuracion]]:
     """Fija la configuración de la aplicación para un test.

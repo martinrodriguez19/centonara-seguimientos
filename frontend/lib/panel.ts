@@ -20,6 +20,10 @@ export type Maquina = {
   chequeos_fallando: string[];
   diagnostico: Record<string, string>;
   version_agente: string | null;
+  /** El commit que deberían correr todas (D45), y si ésta lo corre. `null` en
+   * `actualizada` = no hay con qué comparar (nunca reportó un sha). */
+  version_esperada: string | null;
+  actualizada: boolean | null;
   /** Lo que reportó el agente al arrancar: "operativo", o "simulado" si
    * alguien lo corrió con el flag de desarrollo `--simulado` (D32). En
    * simulado todos los envíos fallan con CHAT_NO_ABRE: verlo acá evita
@@ -48,7 +52,7 @@ export type Corrida = {
   /** Las tandas del pase único (D39, D44), con el desglose de por qué se salteó cada chat.
    * En una línea a propósito: el test de contrato lee estos tipos plano. */
   // prettier-ignore
-  tandas: { maquina: string; pedidos: number; dejados: number; salteados: number; motivos?: Record<string, number>; vetados?: number; corte?: string | null; fin: string | null }[];
+  tandas: { maquina: string; pedidos: number; dejados: number; salteados: number; motivos?: Record<string, number>; vetados?: number; corte?: string | null; fin: string | null; error?: { codigo: string | null; motivo: string | null } | null }[];
 };
 
 export type Estado = {
@@ -120,6 +124,8 @@ export type Configuracion = {
    * de post-venta ("¿te faltó algo?"); con `false`, nada. Nunca un seguimiento.
    */
   mensaje_post_compra: boolean;
+  /** Qué ofrecer en el post-venta, en palabras del dueño. Vacío = nada cambia. */
+  post_venta_ofrecer: string;
   /** Las frases de oficina que el borrador no puede usar (D40). Editables por API. */
   frases_prohibidas: string[];
   /**
@@ -130,6 +136,9 @@ export type Configuracion = {
   /** Cuánto dura un veto (D42), por motivo. Con vencimiento, no perpetuo. */
   dias_veto_disconforme: number;
   dias_veto_ya_compro: number;
+  /** Qué commit del agente corren las máquinas (D45): un sha, o vacío para
+   * "lo último de la rama". Es el rollback desde el panel. */
+  version_agente_esperada: string;
   /** Cuánto recuerda cada máquina qué chats ya abrió (D43), para no reabrirlos. */
   dias_memoria_visitados: number;
   /**
@@ -185,6 +194,8 @@ export type Mensaje = {
   /** Por qué se apartó, o qué guardrail lo rechazó. Nunca vacío si no está limpio. */
   senales: string[];
   editado_por: string | null;
+  /** Escrito sobre una venta cerrada (D41): pregunta cómo le fue, no vende. */
+  post_venta: boolean;
 };
 
 export type Revision = {

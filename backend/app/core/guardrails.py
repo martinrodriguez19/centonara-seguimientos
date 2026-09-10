@@ -91,13 +91,17 @@ class GuardrailViolado(Exception):
 #
 # `\{[^}]*\}` cubre `{nombre}` y también `{{nombre}}`, porque el segundo
 # contiene al primero.
+#
+# ⚠️ Sensible a mayúsculas, a propósito. `XXX`, `TODO` y `TBD` son convenciones
+# que se escriben en mayúscula; con `re.IGNORECASE`, `\bTODO\b` matcheaba la
+# palabra castellana "todo" y marcaba como inválido cada post-venta que
+# preguntaba "¿quedó todo bien?". Las llaves y los corchetes no tienen caso.
 PLACEHOLDERS = re.compile(
     r"\{[^}]*\}"  # {nombre}, {{nombre}}
     r"|\[[^\]]*\]"  # [producto]
     r"|\bXXX+\b"  # XXX
     r"|\bTODO\b"  # TODO
-    r"|\bTBD\b",
-    re.IGNORECASE,
+    r"|\bTBD\b"
 )
 
 

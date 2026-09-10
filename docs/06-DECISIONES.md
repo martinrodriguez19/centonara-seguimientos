@@ -1015,6 +1015,98 @@ tanda o el techo, no seguir subiendo el tiempo.
 
 ---
 
+### D45 — La versión del agente la fija el panel *(10/09/2026)*
+
+**Contexto.** El 09/09, de tres máquinas en una corrida, dos fallaron cada tanda y la tercera
+anduvo; las tres reportaban `version: 0.1.0` porque `__version__` era una constante escrita a
+mano. No había forma de saber cuál corría qué, y actualizar era correr el instalador a mano
+en cada casa — con un `git pull --ff-only || true` que fallaba en silencio.
+
+**Decisión.** `agente/VERSION` (que escribe el actualizador, nunca el repo) dice qué commit
+corre cada máquina, y viaja en el registro. El backend guarda `version_agente_esperada`:
+con un sha, todas las máquinas convergen a ése; vacía, "lo último de `main`", que el backend
+resuelve contra GitHub **una vez cada cinco minutos para todas** — las máquinas nunca hablan
+con GitHub para decidir. `GET /api/agente/version-esperada` es lo único que el actualizador
+pregunta. Si no hay respuesta, no se actualiza: seguir con lo instalado es mejor que saltar
+a algo que nadie fijó.
+
+**Consecuencias.** El rollback es un campo del panel. La tarjeta de cada máquina dice
+`al día` / `atrasada` / `sin actualizador`, y dos alertas nuevas: `maquina_desactualizada`
+y `maquina_falla_siempre` (tres jobs seguidos fallidos, con el motivo que el agente ya
+mandaba y nadie leía). Las tandas fallidas muestran su motivo en la corrida.
+
+**Qué la revertiría.** Que fijar versiones desde el panel se use para dejar máquinas atrás
+"por las dudas" y el parque se fragmente. Ahí la respuesta es sacar la perilla y que sea
+siempre `main`, no agregar más perillas.
+
+---
+
+### D46 — El actualizador es un proceso aparte; el agente se reinicia solo *(10/09/2026)*
+
+**Contexto.** Un agente que se actualiza a sí mismo se lleva puesto, con una versión que no
+arranca, al que tenía que arreglarlo. Y un script que reemplaza el árbol donde vive no
+puede pisarse a sí mismo mientras corre.
+
+**Decisión.** `agente/instalador/actualizar.py`: un solo archivo, sólo biblioteca estándar,
+igual en Mac y en Windows, que corre desde una **copia** en `~/.centonara/bin/` al iniciar
+sesión y cada hora (LaunchAgent `com.centonara.actualizador`; tarea programada
+`Centonara Actualizador`). Baja el commit exacto de GitHub, respalda, sincroniza borrando lo
+que arriba ya no existe (el tarball encima del árbol dejaba archivos fantasma para siempre),
+`uv sync`, una prueba de humo, y escribe `VERSION`. **El actualizador no reinicia al
+agente**: el agente mira `VERSION` entre un job y el siguiente, y si cambió se reemplaza a sí
+mismo (`execv` en POSIX; en Windows lanza una copia desacoplada con la salida en el log y se
+va — sirve en una PC instalada a mano y con la tarea programada; sólo si no puede, sale con
+código 75 para que la tarea lo reintente). Nunca en el medio de un job. El agente deja una marca de vida en
+`~/.centonara/estado/vivo.json` en cada latido —con la versión y si está ocupado—; el
+actualizador la mira para saber si el agente estaba vivo, esperarlo si está en una tanda, y
+confirmar que volvió con la versión nueva. **Si no vuelve, restaura el árbol anterior.**
+
+**Consecuencias.** `.env`, `.venv`, `.git`, `node_modules` y el navegador vinculado no se
+tocan nunca. Se prueba entero sin red, sin `uv` y sin launchd (`tests/test_actualizador.py`).
+El instalador deja de ser el actualizador: sigue sirviendo para instalar de cero y termina
+llamando al actualizador.
+
+**Qué la revertiría.** Que aparezcan máquinas suficientes como para que un binario firmado
+y notarizado valga la pena. Con pocas, esto es más corto y no pasa por Gatekeeper.
+
+---
+
+### D47 — El `deviceId` se resuelve en caliente *(10/09/2026)*
+
+**Contexto.** El `deviceId` de la extensión era un requisito de instalación: si nadie la
+había usado todavía, el `.env` quedaba sin él y había que volver a correr el instalador
+después de abrirla a mano. Dos Macs fallaron cada tanda del 09/09 por eso, con el dato ya
+escrito en el disco por la extensión.
+
+**Decisión.** `perfiles.resolver_device_id`: el `.env`, lo memorizado en
+`~/.centonara/estado/device_id`, o el perfil de Chrome ahora mismo — en ese orden, y lo que
+se encuentra se memoriza. Se llama al arrancar (para el diagnóstico) y **cuando llega cada
+job** (`ejecutor` recibe una función, no un string). Instalar y actualizar ya no dependen de
+que alguien haya abierto la extensión.
+
+**Consecuencias.** Una máquina instalada sin `deviceId` se pone en verde sola la primera vez
+que alguien usa la extensión. El chequeo del panel y el job usan el mismo resolvedor y no
+pueden discrepar.
+
+---
+
+### D48 — Windows vuelve al parque, y convive con macOS *(10/09/2026)*
+
+**Contexto.** D16 dijo "el parque es macOS". Hay una PC con Windows en producción, instalada
+a mano, que fue la única de las tres que funcionó el 09/09.
+
+**Decisión.** Windows es una plataforma soportada. Lo específico del sistema operativo vive
+en **un archivo por plataforma** (`instalar.sh` / `instalar.ps1`, LaunchAgents / tareas
+programadas), no en `if`s repartidos; el agente en Python ya era multiplataforma. La máquina
+que funciona **no se reinstala**: `instalar.ps1 -SoloActualizador` le agrega únicamente la
+actualización automática.
+
+**Consecuencias.** `docs/SOP-instalar-windows.md`. Lo que nadie verificó en Windows y queda
+anotado: el circuito de envío (Playwright con carpeta dedicada) y el permiso de sitio; la PC
+que está andando usa el circuito que no los necesita.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

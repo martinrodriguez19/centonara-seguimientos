@@ -833,6 +833,7 @@ async def test_cada_tanda_deja_su_renglon_en_la_corrida(base) -> None:
             "vetados": 0,
             "corte": "otro",
             "fin": "fin_de_ventana",
+            "error": None,
         }
     ]
 
@@ -1366,3 +1367,47 @@ async def test_al_truncar_ya_vistos_se_pierde_la_memoria_y_no_la_corrida(base) -
     assert all(f"Corrida {i:02d}" in payload["ya_vistos"] for i in range(20))
     assert "Memoria 000" in payload["ya_vistos"], "la más nueva de la memoria queda"
     assert "Memoria 109" not in payload["ya_vistos"], "la más vieja se cae primero"
+
+
+@sin_mongo
+async def test_la_oferta_post_venta_viaja_recortada_y_vacia_por_defecto(base) -> None:
+    """Preparado y apagado: de fábrica no viaja nada, y con texto viaja limpio."""
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    assert payload["post_venta_ofrecer"] == ""
+    validar_payload("BORRADORES", payload)
+
+    await configuracion.actualizar(base, {"post_venta_ofrecer": "  10% en accesorios  "})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    assert payload["post_venta_ofrecer"] == "10% en accesorios"
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_un_borrador_sobre_una_venta_cerrada_queda_marcado_como_post_venta(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+    post_venta = visitado(
+        motivo="ya_compro",
+        contacto_nombre="Ada",
+        contacto_telefono="+5491155667788",
+        texto_borrador="Hola Ada, vi que al final lo compraste. Quedó todo bien?",
+    )
+
+    await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={"chats": [visitado(), post_venta]},
+        ahora=AHORA,
+    )
+
+    por_nombre = {
+        m["contacto_nombre"]: m async for m in base["mensajes"].find({"corrida_id": corrida_id})
+    }
+    assert por_nombre["Ada"]["post_venta"] is True
+    assert all(m["post_venta"] is False for n, m in por_nombre.items() if n != "Ada")

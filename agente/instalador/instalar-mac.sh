@@ -10,7 +10,9 @@
 #   1. Verifica que estén las herramientas
 #   2. Crea el entorno del agente
 #   3. Escribe el LaunchAgent del agente, con rutas ABSOLUTAS
-#   4. Escribe el LaunchAgent de Chrome, con el puerto de depuración
+#   4. Escribe el LaunchAgent de Chrome, y el del actualizador (D46): una
+#      copia de actualizar.py en ~/.centonara/bin que corre al iniciar sesión
+#      y cada hora, y pone el agente en el commit que fija el panel
 #   5. Corre el diagnóstico y dice qué falta
 #
 # Qué NO hace, a propósito:
@@ -34,6 +36,11 @@ PLIST="$HOME/Library/LaunchAgents/com.centonara.agente.plist"
 ETIQUETA="com.centonara.agente"
 PLIST_CHROME="$HOME/Library/LaunchAgents/com.centonara.chrome.plist"
 ETIQUETA_CHROME="com.centonara.chrome"
+# El actualizador (D46) vive FUERA del repositorio: reemplaza el árbol entero,
+# y un script no puede pisarse a sí mismo mientras corre.
+BIN="$HOME/.centonara/bin"
+PLIST_ACTUALIZADOR="$HOME/Library/LaunchAgents/com.centonara.actualizador.plist"
+ETIQUETA_ACTUALIZADOR="com.centonara.actualizador"
 CHROME_APP="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 CHROME_PERFIL="$HOME/Library/Application Support/Google/Chrome"
 # El perfil DENTRO de User Data. Se puede pasar por variable de entorno:
@@ -207,6 +214,59 @@ echo "      $PLIST_CHROME"
 echo "      perfil: ${CHROME_PERFIL_DIR}  ·  sin puerto, a propósito (D24)"
 
 # ---------------------------------------------------------------------------
+# 4b. El actualizador, al iniciar sesión y cada hora (D46)
+# ---------------------------------------------------------------------------
+#
+# Corre la COPIA de ~/.centonara/bin, no la del repositorio: el actualizador
+# reemplaza el árbol entero y no puede pisarse a sí mismo mientras corre. La
+# copia la renueva él, después de cada actualización que salió bien.
+#
+# Pregunta al backend qué commit toca, y si es otro lo baja, sincroniza, hace
+# `uv sync`, escribe agente/VERSION y espera a que el agente vuelva con esa
+# versión. Si no vuelve, restaura el árbol anterior. El agente se reinicia
+# solo cuando ve la VERSION nueva (agente/reinicio.py): acá no hay kickstart.
+
+echo "      actualizador:"
+mkdir -p "$BIN"
+cp "$AGENTE/instalador/actualizar.py" "$BIN/actualizar.py"
+
+cat > "$PLIST_ACTUALIZADOR" <<ACTUALIZADOR_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${ETIQUETA_ACTUALIZADOR}</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${PYTHON}</string>
+    <string>${BIN}/actualizar.py</string>
+    <string>--repo</string>
+    <string>${REPO}</string>
+  </array>
+
+  <!-- Al iniciar sesión, y después cada hora. Sin KeepAlive: termina solo. -->
+  <key>RunAtLoad</key>      <true/>
+  <key>StartInterval</key>  <integer>3600</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StandardOutPath</key>  <string>${LOGS}/actualizador.out</string>
+  <key>StandardErrorPath</key><string>${LOGS}/actualizador.err</string>
+</dict>
+</plist>
+ACTUALIZADOR_EOF
+
+plutil -lint "$PLIST_ACTUALIZADOR" >/dev/null || { echo "MAL: el plist del actualizador quedó inválido" >&2; exit 1; }
+echo "        $PLIST_ACTUALIZADOR"
+echo "        copia en $BIN/actualizar.py  ·  log en ${LOGS}/actualizador.log"
+
+# ---------------------------------------------------------------------------
 # 5. Qué falta
 # ---------------------------------------------------------------------------
 
@@ -292,10 +352,12 @@ Instalado. Lo que sigue NO lo puede hacer este script:
 
        uv run --directory agente python -m agente.main --sonda
 
-  5. Arrancar las dos cosas:
+  5. Arrancar las tres cosas (Chrome, el agente, y el actualizador que los
+     mantiene al día solo):
 
        launchctl bootstrap gui/\$(id -u) ${PLIST_CHROME}
        launchctl bootstrap gui/\$(id -u) ${PLIST}
+       launchctl bootstrap gui/\$(id -u) ${PLIST_ACTUALIZADOR}
 
   6. Preparar el navegador del motor de envio (una vez, con el telefono del
      vendedor a mano):
@@ -307,6 +369,7 @@ Instalado. Lo que sigue NO lo puede hacer este script:
 
        launchctl bootout gui/\$(id -u)/${ETIQUETA}
        launchctl bootout gui/\$(id -u)/${ETIQUETA_CHROME}
+       launchctl bootout gui/\$(id -u)/${ETIQUETA_ACTUALIZADOR}
 
   Los logs quedan en ${LOGS}/
 

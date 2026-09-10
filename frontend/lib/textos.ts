@@ -153,6 +153,13 @@ export const textos = {
     ultimoLatido: "Último latido",
     nunca: "nunca",
     version: "Versión",
+    // El commit que corre, contra el que fija el panel (D45). "Sin instalar"
+    // es una máquina que reporta 0.1.0: nunca pasó por el actualizador, y
+    // hasta que pase no se puede saber si está al día.
+    versionAlDia: "al día",
+    versionAtrasada: "atrasada",
+    versionSinActualizador: "sin actualizador",
+    versionEsperada: (sha: string) => `el panel fija ${sha.slice(0, 7)}`,
     modo: "Modo",
     topeDiario: "Tope de mensajes por día",
     topeDiarioAyuda: "Lo que protege la línea de este vendedor en particular.",
@@ -203,6 +210,8 @@ export const textos = {
     liberar: "Liberar",
     vetado: "Frenado",
     enElChat: "En el chat",
+    // Escrito sobre una venta cerrada (D41): pregunta cómo le fue, no vende.
+    postVenta: "Post-venta",
     escribiendose: "Escribiéndose…",
 
     // El botón dice el número: "enviar" a secas no deja claro cuántos salen.
@@ -417,6 +426,9 @@ export const textos = {
       tanda_fallida: "La tanda falló",
       tanda_viva_o_sin_destinos: "Ya había otra tanda en curso",
     } as Record<string, string>,
+    // Por qué falló, en palabras del agente. Antes sólo se podía leer en Mongo.
+    porQueFallo: (codigo: string | null, motivo: string | null) =>
+      [codigo, motivo].filter(Boolean).join(": "),
     estado: "Estado",
     cuantos: "Cuántos",
     contacto: "Contacto",

@@ -209,6 +209,23 @@ POST_VENTA_ACTIVO = """                        Dos opciones, y nada mas:
 POST_VENTA_APAGADO = """                        NO dejes borrador. Anota el chat con motivo
                         "ya_compro" y segui con el proximo."""
 
+# Con algo para ofrecer (`post_venta_ofrecer`, en palabras del dueño): el
+# post-venta pregunta cómo le fue Y ofrece eso, en la misma línea. Sigue sin
+# preguntar por la venta cerrada. Con la perilla vacía no se usa este bloque y
+# el prompt es idéntico al de siempre.
+POST_VENTA_CON_OFERTA = """                        Dos opciones, y nada mas:
+                          - si el chat es claro, dejas un mensaje de
+                            POST-VENTA: preguntas como le fue con lo que
+                            compro y, en la misma linea, le ofreces esto que
+                            dejo el dueño (con sus palabras, sin inventar
+                            nada que no este ahi):
+{{POST_VENTA_OFERTA}}
+                            Ni una palabra de la venta ya cerrada: no le
+                            preguntes si le llego, si quiere mas de eso ni
+                            si quiere avanzar con eso.
+                          - si no esta claro, no dejas nada.
+                        En los dos casos anotas motivo "ya_compro"."""
+
 
 @dataclass(frozen=True)
 class Resultado:
@@ -253,6 +270,7 @@ async def dejar_borradores(
     frases_prohibidas: list[str] | None = None,
     palabras_veto: list[str] | None = None,
     mensaje_post_compra: bool = True,
+    post_venta_ofrecer: str = "",
     invocador=invocar,
 ) -> Resultado:
     """Una tanda del pase único: hasta `n_chats` borradores dejados.
@@ -312,6 +330,19 @@ async def dejar_borradores(
     plantilla = (carpeta / "prompts" / "prompt-borradores.txt").read_text(encoding="utf-8")
     plantilla = plantilla.replace("{{COMO_RECORRER}}", recorrido)
 
+    #  La venta cerrada (D41): post-venta a secas, post-venta con lo que el
+    #  dueño quiere ofrecer, o nada. El bloque con oferta se arma acá para que
+    #  el texto del dueño entre con la sangría del prompt.
+    oferta = " ".join(post_venta_ofrecer.split())[:500]
+    if not mensaje_post_compra:
+        post_venta = POST_VENTA_APAGADO
+    elif oferta:
+        post_venta = POST_VENTA_CON_OFERTA.replace(
+            "{{POST_VENTA_OFERTA}}", _lista([oferta], sangria=30)
+        )
+    else:
+        post_venta = POST_VENTA_ACTIVO
+
     prompt = _sustituir(
         plantilla,
         {
@@ -335,7 +366,7 @@ async def dejar_borradores(
             "LARGO_MAXIMO": str(max(50, int(largo_maximo))),
             "FRASES_PROHIBIDAS": _lista(frases_prohibidas),
             "PALABRAS_VETO": _lista(palabras_veto, sangria=24),
-            "POST_VENTA": POST_VENTA_ACTIVO if mensaje_post_compra else POST_VENTA_APAGADO,
+            "POST_VENTA": post_venta,
         },
     )
 

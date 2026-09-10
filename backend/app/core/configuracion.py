@@ -14,6 +14,7 @@ equivocada.
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -150,7 +151,15 @@ POR_DEFECTO: dict[str, Any] = {
     # cliente que reclamó en marzo puede volver a interesar el año que viene, y
     # un tope sin fecha es una lista negra que nadie decidió armar.
     "dias_veto_disconforme": 365,
-    "dias_veto_ya_compro": 180,
+    # 45 y no 180: una compra cerrada no es un reclamo. Es una espera —que no
+    # se le pregunte por ESA venta ni se lo apure— y pasada, el contacto vuelve
+    # al circuito normal. Medio año de silencio por haber comprado era lo que
+    # el dueño llamó "excesivo".
+    "dias_veto_ya_compro": 45,
+    # Qué ofrecerle a quien ya compró, en palabras del dueño. Vacío de fábrica
+    # y vacío no cambia nada: el post-venta sigue siendo "¿te faltó algo?".
+    # Con texto, el borrador pregunta cómo le fue Y ofrece eso, en una línea.
+    "post_venta_ofrecer": "",
     # Cuánto recuerda cada máquina qué chats ya abrió (D43): un chat visitado y
     # salteado —campo ocupado, sin tema— no deja mensaje, y sin esto la corrida
     # siguiente lo vuelve a abrir y a pagar. Corto a propósito: pasado un mes,
@@ -175,6 +184,11 @@ POR_DEFECTO: dict[str, Any] = {
     # 30 y no 25: que no recorte los 20 del día cuando una tanda rinde bien.
     # Sigue siendo el paraguas de una corrida, no el volumen.
     "tope_por_corrida": 30,
+    # Qué commit del agente tienen que correr las máquinas (D45). Vacío = lo
+    # último de la rama (`app.config.rama_agente`), resuelto por el backend con
+    # caché. Con un sha, todas las máquinas convergen a ése: es el rollback
+    # —y el "dejá esa versión hasta que la pruebe"— sin tocar ninguna Mac.
+    "version_agente_esperada": "",
     "largo_maximo": 600,
     "dias_anti_duplicado": 7,
     "ventana": {"inicio": "09:00", "fin": "19:00", "dias": [1, 2, 3, 4, 5]},
@@ -208,6 +222,12 @@ async def obtener(base) -> dict[str, Any]:
 
     Idempotente: `$setOnInsert` sólo escribe cuando el documento no estaba, así
     que llamarla no pisa lo que el cliente haya cambiado desde el panel.
+
+    Lo que devuelve trae **todos** los campos de `POR_DEFECTO`, también los que
+    el documento vivo todavía no tiene: `$setOnInsert` no agrega un campo nuevo
+    a una base que ya existía, y sin esto cada lector tenía que repetir el valor
+    por defecto en su `config.get(...)` — y el panel veía la configuración con
+    huecos hasta que alguien guardaba algo.
     """
     documento = await base["configuracion"].find_one_and_update(
         {"_id": ID},
@@ -223,7 +243,7 @@ async def obtener(base) -> dict[str, Any]:
         for campo in huerfanos:
             del documento[campo]
         log.info("configuracion_campos_retirados", campos=huerfanos)
-    return documento
+    return {**copy.deepcopy(POR_DEFECTO), **documento}
 
 
 async def actualizar(base, cambios: dict[str, Any]) -> dict[str, Any]:

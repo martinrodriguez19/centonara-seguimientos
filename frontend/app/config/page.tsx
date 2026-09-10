@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { AreaDeTexto, Campo } from "@/components/ui/campo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Aviso } from "@/components/ui/estado";
 import {
@@ -301,6 +302,18 @@ export default function Config() {
                   No escribirle
                 </Button>
               </div>
+              {/* Qué ofrecerle a quien ya compró. Vacío no cambia nada: el
+                  post-venta sigue siendo «¿te faltó algo?». Con texto, pregunta
+                  cómo le fue y ofrece esto en la misma línea. */}
+              {(datos.mensaje_post_compra ?? true) && (
+                <PostVentaOfrecer
+                  valor={datos.post_venta_ofrecer ?? ""}
+                  guardando={guardar.isPending}
+                  onGuardar={(post_venta_ofrecer) =>
+                    guardar.mutate({ post_venta_ofrecer })
+                  }
+                />
+              )}
             </div>
           )}
         </CardContent>
@@ -380,9 +393,146 @@ export default function Config() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Versión del agente</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Las computadoras de los vendedores se actualizan solas, al iniciar
+            sesión y cada hora, a la versión que se fije acá. Vacío es «lo
+            último que se publicó». Con un commit, todas van a ése: es la forma
+            de volver atrás sin tocar ninguna computadora.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <VersionDelAgente
+            valor={datos.version_agente_esperada ?? ""}
+            guardando={guardar.isPending}
+            error={
+              guardar.isError ? (guardar.error as Error).message : undefined
+            }
+            onGuardar={(version_agente_esperada) =>
+              guardar.mutate({ version_agente_esperada })
+            }
+          />
+        </CardContent>
+      </Card>
+
       {/* Última de la pantalla, y a propósito: es la que borra. */}
       <EmpezarDeCero />
     </main>
+  );
+}
+
+/**
+ * Qué ofrecerle a quien ya compró (D41, preparado y apagado).
+ *
+ * Vacío de fábrica, y vacío no cambia nada en el prompt. Se guarda al
+ * confirmar: es texto del dueño que viaja a cada tanda, no algo que conviene
+ * mandar a medio escribir.
+ */
+function PostVentaOfrecer({
+  valor,
+  guardando,
+  onGuardar,
+}: {
+  valor: string;
+  guardando: boolean;
+  onGuardar: (texto: string) => void;
+}) {
+  const [borrador, setBorrador] = useState(valor);
+  const LIMITE = 500;
+  return (
+    <div className="space-y-2 pt-2">
+      <AreaDeTexto
+        etiqueta="Y ofrecerle algo (opcional)"
+        ayuda="Vacío: sólo pregunta cómo le fue. Con texto, lo ofrece en la misma línea, con estas palabras. Nunca le vuelve a hablar de la venta que ya cerró."
+        rows={3}
+        maxLength={LIMITE}
+        placeholder="Ejemplo: tenemos 10% en accesorios para lo que compró, hasta fin de mes."
+        value={borrador}
+        onChange={(evento) => setBorrador(evento.target.value)}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={guardando || borrador === valor}
+          onClick={() => onGuardar(borrador.trim())}
+        >
+          {borrador.trim() ? "Guardar la oferta" : "Guardar sin oferta"}
+        </Button>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {borrador.length} / {LIMITE}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El commit al que convergen las máquinas (D45).
+ *
+ * Se guarda al confirmar y no por tecla, como los números: un sha a medio
+ * escribir no es un sha, y el backend lo rechaza — con razón, porque todas las
+ * máquinas se lo pedirían a GitHub y fallarían juntas.
+ */
+function VersionDelAgente({
+  valor,
+  guardando,
+  error,
+  onGuardar,
+}: {
+  valor: string;
+  guardando: boolean;
+  error?: string;
+  onGuardar: (sha: string) => void;
+}) {
+  const [borrador, setBorrador] = useState(valor);
+  const limpio = borrador.trim().toLowerCase();
+  const parece = limpio === "" || /^[0-9a-f]{7,40}$/.test(limpio);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <Campo
+          etiqueta="Commit fijado"
+          ayuda="Vacío: lo último publicado. Si no, el sha del commit (7 a 40 dígitos)."
+          placeholder="ej. 7912e13"
+          value={borrador}
+          spellCheck={false}
+          className="w-64 font-mono"
+          onChange={(evento) => setBorrador(evento.target.value)}
+          error={!parece ? "Eso no es un sha de git." : error}
+        />
+        <Button
+          size="sm"
+          disabled={guardando || !parece || limpio === valor}
+          onClick={() => onGuardar(limpio)}
+        >
+          Fijar versión
+        </Button>
+        {valor && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={guardando}
+            onClick={() => {
+              setBorrador("");
+              onGuardar("");
+            }}
+          >
+            Volver a lo último
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Hoy:{" "}
+        <span className="font-mono">
+          {valor ? valor.slice(0, 7) : "lo último publicado"}
+        </span>
+        . Cada máquina muestra en su tarjeta qué commit corre y si está al día.
+      </p>
+    </div>
   );
 }
 

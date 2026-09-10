@@ -302,3 +302,140 @@ async def test_toda_alerta_dice_que_hacer(base) -> None:
 def test_solo_hay_dos_niveles() -> None:
     """Nada de "informativo": una alerta que no pide nada es un número."""
     assert len(alertas.Nivel) == 2
+
+
+# ---------------------------------------------------------------------------
+# Máquinas que fallan siempre, y máquinas desactualizadas (D45)
+# ---------------------------------------------------------------------------
+
+
+def job_terminado(estado: cola.EstadoJob, *, codigo: str | None, hace_min: int, motivo: str = ""):
+    return {
+        "maquina": "mac-rocio",
+        "tipo": str(cola.Tipo.BORRADORES),
+        "estado": str(estado),
+        "codigo": codigo,
+        "detalle": {"motivo": motivo} if motivo else {},
+        "terminado_en": AHORA - timedelta(minutes=hace_min),
+    }
+
+
+@sin_mongo
+async def test_tres_fallidos_seguidos_son_urgentes_y_traen_el_motivo(base) -> None:
+    """El 09/09: dos máquinas fallaron toda la tarde y el panel no dijo nada."""
+    await base["jobs"].insert_many(
+        [
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="ERROR_INESPERADO", hace_min=30),
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="ERROR_INESPERADO", hace_min=20),
+            job_terminado(
+                cola.EstadoJob.FALLIDO,
+                codigo="ERROR_INESPERADO",
+                hace_min=10,
+                motivo="no se pudo abrir el Chrome de esta máquina",
+            ),
+        ]
+    )
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+    alerta = next(a for a in encontradas if a.codigo == "maquina_falla_siempre")
+    assert alerta.nivel is alertas.Nivel.URGENTE
+    assert "ERROR_INESPERADO" in alerta.detalle
+    assert "Chrome" in alerta.detalle
+    assert alerta.accion
+
+
+@sin_mongo
+async def test_un_exito_en_el_medio_no_es_fallar_siempre(base) -> None:
+    await base["jobs"].insert_many(
+        [
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="ERROR_INESPERADO", hace_min=30),
+            job_terminado(cola.EstadoJob.LISTO, codigo=None, hace_min=20),
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="ERROR_INESPERADO", hace_min=10),
+        ]
+    )
+    assert "maquina_falla_siempre" not in codigos(await alertas.revisar(base, ahora=AHORA))
+
+
+@sin_mongo
+async def test_dos_fallidos_todavia_no_alcanzan(base) -> None:
+    await base["jobs"].insert_many(
+        [
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="ERROR_INESPERADO", hace_min=20),
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="ERROR_INESPERADO", hace_min=10),
+        ]
+    )
+    assert "maquina_falla_siempre" not in codigos(await alertas.revisar(base, ahora=AHORA))
+
+
+@sin_mongo
+async def test_los_cancelados_a_mano_no_cuentan_como_falla(base) -> None:
+    await base["jobs"].insert_many(
+        [
+            job_terminado(cola.EstadoJob.FALLIDO, codigo="CANCELADO", hace_min=m)
+            for m in (30, 20, 10)
+        ]
+    )
+    assert "maquina_falla_siempre" not in codigos(await alertas.revisar(base, ahora=AHORA))
+
+
+async def version_reportada(base, version: str, *, hace_horas: float) -> None:
+    await base["vendedores"].update_one(
+        {"maquina": "mac-rocio"},
+        {
+            "$set": {
+                "version_agente": version,
+                "version_registrada_en": AHORA - timedelta(hours=hace_horas),
+            }
+        },
+    )
+
+
+@sin_mongo
+async def test_una_maquina_con_otro_commit_hace_horas_avisa(base) -> None:
+    await version_reportada(base, "4decc8c 2026-09-09", hace_horas=3)
+
+    encontradas = await alertas.revisar(base, ahora=AHORA, version_esperada="7912e13c5d3f")
+    alerta = next(a for a in encontradas if a.codigo == "maquina_desactualizada")
+    assert alerta.nivel is alertas.Nivel.AVISO
+    assert "4decc8c" in alerta.detalle
+    assert "7912e13" in alerta.detalle
+
+
+@sin_mongo
+async def test_recien_arrancada_todavia_no_es_desactualizada(base) -> None:
+    """El actualizador corre cada hora: hace media hora puede estar bajándola."""
+    await version_reportada(base, "4decc8c 2026-09-09", hace_horas=0.5)
+    encontradas = await alertas.revisar(base, ahora=AHORA, version_esperada="7912e13c5d3f")
+    assert "maquina_desactualizada" not in codigos(encontradas)
+
+
+@sin_mongo
+async def test_la_que_corre_lo_esperado_no_avisa(base) -> None:
+    await version_reportada(base, "7912e13 2026-09-09", hace_horas=3)
+    encontradas = await alertas.revisar(base, ahora=AHORA, version_esperada="7912e13c5d3f")
+    assert "maquina_desactualizada" not in codigos(encontradas)
+
+
+@sin_mongo
+async def test_sin_sha_reportado_no_se_afirma_nada(base) -> None:
+    """`0.1.0` no está atrasada: nunca se instaló con el actualizador. Eso lo dice la tarjeta."""
+    await version_reportada(base, "0.1.0", hace_horas=3)
+    encontradas = await alertas.revisar(base, ahora=AHORA, version_esperada="7912e13c5d3f")
+    assert "maquina_desactualizada" not in codigos(encontradas)
+
+
+@sin_mongo
+async def test_sin_version_esperada_no_hay_con_que_comparar(base) -> None:
+    await version_reportada(base, "4decc8c 2026-09-09", hace_horas=3)
+    assert "maquina_desactualizada" not in codigos(await alertas.revisar(base, ahora=AHORA))
+
+
+@sin_mongo
+async def test_una_maquina_apagada_no_es_desactualizada(base) -> None:
+    """Se va a poner al día cuando la prendan; avisar ahora es ruido."""
+    await version_reportada(base, "4decc8c 2026-09-09", hace_horas=3)
+    await base["vendedores"].update_one(
+        {"maquina": "mac-rocio"}, {"$set": {"ultimo_latido": AHORA - timedelta(hours=1)}}
+    )
+    encontradas = await alertas.revisar(base, ahora=AHORA, version_esperada="7912e13c5d3f")
+    assert "maquina_desactualizada" not in codigos(encontradas)
