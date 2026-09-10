@@ -45,3 +45,5 @@ agente/VERSION
 docs/*.pdf
 # Lo mismo para el Word de los comandos, que sale del mismo .md.
 docs/*.docx
+# Y la página web de los comandos, que sale del mismo .md y se publica aparte.
+docs/*.html
