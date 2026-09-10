@@ -16,6 +16,7 @@ La salida de este módulo es lo que va al `.env`, ya resuelto.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -220,8 +221,7 @@ def resolver_device_id(configurado: str, *, perfil_dir: str, casa: Path | None =
         encontrado = recomendado.perfil.device_id if recomendado.perfil else None
     if encontrado is None:
         return ""
-    try:
+    #  Memorizar es cortesía: si no se puede escribir, igual se usa lo hallado.
+    with contextlib.suppress(OSError):
         memoria.write_text(encontrado + "\n", encoding="utf-8")
-    except OSError:
-        pass
     return encontrado
