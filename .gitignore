@@ -43,3 +43,5 @@ agente/VERSION
 # exactamente el problema que este proyecto ya tiene con el SOP anterior.
 # Se regenera con docs/generar-pdf.py
 docs/*.pdf
+# Lo mismo para el Word de los comandos, que sale del mismo .md.
+docs/*.docx

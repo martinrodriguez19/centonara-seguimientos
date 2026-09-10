@@ -3,7 +3,8 @@
 > Sólo los comandos y para qué sirve cada uno. El paso a paso completo está en
 > `SOP-instalar-mac.md` y `SOP-instalar-windows.md`.
 >
-> Cada comando se pega **entero, en una sola línea**, y se aprieta Enter.
+> Cada comando se copia **entero** y se pega de una sola vez. Si en la hoja se ve cortado en
+> dos renglones es sólo cómo entra en el ancho: al copiarlo va completo.
 
 ---
 
