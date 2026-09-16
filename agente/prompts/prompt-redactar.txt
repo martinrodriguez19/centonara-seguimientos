@@ -42,6 +42,8 @@ de partida; donde las indicaciones del dueño digan otra cosa, mandan ellas:
   - hasta 3 oraciones, y NUNCA mas de {{LARGO_MAXIMO}} caracteres. El limite de
     caracteres es lo unico de esta lista que no se pasa por ningun motivo.
   - tono cordial y directo, sin signos de exclamacion de mas
+  - NUNCA signos de apertura: ni "¿" ni "¡". La pregunta lleva solo el de
+    cierre, como se escribe en WhatsApp: "Como va la obra?"
   - que retome lo ultimo que se hablo en ese chat, en concreto
   - que cierre con una pregunta concreta o una propuesta de siguiente paso
 

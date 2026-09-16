@@ -15,6 +15,8 @@ número, y los números van en las métricas.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -39,6 +41,12 @@ JOBS_SEGUIDOS_FALLIDOS = 3
 # atrasada. El actualizador corre al iniciar sesión y cada hora: si pasaron dos
 # y sigue con otro commit, no es que no le tocó — es que no pudo.
 HORAS_PARA_ACTUALIZARSE = 2
+
+# Cuánto puede llevar el backend sin poder resolver la rama antes de avisar
+# (D53). Un tropiezo de GitHub se tolera; una hora es más que el cupo de la API
+# sin token (60 por hora por IP), así que a esta altura ya no es un hipo: las
+# máquinas van a seguir con lo que tienen y un push no llega a ninguna.
+HORAS_SIN_RESOLVER_VERSION = 1
 
 
 class Nivel(StrEnum):
@@ -70,7 +78,11 @@ class Alerta:
 
 
 async def revisar(
-    base, *, ahora: datetime | None = None, version_esperada: str = ""
+    base,
+    *,
+    ahora: datetime | None = None,
+    version_esperada: str = "",
+    reloj: Callable[[], float] | None = None,
 ) -> list[Alerta]:
     """Todo lo que está mal ahora mismo, de lo más urgente a lo menos.
 
@@ -78,17 +90,22 @@ async def revisar(
     propio cartel, y con los dos a la vez el freno aparecía duplicado (D31).
 
     `version_esperada` es el sha al que deberían converger las máquinas (D45);
-    vacío, no se revisa quién está atrasado — no hay con qué comparar.
+    vacío, no se revisa quién está atrasado — no hay con qué comparar, y en
+    cambio se revisa si es que el backend no puede saberlo (D53). `reloj` es
+    el monotonic que se compara con lo que anota `versiones`; los tests pasan
+    uno propio.
     """
     momento = ahora or datetime.now(UTC)
 
     alertas: list[Alerta] = []
     alertas += await _selector_roto(base, momento)
     alertas += await _sin_confirmar(base, momento)
+    alertas += await _enviado_a_no_contactar(base, momento)
     alertas += await _canario(base)
     alertas += await _maquinas(base, momento)
     alertas += await _maquinas_que_fallan_siempre(base)
     alertas += await _maquinas_desactualizadas(base, momento, version_esperada)
+    alertas += _version_esperada_desconocida(version_esperada, reloj or time.monotonic)
 
     urgentes = sum(1 for a in alertas if a.nivel is Nivel.URGENTE)
     if urgentes:
@@ -154,6 +171,41 @@ async def _sin_confirmar(base, ahora: datetime) -> list[Alerta]:
             f"{len(mensajes)} mensajes se enviaron sin que el sistema pudiera ver "
             f"que llegaron: {contactos}.",
             "Abrí esos chats y fijate si el mensaje está. Puede haber salido, y puede que no.",
+        )
+    ]
+
+
+async def _enviado_a_no_contactar(base, ahora: datetime) -> list[Alerta]:
+    """Salió un mensaje a un contacto marcado `XX` (D50) con el envío automático (D52).
+
+    Es la falla que el switch existe para no cometer: la familia o el equipo
+    del vendedor recibió un seguimiento comercial. La etiqueta la detecta el
+    backend en código, así que esto no depende de que el modelo la haya visto.
+    """
+    reciente = ahora - timedelta(hours=24)
+    enviados = (
+        await base["mensajes"]
+        .find(
+            {
+                "estado": str(Estado.ENVIADO),
+                "senales": "ETIQUETA_NO_CONTACTAR",
+                "creado_en": {"$gte": reciente},
+            }
+        )
+        .to_list(None)
+    )
+    if not enviados:
+        return []
+    contactos = ", ".join(m.get("contacto_nombre") or m["contacto_id"] for m in enviados[:3])
+    return [
+        Alerta(
+            Nivel.URGENTE,
+            "enviado_a_no_contactar",
+            "Salió un mensaje a un contacto marcado XX",
+            f"{len(enviados)} mensajes se enviaron a contactos que el vendedor marcó como "
+            f"no contactar: {contactos}.",
+            "Apagá el envío automático en Configuración hasta entender por qué, y avisale "
+            "al vendedor de esa máquina.",
         )
     ]
 
@@ -356,3 +408,35 @@ async def _maquinas_desactualizadas(base, ahora: datetime, version_esperada: str
             )
         )
     return alertas
+
+
+def _version_esperada_desconocida(
+    version_esperada: str, reloj: Callable[[], float]
+) -> list[Alerta]:
+    """El backend lleva más de una hora sin poder resolver `main` (D53).
+
+    Es la falla silenciosa del actualizador: las máquinas preguntan qué versión
+    toca, el backend contesta "no sé", y ellas —correctamente— no se mueven. La
+    tarjeta de cada máquina dice `al día` porque no hay con qué compararla, y
+    un push queda en GitHub sin llegar a ninguna Mac. Sólo aplica cuando el
+    panel no fijó un sha: con uno fijado, GitHub no hace falta.
+    """
+    if version_esperada:
+        return []
+    desde = versiones.desconocida_desde()
+    if desde is None:
+        return []
+    horas = (reloj() - desde) / 3600
+    if horas < HORAS_SIN_RESOLVER_VERSION:
+        return []
+    return [
+        Alerta(
+            Nivel.AVISO,
+            "version_esperada_desconocida",
+            "No se sabe qué versión del agente toca",
+            f"Hace {horas:.0f} h que GitHub no le contesta al servidor qué commit hay en la "
+            "rama. Las máquinas siguen con lo que tienen y ninguna actualización les llega.",
+            "En Render, cargar un GITHUB_TOKEN de sólo lectura en el backend (la API sin "
+            "token tiene 60 consultas por hora por IP compartida). Si ya está, revisar la red.",
+        )
+    ]

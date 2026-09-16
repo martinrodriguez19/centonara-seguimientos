@@ -144,12 +144,18 @@ async def test_borradores_va_al_pase_unico_con_su_payload(monkeypatch) -> None:
                 "frases_prohibidas": ["sigue en pie"],
                 "palabras_veto": ["estafa"],
                 "mensaje_post_compra": False,
+                "etiquetas": [{"etiqueta": "XX", "contactar": False}],
+                "enviar": True,
+                "enviar_hasta": "2026-09-01T22:00:00+00:00",
             },
         )
     )
 
     assert resultado["ok"] is True
     assert visto["n_chats"] == 4
+    assert visto["etiquetas"] == [{"etiqueta": "XX", "contactar": False}]
+    assert visto["enviar"] is True
+    assert visto["enviar_hasta"] == "2026-09-01T22:00:00+00:00"
     assert visto["ya_vistos"] == ["Corralón"]
     assert visto["no_escribir"] == ["Pinturería"]
     assert visto["no_escribir_numeros"] == ["+5491100000001"]

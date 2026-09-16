@@ -7,8 +7,12 @@ exactamente lo que elimina la clase de errores del 28/08 (`CHAT_NO_ABRE` y
 todos sus parientes): no hay segundo encuentro que pueda abrir el chat
 equivocado.
 
-Quien envía es el vendedor, a mano, chat por chat. El sistema no aprieta enviar
-en esta ruta bajo ninguna circunstancia.
+Quien envía es el vendedor, a mano, chat por chat — salvo que la tanda venga
+con `enviar` (D52): el switch del panel, y sólo dentro de la ventana horaria.
+Ahí el recorrido es el mismo con un paso más al final de cada chat: apretar
+enviar y verificar que el texto aparezca en el hilo. Con el switch apagado, el
+prompt es idéntico al de siempre; los dos modos viven en un solo archivo, en
+bloques `<<SI_ENVIA>>` / `<<SI_NO_ENVIA>>` que se eligen acá.
 
 Igual que `listar`, lo que este módulo agrega sobre la invocación cruda es
 **desconfiar de la respuesta**. Cada chat del reporte se revisa: sin nombre se
@@ -21,7 +25,9 @@ con nombre propio, porque es lo primero que va a mirar una persona.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,7 +90,18 @@ MOTIVOS_DE_SALTEO = {
     #  misma persona. Se ve recién al abrir, por eso no entra en las listas
     #  de nombres.
     "numero_repetido",
+    #  El nombre lleva una etiqueta de "no contactar" (D50): no se abre. Es el
+    #  único motivo que puede venir sin los datos que sólo se ven al abrir.
+    "no_contactar",
 }
+
+# Los dos modos del prompt (D52), como bloques dentro del archivo: lo que va
+# entre `<<SI_ENVIA>>` y `<<FIN_SI_ENVIA>>` sólo queda cuando la tanda envía,
+# lo de `<<SI_NO_ENVIA>>` sólo cuando no. Un solo archivo y no dos, por lo
+# mismo que los bloques de recorrido: la mitad que no puede divergir es la de
+# redacción.
+_BLOQUE_SI_ENVIA = re.compile(r"<<SI_ENVIA>>\n(.*?)<<FIN_SI_ENVIA>>\n", re.S)
+_BLOQUE_SI_NO_ENVIA = re.compile(r"<<SI_NO_ENVIA>>\n(.*?)<<FIN_SI_NO_ENVIA>>\n", re.S)
 
 #  Por qué la tanda devolvió menos de lo pedido (D44). `tope_de_visitas` es el
 #  freno normal desde que las reglas de redacción saltean más chats: una tanda
@@ -271,6 +288,10 @@ async def dejar_borradores(
     palabras_veto: list[str] | None = None,
     mensaje_post_compra: bool = True,
     post_venta_ofrecer: str = "",
+    etiquetas: list[dict[str, Any]] | None = None,
+    enviar: bool = False,
+    enviar_hasta: str | None = None,
+    ahora: datetime | None = None,
     invocador=invocar,
 ) -> Resultado:
     """Una tanda del pase único: hasta `n_chats` borradores dejados.
@@ -296,6 +317,13 @@ async def dejar_borradores(
     que el borrador no puede decir, `mensaje_post_compra` decide qué se hace
     con una venta cerrada, y `max_visitas` es el segundo freno de la tanda
     (D44) — chats abiertos, no borradores dejados.
+
+    `etiquetas` (D50) son las del nombre del contacto, ya resueltas por el
+    backend: cuáles existen, cuál no se contacta y cómo se le habla a cada una.
+    Vacía, el prompt no las menciona. `enviar` (D52) hace que la tanda además
+    apriete enviar, **hasta** `enviar_hasta`: pasado eso —una Mac que se
+    prende a las 21 con una tanda de las 17— se dejan borradores, y lo decide
+    esta función en Python, no el modelo.
     """
     if not device_id:
         # Problema #5 del MVP: con más de un Chrome conectado a la cuenta,
@@ -327,8 +355,16 @@ async def dejar_borradores(
         recorrido = RECORRIDO_VENTANA_ASCENDENTE
     else:
         recorrido = RECORRIDO_RECIENTES
+    envia = enviar and not _vencido(enviar_hasta, ahora=ahora)
+    if enviar and not envia:
+        log.warning("envio_automatico_vencido", enviar_hasta=enviar_hasta)
+
     plantilla = (carpeta / "prompts" / "prompt-borradores.txt").read_text(encoding="utf-8")
+    plantilla = _elegir_modo(plantilla, enviar=envia)
     plantilla = plantilla.replace("{{COMO_RECORRER}}", recorrido)
+    paso_3, enfoque = _bloques_de_etiquetas(etiquetas)
+    plantilla = plantilla.replace("{{ETIQUETAS}}\n", paso_3)
+    plantilla = plantilla.replace("{{ETIQUETAS_ENFOQUE}}\n", enfoque)
 
     #  La venta cerrada (D41): post-venta a secas, post-venta con lo que el
     #  dueño quiere ofrecer, o nada. El bloque con oferta se arma acá para que
@@ -380,7 +416,95 @@ async def dejar_borradores(
     if not invocacion.ok:
         return _desde_invocacion(invocacion)
 
-    return _interpretar(invocacion, run_id=run_id)
+    return _interpretar(invocacion, run_id=run_id, enviar=envia)
+
+
+def _vencido(enviar_hasta: str | None, *, ahora: datetime | None) -> bool:
+    """¿Ya pasó la hora hasta la que esta tanda podía enviar? Sin hora, sí: no se envía a ciegas."""
+    if not enviar_hasta:
+        return True
+    try:
+        limite = datetime.fromisoformat(str(enviar_hasta))
+    except ValueError:
+        return True
+    if limite.tzinfo is None:
+        limite = limite.replace(tzinfo=UTC)
+    return (ahora or datetime.now(UTC)) >= limite
+
+
+def _elegir_modo(plantilla: str, *, enviar: bool) -> str:
+    """Deja en el prompt los bloques del modo que corresponde, sin las marcas."""
+    if enviar:
+        quedan, se_van = _BLOQUE_SI_ENVIA, _BLOQUE_SI_NO_ENVIA
+    else:
+        quedan, se_van = _BLOQUE_SI_NO_ENVIA, _BLOQUE_SI_ENVIA
+    plantilla = se_van.sub("", plantilla)
+    return quedan.sub(lambda m: m.group(1), plantilla)
+
+
+# Cuántas etiquetas entran en el prompt. Coincide con la cota del esquema.
+MAX_ETIQUETAS = 20
+
+
+def _bloques_de_etiquetas(crudas: list[dict[str, Any]] | None) -> tuple[str, str]:
+    """Los dos bloques del prompt sobre etiquetas (D50): el del paso 3 y el de redacción.
+
+    Sin etiquetas, los dos son vacíos y el prompt queda idéntico al de siempre:
+    el placeholder se va con su salto de línea y no queda ni un renglón.
+    """
+    limpias: list[dict[str, Any]] = []
+    for cruda in (crudas or [])[:MAX_ETIQUETAS]:
+        if not isinstance(cruda, dict):
+            continue
+        palabra = str(cruda.get("etiqueta") or "").strip().upper()
+        if not palabra.isalpha() or not palabra.isascii():
+            continue
+        limpias.append(
+            {
+                "etiqueta": palabra,
+                "significado": " ".join(str(cruda.get("significado") or "").split())[:80],
+                "contactar": bool(cruda.get("contactar", True)),
+                "enfoque": " ".join(str(cruda.get("enfoque") or "").split())[:300],
+            }
+        )
+    if not limpias:
+        return "", ""
+
+    renglones = []
+    for e in limpias:
+        descripcion = e["significado"] or e["etiqueta"]
+        if not e["contactar"]:
+            descripcion += " -> NO CONTACTAR"
+        renglones.append(f"     - {e['etiqueta']}: {descripcion}")
+    lista = "\n".join(renglones)
+    paso_3 = f"""   Etiquetas en el nombre del contacto. Los vendedores agendan a algunos
+   contactos con una palabra en MAYUSCULAS al final del nombre que dice que
+   tipo de cliente es. No todos la tienen. Las que existen:
+{lista}
+   Solo cuenta si es la ULTIMA palabra del nombre y esta en mayusculas: "Juan
+   el Colo" no lleva etiqueta, "Juan COLO" si. Un chat cuyo nombre termine en
+   una etiqueta marcada NO CONTACTAR es familia o gente del equipo del
+   vendedor: NO lo abras. Anotalo igual en tu respuesta, con "borrador_dejado":
+   false y motivo "no_contactar"; como no lo abriste, los campos que no
+   conoces van en null.
+
+"""
+    con_enfoque = [e for e in limpias if e["contactar"] and e["enfoque"]]
+    if not con_enfoque:
+        return paso_3, ""
+    guias = "\n".join(
+        f"    - {e['etiqueta']} ({e['significado'] or e['etiqueta']}): {e['enfoque']}"
+        for e in con_enfoque
+    )
+    enfoque = f"""SI EL NOMBRE DEL CONTACTO LLEVA ETIQUETA (paso 3), usala para el enfoque,
+ADEMAS de lo que dice el chat. Si se contradicen, manda el chat:
+{guias}
+  La etiqueta NUNCA va en el saludo: a "Juan Perez ARQ" se lo saluda "Hola
+  Juan". En "contacto_nombre" va el nombre tal como aparece en la lista, con
+  la etiqueta. Y agrega en cada chat el campo "etiqueta": la palabra, o null.
+
+"""
+    return paso_3, enfoque
 
 
 def _sustituir(texto: str, variables: dict[str, str]) -> str:
@@ -413,7 +537,7 @@ def _desde_invocacion(invocacion: Invocacion) -> Resultado:
     )
 
 
-def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
+def _interpretar(invocacion: Invocacion, *, run_id: str, enviar: bool = False) -> Resultado:
     datos = invocacion.datos or {}
     comunes = {
         "raw": invocacion.raw,
@@ -479,14 +603,21 @@ def _interpretar(invocacion: Invocacion, *, run_id: str) -> Resultado:
             "borradores_chats_descartados", cuantos=len(descartados), motivos=descartados[:5]
         )
 
+    if not enviar:
+        #  Sin `enviar`, nada pudo salir: si el reporte dice lo contrario, el
+        #  modelo se confundió y el backend no tiene por qué creerle.
+        for chat in buenos:
+            chat["enviado"] = False
     dejados = sum(1 for c in buenos if c["borrador_dejado"])
-    log.info("borradores_ok", visitados=len(buenos), dejados=dejados)
+    enviados = sum(1 for c in buenos if c["enviado"])
+    log.info("borradores_ok", visitados=len(buenos), dejados=dejados, enviados=enviados)
     return Resultado(
         True,
         detalle={
             "chats": buenos,
             "visitados": len(buenos),
             "dejados": dejados,
+            "enviados": enviados,
             "salteados": len(buenos) - dejados,
             "descartados": descartados,
             #  Sólo `True` cuando ya no quedan chats dentro de la ventana. Lo
@@ -542,14 +673,24 @@ def _revisar_chat(crudo: Any) -> tuple[dict[str, Any] | None, str]:
     if not nombre:
         return None, "sin contacto_nombre"
 
+    #  Un "no contactar" (D50) no se abrió: lo que sólo se ve adentro del chat
+    #  puede faltar, y eso no es un reporte roto.
+    sin_abrir = str(crudo.get("motivo") or "").strip() == "no_contactar" and not bool(
+        crudo.get("borrador_dejado")
+    )
+
     quien = QUIEN_HABLO.get(str(crudo.get("ultimo_lo_mando") or "").strip().lower())
     if quien is None:
-        return None, f"{nombre!r}: ultimo_lo_mando no es 'contacto' ni 'yo'"
+        if not sin_abrir:
+            return None, f"{nombre!r}: ultimo_lo_mando no es 'contacto' ni 'yo'"
+        quien = "contacto"
 
     try:
         dias = int(crudo.get("antiguedad_dias"))
     except (TypeError, ValueError):
-        return None, f"{nombre!r}: antiguedad_dias no es un entero"
+        if not sin_abrir:
+            return None, f"{nombre!r}: antiguedad_dias no es un entero"
+        dias = 0
     if dias < 0:
         return None, f"{nombre!r}: antiguedad_dias negativa"
 
@@ -583,6 +724,10 @@ def _revisar_chat(crudo: Any) -> tuple[dict[str, Any] | None, str]:
     telefono = crudo.get("contacto_telefono")
     telefono = str(telefono).strip() if telefono else None
 
+    #  La etiqueta que el modelo vio en el nombre (D50), informativa: el
+    #  backend la vuelve a detectar en código y no depende de esto.
+    etiqueta = str(crudo.get("etiqueta") or "").strip().upper()[:8] or None
+
     return {
         "contacto_nombre": nombre[:120],
         "contacto_telefono": telefono,
@@ -594,4 +739,8 @@ def _revisar_chat(crudo: Any) -> tuple[dict[str, Any] | None, str]:
         "tema": tema or None,
         "cita": cita or None,
         "motivo": motivo,
+        "etiqueta": etiqueta if etiqueta and etiqueta.isalpha() else None,
+        #  Sólo puede ser cierto con borrador, y sólo si la tanda enviaba: lo
+        #  segundo lo corrige `_interpretar`.
+        "enviado": dejado and bool(crudo.get("enviado")),
     }, ""

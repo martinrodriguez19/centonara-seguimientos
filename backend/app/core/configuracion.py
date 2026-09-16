@@ -122,7 +122,7 @@ POR_DEFECTO: dict[str, Any] = {
     # sin reportar, sin avanzar el cursor. Esto hace que vuelva igual.
     "max_visitas_por_tanda": 20,
     # Qué se hace con una venta que ya se cerró (D41): con `True`, si el chat es
-    # claro se deja un mensaje de post-venta ("¿te faltó algo?"); con `False`,
+    # claro se deja un mensaje de post-venta ("te faltó algo?"); con `False`,
     # nada. En los dos casos, nunca un seguimiento de esa venta. Es la perilla
     # para el día que un post-venta salga raro, sin esperar un despliegue.
     "mensaje_post_compra": True,
@@ -157,9 +157,65 @@ POR_DEFECTO: dict[str, Any] = {
     # el dueño llamó "excesivo".
     "dias_veto_ya_compro": 45,
     # Qué ofrecerle a quien ya compró, en palabras del dueño. Vacío de fábrica
-    # y vacío no cambia nada: el post-venta sigue siendo "¿te faltó algo?".
+    # y vacío no cambia nada: el post-venta sigue siendo "te faltó algo?".
     # Con texto, el borrador pregunta cómo le fue Y ofrece eso, en una línea.
     "post_venta_ofrecer": "",
+    # Las etiquetas que los vendedores ponen al final del nombre del contacto
+    # (D50): quién es el cliente, y si se le escribe. La detección es código
+    # (`etiquetas.py`); lo que cada una significa y cómo se le habla es del
+    # dueño y se edita desde el panel. `contactar: False` = el chat no se abre.
+    # Vacía la lista, o sin etiqueta el nombre, el sistema es el de siempre.
+    "etiquetas_contacto": [
+        {
+            "etiqueta": "ARQ",
+            "significado": "Arquitecto",
+            "contactar": True,
+            "enfoque": "Habla de proyecto y obra: retomar especificacion, muestras, plazos.",
+        },
+        {
+            "etiqueta": "PAISA",
+            "significado": "Paisajista",
+            "contactar": True,
+            "enfoque": "Proyecto de exterior: retomar lo que cotizo para ese proyecto.",
+        },
+        {
+            "etiqueta": "PILE",
+            "significado": "Piletero (empresa que construye piletas)",
+            "contactar": True,
+            "enfoque": "Obra en curso, proxima pileta, reposicion de material.",
+        },
+        {
+            "etiqueta": "CF",
+            "significado": "Consumidor final",
+            "contactar": True,
+            "enfoque": "Es un particular: mas simple y explicativo, sin jerga del rubro.",
+        },
+        {
+            "etiqueta": "DIST",
+            "significado": "Distribuidor (empresa que revende)",
+            "contactar": True,
+            "enfoque": "Revende: reposicion, volumen, lista de precios.",
+        },
+        {
+            "etiqueta": "COLO",
+            "significado": "Colocador",
+            "contactar": True,
+            "enfoque": "Obra y materiales: si le falta algo para la obra en curso.",
+        },
+        {
+            "etiqueta": "XX",
+            "significado": "No contactar (familia, equipo interno)",
+            "contactar": False,
+            "enfoque": "",
+        },
+    ],
+    # La corrida programada (D51): apagada de fábrica, en hora argentina. El
+    # deploy no dispara nada hasta que alguien la prenda desde el panel.
+    "programacion": {"activa": False, "hora": "17:00", "dias": [1, 2, 3, 4, 5, 6, 7]},
+    # El envío automático del pase único (D52): con el switch prendido, y sólo
+    # dentro de la ventana horaria, la tanda además aprieta enviar. Apagado de
+    # fábrica; su cambio se audita con antes/después, como `destinos_permitidos`.
+    "envio_automatico": False,
     # Cuánto recuerda cada máquina qué chats ya abrió (D43): un chat visitado y
     # salteado —campo ocupado, sin tema— no deja mensaje, y sin esto la corrida
     # siguiente lo vuelve a abrir y a pagar. Corto a propósito: pasado un mes,

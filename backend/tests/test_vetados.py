@@ -292,3 +292,22 @@ async def test_el_reporte_de_una_tanda_alimenta_la_memoria(base) -> None:
     ]
     fila = await base["vetados"].find_one({"nombre": "Ya compró"})
     assert fila["clave"] == "+5491123231151"
+
+
+@sin_mongo
+async def test_no_contactar_no_vence(base) -> None:
+    """D50: la etiqueta la puso el vendedor en el nombre, y eso no caduca."""
+    assert await vetados.registrar(
+        base,
+        maquina="mac-rocio",
+        chat={"contacto_nombre": "Mamá XX", "contacto_telefono": None},
+        motivo="no_contactar",
+        corrida_id=ObjectId(),
+        config={},
+        ahora=AHORA,
+    )
+    fila = await base["vetados"].find_one({"nombre": "Mamá XX"})
+    assert fila["vence_en"] == vetados.SIN_VENCIMIENTO
+    assert await vetados.vigentes(base, "mac-rocio", ahora=AHORA + timedelta(days=3650)) == [
+        "Mamá XX"
+    ]

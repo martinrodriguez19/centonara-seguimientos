@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 from bson import ObjectId
+from conftest import ar
 
 from app.core import auditoria, mensajes
 from app.core.esquema import inicializar
@@ -453,6 +454,37 @@ async def test_enviados_hoy_cuenta_desde_la_medianoche(base) -> None:
     await mensajes.mover(base, hoy, Estado.EN_ESPERA, ahora=MIERCOLES)
 
     assert await mensajes.enviados_hoy(base, "mac-rocio", ahora=MIERCOLES) == 1
+
+
+def test_el_dia_empieza_a_la_medianoche_argentina() -> None:
+    """D51: "hoy" es el día del vendedor, no el de Render. 00:00 en Buenos Aires
+    son las 03:00 UTC; y las 21:30 de acá siguen siendo hoy aunque en UTC ya
+    sea mañana."""
+    assert mensajes.inicio_del_dia(ar(19, 21, 30)) == datetime(2026, 8, 19, 3, 0, tzinfo=UTC)
+    assert mensajes.inicio_del_dia(ar(19, 0, 0)) == datetime(2026, 8, 19, 3, 0, tzinfo=UTC)
+    #  Un instante sin huso se toma como UTC, que es como viene todo lo demás.
+    assert mensajes.inicio_del_dia(datetime(2026, 8, 20, 1, 0)) == datetime(
+        2026, 8, 19, 3, 0, tzinfo=UTC
+    )
+
+
+@sin_mongo
+async def test_un_mensaje_de_la_noche_cuenta_para_el_dia_argentino(base) -> None:
+    """Una corrida de las 17:00 que llega a las 21:30 no reinicia el tope (D51).
+
+    Las 21:30 del 19/08 en Argentina son las 00:30 UTC del 20/08: con el corte
+    en UTC este mensaje era "de mañana" y el de las 17:00 "de ayer"."""
+    tarde = ar(19, 17, 0)
+    noche = ar(19, 21, 30)
+    primero = await crear(base, contacto_id="+5491100000001", texto="Tarde", ahora=tarde)
+    await mensajes.mover(base, primero, Estado.EN_ESPERA, ahora=tarde)
+    segundo = await crear(base, contacto_id="+5491100000002", texto="Noche", ahora=noche)
+    await mensajes.mover(base, segundo, Estado.EN_ESPERA, ahora=noche)
+
+    assert await mensajes.enviados_hoy(base, "mac-rocio", ahora=noche) == 2
+    assert await mensajes.borradores_dejados_hoy(base, "mac-rocio", ahora=noche) == 2
+    #  Y a la mañana siguiente, argentina, el contador arranca de cero.
+    assert await mensajes.enviados_hoy(base, "mac-rocio", ahora=ar(20, 8, 0)) == 0
 
 
 @sin_mongo

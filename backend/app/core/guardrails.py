@@ -22,22 +22,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from app.core import configuracion, mensajes, vendedores
+from app.core.huso import HUSO_COMERCIAL
 from app.logging import obtener_logger
 
 # ⚠️ La ventana horaria está escrita en HORA LOCAL, no en UTC.
 #
 # `09:00-19:00` significa el horario comercial de una empresa argentina, que es
 # lo que dice `docs/03-REGLAS.md` y lo que entiende quien lo configura desde el
-# panel. Todo lo demás del sistema trabaja en UTC —las marcas de tiempo, la
-# cola, los vencimientos— y está bien que así sea; esto es la excepción, porque
-# es lo único que describe la vida de una persona y no un instante.
-#
-# Sólo Argentina, igual que `contactos.py`: el día que haga falta otro país,
-# esto pasa a ser un campo de la configuración y no una constante.
-HUSO_COMERCIAL = ZoneInfo("America/Argentina/Buenos_Aires")
+# panel. La constante vive en `huso.py` (también la usan los topes diarios,
+# D51); `from app.core.guardrails import HUSO_COMERCIAL` sigue andando.
 
 log = obtener_logger(__name__)
 

@@ -108,7 +108,7 @@ def construir(
 
         if job.tipo == "BORRADORES":
             # El pase único: leer el chat y dejar el borrador ahí mismo, con la
-            # extensión, sin enviar nada. Igual que LISTAR, corre en el Chrome
+            # extensión — y con `enviar` (D52), mandarlo. Igual que LISTAR, corre en el Chrome
             # del vendedor — y con el mismo guard: sin navegador no se le paga
             # a un modelo para que descubra que no hay navegador.
             if asegurar_navegador is not None:
@@ -146,6 +146,9 @@ def construir(
                 palabras_veto=list(carga.get("palabras_veto", [])),
                 mensaje_post_compra=bool(carga.get("mensaje_post_compra", True)),
                 post_venta_ofrecer=str(carga.get("post_venta_ofrecer", "")),
+                etiquetas=list(carga.get("etiquetas", [])),
+                enviar=bool(carga.get("enviar", False)),
+                enviar_hasta=carga.get("enviar_hasta"),
                 device_id=dispositivo,
                 claude_bin=claude_bin,
                 carpeta=carpeta,

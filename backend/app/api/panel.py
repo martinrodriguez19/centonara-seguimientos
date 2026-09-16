@@ -30,6 +30,7 @@ from app.core import (
     mantenimiento,
     mensajes,
     metricas,
+    programacion,
     sesion,
     validacion,
     vendedores,
@@ -168,21 +169,30 @@ async def estado(
 
     # Una sola resolución para todas las máquinas (D45): con caché, así que
     # pintar el panel no le pega a GitHub cada vez.
-    esperada = await versiones.esperada(config, repo=ajustes.repo_github, rama=ajustes.rama_agente)
+    esperada = await versiones.esperada(
+        config, repo=ajustes.repo_github, rama=ajustes.rama_agente, token=ajustes.github_token
+    )
     maquinas = [
         _resumir_maquina(v, ahora, version_esperada=esperada.sha)
         for v in await base["vendedores"].find({}).sort("maquina", 1).to_list(None)
     ]
 
-    desde_medianoche = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    #  El día del vendedor, no el de UTC (D51): una corrida de las 17 cruza la
+    #  medianoche UTC a las 21 y el contador se reiniciaba a mitad de tarde.
+    desde_medianoche = mensajes.inicio_del_dia(ahora)
     enviados_hoy = await auditoria.contar(
         base, que=auditoria.Que.MENSAJE_ENVIADO, desde=desde_medianoche
     )
 
     permitidos = config.get("destinos_permitidos") or []
+    proxima = programacion.proxima(config.get("programacion") or {}, ahora=ahora)
     return {
         "maquinas": maquinas,
         "corrida_en_curso": await corridas.en_curso(base),
+        # La corrida programada (D51), si está prendida: la pantalla dice cuándo.
+        "proxima_corrida": proxima,
+        # El envío automático (D52): la banda de arriba lo tiene que gritar.
+        "envio_automatico": bool(config.get("envio_automatico")),
         # También la terminada: cuando la generación acaba, la pantalla tiene
         # que ofrecer revisar los borradores en vez de quedarse como si nada
         # hubiera pasado.
@@ -480,6 +490,8 @@ async def mensajes_de_la_corrida(corrida_id: str, _: Autenticado) -> dict[str, A
                 "senales": m.get("senales", []),
                 "editado_por": m.get("editado_por"),
                 "post_venta": bool(m.get("post_venta")),
+                # La etiqueta del nombre (D50), si la tenía.
+                "etiqueta": m.get("etiqueta"),
             }
             for m in todos
         ],
@@ -713,8 +725,45 @@ class VentanaCambio(Estricto):
         return self
 
 
+class EtiquetaCambio(Estricto):
+    """Una etiqueta de contacto (D50): la palabra, qué es, si se contacta y cómo se le habla."""
+
+    etiqueta: Annotated[str, Field(min_length=1, max_length=8)]
+    significado: Annotated[str, Field(max_length=80)] = ""
+    contactar: bool = True
+    enfoque: Annotated[str, Field(max_length=300)] = ""
+
+    @field_validator("etiqueta")
+    @classmethod
+    def _en_mayusculas(cls, valor: str) -> str:
+        """Se guarda como se detecta: mayúsculas, letras solas."""
+        limpio = valor.strip().upper()
+        if not limpio.isalpha() or not limpio.isascii():
+            raise ValueError(f"{valor!r}: una etiqueta son letras solas, sin espacios ni tildes")
+        return limpio
+
+
+class ProgramacionCambio(Estricto):
+    """La corrida programada (D51): a qué hora y qué días, en hora argentina."""
+
+    activa: bool
+    hora: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+    dias: Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(min_length=1, max_length=7)]
+
+    @field_validator("dias")
+    @classmethod
+    def _ordenados_y_sin_repetir(cls, dias: list[int]) -> list[int]:
+        return sorted(set(dias))
+
+
 class CambioConfiguracion(Estricto):
     n_chats_por_defecto: Annotated[int | None, Field(ge=1, le=50)] = None
+    # Las etiquetas del nombre del contacto (D50). Se reemplaza la lista entera.
+    etiquetas_contacto: Annotated[list[EtiquetaCambio] | None, Field(max_length=20)] = None
+    # La corrida programada (D51).
+    programacion: ProgramacionCambio | None = None
+    # El envío automático del pase único (D52). Se audita con antes/después.
+    envio_automatico: bool | None = None
     # El horario de envío. Era fijo en el código; lo maneja el responsable.
     ventana: VentanaCambio | None = None
     # Cómo elige chats la generación (D27): los recientes de la ventana, o el
@@ -869,6 +918,23 @@ async def cambiar_configuracion(cuerpo: CambioConfiguracion, _: Autenticado) -> 
             },
         )
         log.warning("destinos_cambiados", cantidad=len(cambios["destinos_permitidos"]))
+    elif "envio_automatico" in cambios:
+        # El switch que hace que el pase único apriete enviar (D52): con la
+        # misma trazabilidad que abrir los destinos, porque decide lo mismo —si
+        # un cliente real recibe algo sin que una persona lo haya mirado.
+        await auditoria.registrar(
+            base,
+            que=auditoria.Que.CONFIGURACION_CAMBIADA,
+            quien="panel",
+            detalle={
+                "campos": sorted(cambios),
+                "envio_automatico": {
+                    "antes": bool(antes.get("envio_automatico")),
+                    "despues": bool(cambios["envio_automatico"]),
+                },
+            },
+        )
+        log.warning("envio_automatico_cambiado", activo=bool(cambios["envio_automatico"]))
     else:
         await auditoria.registrar(
             base,
@@ -898,7 +964,10 @@ async def ver_alertas(
     """
     base = db.obtener_base()
     esperada = await versiones.esperada(
-        await configuracion.obtener(base), repo=ajustes.repo_github, rama=ajustes.rama_agente
+        await configuracion.obtener(base),
+        repo=ajustes.repo_github,
+        rama=ajustes.rama_agente,
+        token=ajustes.github_token,
     )
     encontradas = await alertas.revisar(base, version_esperada=esperada.sha)
     return {

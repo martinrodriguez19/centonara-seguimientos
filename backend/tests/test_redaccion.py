@@ -45,7 +45,7 @@ def senales(texto: str, **cambios) -> list[str]:
         "Hola Ana, como va? Te escribo para ver si podemos retomar lo que estabamos hablando.",
         "Hola, vi que al final lo compraste. Te falto algo o quedo todo bien?",
         # Una sigla corta del rubro no es mayúscula sostenida.
-        "Hola, el caño de PVC que preguntaste ya llegó. ¿Lo pasás a buscar?",
+        "Hola, el caño de PVC que preguntaste ya llegó. Lo pasás a buscar?",
     ],
 )
 def test_un_borrador_bien_escrito_no_enciende_nada(texto: str) -> None:
@@ -63,6 +63,7 @@ def test_un_borrador_bien_escrito_no_enciende_nada(texto: str) -> None:
         ("Hola!! Como andas?", "exclamación"),
         ("¡Hola Marcelo! Cómo va", "exclamación"),
         ("Hola? Como andas? Seguis con eso?", "más de una pregunta"),
+        ("Hola, ¿seguís necesitando las chapas?", "signo de apertura"),
         ("Hola Juan... te escribo por las chapas", "puntos suspensivos"),
         ("Hola Juan… te escribo por las chapas", "puntos suspensivos"),
         ("Hola Juan 😊 te escribo por las chapas", "emojis"),
@@ -77,8 +78,9 @@ def test_los_signos_de_mas_se_cuentan(texto: str, motivo: str) -> None:
     assert motivo in hallazgos[0].detalle
 
 
-def test_una_sola_pregunta_con_apertura_y_cierre_esta_bien() -> None:
-    assert redaccion.exceso_de_signos("Hola, ¿seguís necesitando las chapas?") is None
+def test_una_sola_pregunta_con_solo_el_cierre_esta_bien() -> None:
+    """D49: los vendedores pidieron sin apertura. El de cierre solo está bien."""
+    assert redaccion.exceso_de_signos("Hola, seguís necesitando las chapas?") is None
 
 
 # ---------------------------------------------------------------------------

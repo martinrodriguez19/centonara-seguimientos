@@ -67,6 +67,45 @@ async def test_un_sistema_sano_no_grita_nada(base) -> None:
 
 
 @sin_mongo
+async def test_un_xx_enviado_es_urgente_y_un_xx_dejado_no(base) -> None:
+    """D50 + D52: la familia del vendedor recibió un seguimiento. Un borrador dejado no salió."""
+    corrida = ObjectId()
+    enviado = await mensajes.crear_borrador(
+        base,
+        corrida_id=corrida,
+        maquina="mac-rocio",
+        contacto_id="+5491144405036",
+        contacto_nombre="Mamá XX",
+        texto="Hola, seguis con lo del porton?",
+        etiqueta="XX",
+        ahora=AHORA,
+    )
+    await mensajes.mover(
+        base, enviado, Estado.ENVIADO, senales=["ETIQUETA_NO_CONTACTAR"], ahora=AHORA
+    )
+    dejado = await mensajes.crear_borrador(
+        base,
+        corrida_id=corrida,
+        maquina="mac-rocio",
+        contacto_id="+5491144405037",
+        contacto_nombre="Tío XX",
+        texto="Hola, como va?",
+        etiqueta="XX",
+        ahora=AHORA,
+    )
+    await mensajes.mover(
+        base, dejado, Estado.BORRADOR_DEJADO, senales=["ETIQUETA_NO_CONTACTAR"], ahora=AHORA
+    )
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+    assert codigos(encontradas) == {"enviado_a_no_contactar"}
+    assert "Mamá XX" in encontradas[0].detalle
+    assert encontradas[0].nivel is alertas.Nivel.URGENTE
+    #  Pasado un día, deja de gritar: lo que había que mirar ya se miró.
+    assert await alertas.revisar(base, ahora=AHORA + timedelta(hours=25)) == []
+
+
+@sin_mongo
 async def test_el_selector_roto_es_urgente(base) -> None:
     """Frena la corrida entera: hasta que alguien lo toque no sale nada."""
     await base["jobs"].insert_one(
@@ -439,3 +478,47 @@ async def test_una_maquina_apagada_no_es_desactualizada(base) -> None:
     )
     encontradas = await alertas.revisar(base, ahora=AHORA, version_esperada="7912e13c5d3f")
     assert "maquina_desactualizada" not in codigos(encontradas)
+
+
+# ---------------------------------------------------------------------------
+# El backend no puede resolver la rama (D53)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sin_resolver_desde(monkeypatch):
+    """Deja a `versiones` diciendo que no sabe desde el monotonic 1000."""
+    from app.core import versiones
+
+    monkeypatch.setattr(versiones, "_sin_resolver_desde", 1000.0)
+    yield
+    monkeypatch.setattr(versiones, "_sin_resolver_desde", None)
+
+
+@sin_mongo
+async def test_una_hora_sin_saber_que_version_toca_avisa(base, sin_resolver_desde) -> None:
+    encontradas = await alertas.revisar(base, ahora=AHORA, reloj=lambda: 1000.0 + 3601)
+    alerta = next(a for a in encontradas if a.codigo == "version_esperada_desconocida")
+    assert alerta.nivel is alertas.Nivel.AVISO
+    assert "GITHUB_TOKEN" in alerta.accion
+
+
+@sin_mongo
+async def test_un_tropiezo_de_github_no_es_alerta(base, sin_resolver_desde) -> None:
+    """Media hora sin contestar puede ser un hipo; avisar ahí enseña a ignorar la alerta."""
+    encontradas = await alertas.revisar(base, ahora=AHORA, reloj=lambda: 1000.0 + 1800)
+    assert "version_esperada_desconocida" not in codigos(encontradas)
+
+
+@sin_mongo
+async def test_si_se_puede_resolver_no_hay_alerta(base) -> None:
+    encontradas = await alertas.revisar(base, ahora=AHORA, reloj=lambda: 99999.0)
+    assert "version_esperada_desconocida" not in codigos(encontradas)
+
+
+@sin_mongo
+async def test_con_un_sha_fijado_en_el_panel_github_no_hace_falta(base, sin_resolver_desde) -> None:
+    encontradas = await alertas.revisar(
+        base, ahora=AHORA, version_esperada="7912e13c5d3f", reloj=lambda: 1000.0 + 7200
+    )
+    assert "version_esperada_desconocida" not in codigos(encontradas)

@@ -31,7 +31,16 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core import auditoria, cola, configuracion, guardrails, mensajes, redaccion, vetados
+from app.core import (
+    auditoria,
+    cola,
+    configuracion,
+    etiquetas,
+    guardrails,
+    mensajes,
+    redaccion,
+    vetados,
+)
 from app.core.contactos import NumeroInvalido, normalizar
 from app.core.estados import Estado
 from app.logging import obtener_logger
@@ -151,6 +160,9 @@ class Procesado:
     #  Borradores a una persona que ya tenía uno en esta corrida, con otro
     #  nombre de chat (D43). Se registran igual, con señal, y se cuentan acá.
     repetidos_por_numero: int = 0
+    #  Los que además salieron enviados (D52): la tanda tenía `enviar` y el
+    #  modelo apretó el botón. Son parte de `registrados`; acá se cuentan aparte.
+    enviados: int = 0
     #  La tanda siguiente, si se encoló.
     tanda_siguiente: ObjectId | None = None
     #  Por qué no hay tanda siguiente, cuando no la hay.
@@ -216,6 +228,10 @@ async def armar_payload(
         "palabras_veto": _reglas(config.get("palabras_veto_chat")),
         "mensaje_post_compra": bool(config.get("mensaje_post_compra", True)),
         "post_venta_ofrecer": str(config.get("post_venta_ofrecer") or "").strip()[:500],
+        # Las etiquetas del nombre (D50): qué es cada una y si se le escribe.
+        "etiquetas": etiquetas.para_el_payload(config),
+        # El envío automático (D52): sólo con el switch y dentro de la ventana.
+        **modo_envio(config, ahora=momento),
     }
 
     if estrategia == "barrido":
@@ -252,6 +268,33 @@ async def armar_payload(
     memoria = await _visitados_recientes(base, maquina, config=config, ahora=momento)
     payload["ya_vistos"] = _sin_repetidos(memoria + vistos)[-MAX_YA_VISTOS:]
     return payload
+
+
+def modo_envio(config: dict[str, Any], *, ahora: datetime) -> dict[str, Any]:
+    """Si esta tanda además aprieta enviar (D52), y hasta cuándo.
+
+    Dos condiciones, las dos del lado del backend: el switch `envio_automatico`
+    prendido, y que ahora mismo sea horario de envío (G6, en hora argentina).
+    `enviar_hasta` es el fin de la ventana de hoy: el agente lo compara antes
+    de armar el prompt, porque una tanda encolada a las 17 la puede tomar una
+    Mac que se prende a las 21 — y a esa hora se dejan borradores.
+    """
+    apagado = {"enviar": False, "enviar_hasta": None}
+    if not bool(config.get("envio_automatico")):
+        return apagado
+    ventana = config.get("ventana") or {}
+    if guardrails.revisar_ventana(ventana, ahora=ahora) is not None:
+        return apagado
+    return {"enviar": True, "enviar_hasta": fin_de_ventana(ventana, ahora=ahora).isoformat()}
+
+
+def fin_de_ventana(ventana: dict[str, Any], *, ahora: datetime) -> datetime:
+    """A qué hora (UTC) termina hoy la ventana de envío. `24:00` es la medianoche siguiente."""
+    local = ahora.astimezone(guardrails.HUSO_COMERCIAL)
+    fin = str(ventana.get("fin") or "19:00")
+    horas, _, minutos = fin.partition(":")
+    medianoche = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (medianoche + timedelta(hours=int(horas), minutes=int(minutos or 0))).astimezone(UTC)
 
 
 def _reglas(crudas: Any) -> list[str]:
@@ -620,7 +663,13 @@ async def _vetar_si_corresponde(
     """
     motivo = str(chat.get("motivo") or "")
     if motivo not in vetados.MOTIVOS:
-        return
+        #  La etiqueta XX (D50) se decide en código, no por lo que el modelo
+        #  haya reportado: un nombre marcado "no contactar" queda vetado sin
+        #  vencimiento, haya dejado borrador o no.
+        etiqueta = etiquetas.detectar(str(chat.get("contacto_nombre") or ""), config)
+        if etiqueta is None or not etiqueta.no_contactar:
+            return
+        motivo = vetados.NO_CONTACTAR
     try:
         if await vetados.registrar(
             base,
@@ -661,6 +710,7 @@ async def _anotar_tanda(
                         "maquina": maquina,
                         "pedidos": int((job.get("payload") or {}).get("n_chats") or 0),
                         "dejados": len(resultado.registrados),
+                        "enviados": resultado.enviados,
                         "salteados": resultado.salteados,
                         "motivos": resultado.motivos,
                         "vetados": resultado.vetados,
@@ -765,10 +815,21 @@ async def _registrar_dejado(
     cita = str(chat.get("cita") or "").strip()[:80] or None
     resumen = str(chat.get("ultimo_mensaje_resumen") or "")
     contacto_id = await _identificar(base, maquina, nombre, chat.get("contacto_telefono"), momento)
+    #  Si además salió enviado (D52). Lo dice el reporte; el estado se pone al
+    #  día con eso, igual que con el borrador.
+    enviado = bool(chat.get("enviado"))
 
-    #  Las de redacción (D40) primero: son las que una persona va a querer ver
-    #  antes —un conflicto que el modelo no vio— y la lista se muestra en orden.
-    senales = [
+    senales: list[str] = []
+    #  La etiqueta del nombre (D50), detectada acá y no creída del modelo. Un
+    #  XX con borrador —o peor, enviado— es lo primero que alguien tiene que ver.
+    etiqueta = etiquetas.detectar(nombre, config)
+    if etiqueta is not None and etiqueta.no_contactar:
+        senales.append(str(redaccion.Senal.ETIQUETA_NO_CONTACTAR))
+        log.error("borrador_a_no_contactar", contacto=nombre[:60], enviado=enviado)
+
+    #  Las de redacción (D40) después: son las que una persona va a querer ver
+    #  —un conflicto que el modelo no vio— y la lista se muestra en orden.
+    senales += [
         str(h.senal)
         for h in redaccion.revisar(
             texto=texto,
@@ -827,6 +888,7 @@ async def _registrar_dejado(
             #  Un post-venta (venta cerrada, D41) se muestra como tal en el
             #  panel, no como un seguimiento cualquiera.
             post_venta=str(chat.get("motivo") or "") == "ya_compro",
+            etiqueta=etiqueta.etiqueta if etiqueta is not None else None,
             ahora=momento,
         )
     except mensajes.MensajeDuplicado:
@@ -834,10 +896,13 @@ async def _registrar_dejado(
         resultado.repetidos += 1
         return
 
+    #  Enviado (D52) o dejado: los dos son hechos consumados, y los dos son
+    #  terminales. `ENVIADO` audita `MENSAJE_ENVIADO` y cuenta para el tope
+    #  diario de la línea (G4), que es lo que corresponde a algo que salió.
     await mensajes.mover(
         base,
         mensaje_id,
-        Estado.BORRADOR_DEJADO,
+        Estado.ENVIADO if enviado else Estado.BORRADOR_DEJADO,
         senales=senales,
         quien=maquina,
         ahora=momento,
@@ -845,6 +910,8 @@ async def _registrar_dejado(
     if senales:
         log.warning("borrador_dejado_con_senales", contacto=nombre[:60], senales=senales)
     resultado.registrados.append(mensaje_id)
+    if enviado:
+        resultado.enviados += 1
 
 
 async def _identificar(base, maquina: str, nombre: str, telefono: Any, momento: datetime) -> str:

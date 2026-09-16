@@ -61,6 +61,8 @@ export const textos = {
     maquinas: "Máquinas",
     sinMaquinas: "Todavía no hay ninguna máquina dada de alta.",
     enviadosHoy: "Mensajes enviados hoy",
+    proximaCorrida: "Próxima corrida",
+    proximaCorridaApagada: "Corrida automática apagada",
     corridas: "Corridas",
     configuracion: "Configuración",
     historial: "Historial",
@@ -76,6 +78,11 @@ export const textos = {
     real: "ENVÍO REAL HABILITADO",
     realDetalle:
       "El sistema puede escribirle a cualquier contacto de los chats leídos.",
+    // El envío automático del pase único (D52): la tanda además aprieta enviar.
+    automatico: "ENVÍO AUTOMÁTICO ACTIVO",
+    automaticoDetalle:
+      "Los seguimientos salen solos, de lunes a viernes dentro del horario de envío. Nadie los revisa antes.",
+    automaticoAcotado: "Sólo a los números de la lista de destinos permitidos.",
   },
 
   killSwitch: {
@@ -118,6 +125,8 @@ export const textos = {
       ". Tarda unos minutos y tiene costo por chat leído.",
     generarConfirmarNota:
       "Sólo se redactan borradores de los números que estén en destinos permitidos, y los que pasan las reglas quedan directamente como borradores en el WhatsApp de cada vendedor. Nada se envía: los manda cada vendedor.",
+    generarConfirmarNotaAutomatica:
+      "El envío automático está activo: dentro del horario de envío, los seguimientos salen solos de la línea de cada vendedor, sin que nadie los revise antes.",
     generarConfirmar: "Generar",
     revisarBorradores: "Revisar borradores",
   },
@@ -210,6 +219,7 @@ export const textos = {
     liberar: "Liberar",
     vetado: "Frenado",
     enElChat: "En el chat",
+    enviadoSolo: "Enviado",
     // Escrito sobre una venta cerrada (D41): pregunta cómo le fue, no vende.
     postVenta: "Post-venta",
     escribiendose: "Escribiéndose…",
@@ -539,6 +549,8 @@ export const textos = {
     SIN_ANCLAJE:
       "Dice de qué habla pero no cita el chat: puede no haberlo leído",
     TONO_FORMAL: "Usa una frase de oficina de las prohibidas",
+    ETIQUETA_NO_CONTACTAR:
+      "El contacto está marcado XX (no contactar) y se le escribió igual",
     EXCESO_DE_SIGNOS:
       "Tiene signos de más (exclamaciones, dobles preguntas, emojis)",
     NUMERO_REPETIDO:

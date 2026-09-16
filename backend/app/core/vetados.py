@@ -12,7 +12,8 @@ Tres cosas que conviene tener presentes:
   el veto nace de lo que el modelo vio, con la cita que lo justifica.
 - **Vence.** Un veto perpetuo es una lista negra que nadie decidió armar: un
   cliente que reclamó en marzo puede volver a interesar el año que viene. Los
-  días viven en la configuración, por motivo.
+  días viven en la configuración, por motivo. La excepción es `no_contactar`
+  (D50): la marcó el vendedor en el nombre, y ésa no vence.
 - **Entra primero a `no_escribir`.** Esa lista se trunca, y el orden decide
   quién se cae: los vetados van arriba de los recientes, siempre. Un reciente
   que se cae recibe un segundo borrador; un vetado que se cae recibe un
@@ -31,11 +32,21 @@ from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
 
-# Los dos motivos que vetan (D41) y el campo de configuración con sus días.
-MOTIVOS = {
+# El motivo que no vence (D50): el vendedor marcó el contacto como "no
+# contactar" en el nombre. No hay perilla de días porque no es una decisión del
+# sistema: es la familia y el equipo del vendedor, y eso no caduca.
+NO_CONTACTAR = "no_contactar"
+
+# Los motivos que vetan y el campo de configuración con sus días (D41). `None`
+# es sin vencimiento.
+MOTIVOS: dict[str, str | None] = {
     "disconforme": "dias_veto_disconforme",
     "ya_compro": "dias_veto_ya_compro",
+    NO_CONTACTAR: None,
 }
+
+# "Nunca vence", como fecha: lo que la consulta de `vigentes` compara.
+SIN_VENCIMIENTO = datetime(9999, 1, 1, tzinfo=UTC)
 
 # Cuántos nombres vetados viajan como máximo. Es la mitad de `MAX_NO_ESCRIBIR`
 # a propósito: la lista es de los dos, y una de vetados que la llene entera
@@ -69,14 +80,15 @@ async def registrar(
     vencimiento y actualiza el motivo — el último visto es el que vale. `False`
     si el motivo no es de los que vetan, que no es un error: es un salteo común.
     """
-    campo = MOTIVOS.get(motivo)
-    if campo is None:
+    if motivo not in MOTIVOS:
         return False
+    campo = MOTIVOS[motivo]
     momento = ahora or datetime.now(UTC)
     nombre = str(chat.get("contacto_nombre") or "").strip()[:120]
     if not nombre:
         return False
-    dias = max(1, int(config.get(campo, 180)))
+    dias = max(1, int(config.get(campo, 180))) if campo else None
+    vence_en = momento + timedelta(days=dias) if dias else SIN_VENCIMIENTO
 
     await base["vetados"].update_one(
         {"maquina": maquina, "clave": clave(nombre, chat.get("contacto_telefono"))},
@@ -87,7 +99,7 @@ async def registrar(
                 "cita": str(chat.get("cita") or chat.get("ultimo_mensaje_resumen") or "")[:80],
                 "corrida_id": corrida_id,
                 "actualizado_en": momento,
-                "vence_en": momento + timedelta(days=dias),
+                "vence_en": vence_en,
             },
             "$setOnInsert": {"creado_en": momento},
         },

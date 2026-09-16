@@ -18,7 +18,7 @@ from bson import ObjectId
 from httpx import ASGITransport, AsyncClient
 
 from app import db
-from app.core import cola, configuracion, corridas, mensajes, pase_unico, vendedores
+from app.core import cola, configuracion, corridas, mensajes, pase_unico, vendedores, vetados
 from app.core.esquema import inicializar
 from app.core.estados import Estado
 from app.main import app
@@ -70,7 +70,7 @@ def visitado(**cambios):
         "quien_hablo_ultimo": "contacto",
         "antiguedad_dias": 6,
         "borrador_dejado": True,
-        "texto_borrador": "Hola, quedó pendiente lo del hierro del 8. ¿Seguimos?",
+        "texto_borrador": "Hola, quedó pendiente lo del hierro del 8. Seguimos?",
         "motivo": None,
     }
     base.update(cambios)
@@ -828,6 +828,7 @@ async def test_cada_tanda_deja_su_renglon_en_la_corrida(base) -> None:
             "maquina": "mac-rocio",
             "pedidos": 6,
             "dejados": 1,
+            "enviados": 0,
             "salteados": 0,
             "motivos": {},
             "vetados": 0,
@@ -1411,3 +1412,186 @@ async def test_un_borrador_sobre_una_venta_cerrada_queda_marcado_como_post_venta
     }
     assert por_nombre["Ada"]["post_venta"] is True
     assert all(m["post_venta"] is False for n, m in por_nombre.items() if n != "Ada")
+
+
+# ---------------------------------------------------------------------------
+# Las etiquetas del nombre (D50)
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_las_etiquetas_viajan_en_el_payload_y_pasan_el_esquema(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    palabras = [e["etiqueta"] for e in payload["etiquetas"]]
+    assert "ARQ" in palabras and "XX" in palabras
+    assert not next(e for e in payload["etiquetas"] if e["etiqueta"] == "XX")["contactar"]
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_sin_etiquetas_configuradas_no_viaja_ninguna(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "etiquetas_contacto": []})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    assert payload["etiquetas"] == []
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_la_etiqueta_del_nombre_se_guarda_en_el_mensaje(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(ObjectId()),
+        detalle={"chats": [visitado(contacto_nombre="Juan Pérez ARQ")], "fin_de_ventana": True},
+        ahora=AHORA,
+    )
+    mensaje = await base["mensajes"].find_one({"_id": procesado.registrados[0]})
+    assert mensaje["etiqueta"] == "ARQ"
+    assert mensaje["senales"] == []
+    assert await vetados.vigentes(base, "mac-rocio", ahora=AHORA) == []
+
+
+@sin_mongo
+async def test_un_xx_con_borrador_queda_con_senal_y_vetado_para_siempre(base) -> None:
+    """El backend detecta la etiqueta en código: no le cree al modelo, ni lo perdona."""
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(ObjectId()),
+        detalle={"chats": [visitado(contacto_nombre="Mamá XX")], "fin_de_ventana": True},
+        ahora=AHORA,
+    )
+    mensaje = await base["mensajes"].find_one({"_id": procesado.registrados[0]})
+    assert mensaje["etiqueta"] == "XX"
+    assert "ETIQUETA_NO_CONTACTAR" in mensaje["senales"]
+    assert procesado.vetados == 1
+    fila = await base["vetados"].find_one({"nombre": "Mamá XX"})
+    assert fila["motivo"] == "no_contactar"
+    assert fila["vence_en"].year == 9999
+    #  Y la corrida siguiente lo lleva en la lista de no escribir.
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA + timedelta(days=400)
+    )
+    assert "Mamá XX" in payload["no_escribir"]
+
+
+@sin_mongo
+async def test_un_xx_salteado_sin_abrir_queda_vetado(base) -> None:
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(ObjectId()),
+        detalle={
+            "chats": [
+                visitado(
+                    contacto_nombre="Tío Pedro XX",
+                    borrador_dejado=False,
+                    texto_borrador="",
+                    motivo="no_contactar",
+                )
+            ],
+            "fin_de_ventana": True,
+        },
+        ahora=AHORA,
+    )
+    assert procesado.registrados == []
+    assert procesado.motivos == {"no_contactar": 1}
+    assert procesado.vetados == 1
+    assert await vetados.vigentes(base, "mac-rocio", ahora=AHORA) == ["Tío Pedro XX"]
+
+
+# ---------------------------------------------------------------------------
+# El envío automático (D52)
+# ---------------------------------------------------------------------------
+
+SABADO = datetime(2026, 9, 5, 14, 0, tzinfo=UTC)
+
+
+@sin_mongo
+async def test_con_el_switch_apagado_la_tanda_no_envia(base) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    assert payload["enviar"] is False
+    assert payload["enviar_hasta"] is None
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+async def test_con_el_switch_prendido_y_en_horario_la_tanda_envia_hasta_el_fin_de_la_ventana(
+    base,
+) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "envio_automatico": True})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=AHORA
+    )
+    assert payload["enviar"] is True
+    #  19:00 de Buenos Aires, en UTC.
+    assert datetime.fromisoformat(payload["enviar_hasta"]) == datetime(
+        2026, 9, 1, 22, 0, tzinfo=UTC
+    )
+    validar_payload("BORRADORES", payload)
+
+
+@sin_mongo
+@pytest.mark.parametrize(
+    "momento",
+    [
+        SABADO,  # fuera de los días de la ventana
+        datetime(2026, 9, 1, 22, 1, tzinfo=UTC),  # 19:01 en Buenos Aires
+        datetime(2026, 9, 1, 11, 59, tzinfo=UTC),  # 08:59 en Buenos Aires
+    ],
+)
+async def test_con_el_switch_prendido_fuera_de_horario_se_dejan_borradores(base, momento) -> None:
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"], "envio_automatico": True})
+    payload = await pase_unico.armar_payload(
+        base, corrida_id=ObjectId(), maquina="mac-rocio", ahora=momento
+    )
+    assert payload["enviar"] is False
+    assert payload["enviar_hasta"] is None
+
+
+def test_fin_de_ventana_a_las_24_es_la_medianoche_siguiente() -> None:
+    ventana = {"inicio": "00:00", "fin": "24:00", "dias": [1, 2, 3, 4, 5, 6, 7]}
+    assert pase_unico.fin_de_ventana(ventana, ahora=AHORA) == datetime(2026, 9, 2, 3, 0, tzinfo=UTC)
+
+
+@sin_mongo
+async def test_un_chat_enviado_queda_en_enviado_y_auditado(base) -> None:
+    from app.core import auditoria
+
+    await maquina_activa(base)
+    await configuracion.actualizar(base, {"destinos_permitidos": ["*"]})
+    corrida_id = ObjectId()
+    await base["corridas"].insert_one({"_id": corrida_id, "estado": "generando", "tandas": []})
+    procesado = await pase_unico.procesar_reporte(
+        base,
+        job=job_borradores(corrida_id),
+        detalle={
+            "chats": [
+                visitado(enviado=True),
+                visitado(contacto_nombre="Otro", contacto_telefono=None, enviado=False),
+            ],
+            "fin_de_ventana": True,
+        },
+        ahora=AHORA,
+    )
+    assert len(procesado.registrados) == 2
+    assert procesado.enviados == 1
+    filas = await base["mensajes"].find({"corrida_id": corrida_id}).to_list(None)
+    estados = sorted(m["estado"] for m in filas)
+    assert estados == [str(Estado.BORRADOR_DEJADO), str(Estado.ENVIADO)]
+    assert await auditoria.contar(base, que=auditoria.Que.MENSAJE_ENVIADO, desde=AHORA) == 1
+    #  Cuenta para el tope de la línea (G4): salió de verdad.
+    assert await mensajes.enviados_hoy(base, "mac-rocio", ahora=AHORA) == 1
+    corrida = await base["corridas"].find_one({"_id": corrida_id})
+    assert corrida["tandas"][0]["enviados"] == 1

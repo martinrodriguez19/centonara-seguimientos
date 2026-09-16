@@ -508,3 +508,33 @@ por cambio de `VERSION` en `test_bucle.py` y `test_reinicio.py`. Lo que queda ne
       de `Maquina`, `Corrida`, `Configuracion` y `Mensaje` coincidan con lo que se devuelve.
 - [ ] **Windows y el envío.** Nadie corrió `--vincular` ni `--verificar-selectores` en una PC:
       la que anda usa la extensión, que es el circuito que no los necesita.
+
+---
+
+## F — Lo que pidieron los vendedores (D49–D53) · **16 de septiembre de 2026**
+
+Implementado entero en código y en verde (`PLAN-FEEDBACK-VENDEDORES.md`). Lo que necesita
+hierro, en el orden en que conviene hacerlo:
+
+- [ ] **Las dos Macs, hoy.** Correr el diagnóstico de un pegado de `COMANDOS-MAQUINAS.md` ("La
+      Mac no se actualiza"). Si aparece `.git`: apartar y volver a correr el instalador. Confirmar
+      **tres** servicios y el sha en la tarjeta del panel. Es la hipótesis de D53; si el
+      diagnóstico dice otra cosa, anotar qué.
+- [ ] **`GITHUB_TOKEN` en Render** (opcional pero barato): un token de sólo lectura en el
+      environment del backend. Sin él, la alerta `version_esperada_desconocida` avisa cuando
+      GitHub deja de contestar.
+- [ ] **Una tanda real sin `¿`.** Después del deploy y de que las máquinas se pongan al día:
+      mirar los borradores de una tanda y que ninguno traiga signo de apertura; si alguno lo
+      trae, el panel lo marca `EXCESO_DE_SIGNOS`.
+- [ ] **Un contacto `XX` y uno `ARQ` de prueba** en el WhatsApp de una máquina: el primero tiene
+      que aparecer en la corrida como `no_contactar` sin abrirse (y vetado sin vencimiento), el
+      segundo con un borrador que saluda sin la etiqueta.
+- [ ] **La corrida de las 17.** Prenderla en Configuración → *Corrida automática* con la hora
+      cinco minutos adelante, y ver que aparece sola con `disparada_por: programacion`, una sola
+      vez. Después dejarla en 17:00.
+- [ ] **El envío automático, con dos números propios.** Destinos acotados a dos números de
+      prueba, switch prendido (escribir `ENVIAR`), corrida a mano dentro del horario: los dos
+      chats tienen que quedar con el mensaje **enviado** y el panel contarlos como enviados.
+      Con el switch apagado, la misma corrida deja borradores. ⚠️ Lo que nadie verificó: que
+      `claude -p --chrome` apriete el botón de enviar en la Mac con macOS 10.15 y en Windows.
+- [ ] **Recién entonces:** `ABRIR` los destinos con el switch prendido, con el vendedor avisado.

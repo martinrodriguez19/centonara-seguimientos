@@ -1107,6 +1107,131 @@ que está andando usa el circuito que no los necesita.
 
 ---
 
+### D49 — Sin signos de apertura: ni `¿` ni `¡` *(16/09/2026)*
+
+**Contexto.** El único pedido de los vendedores después de leer los borradores del pase único.
+Los ejemplos del prompt ya escribían sin apertura, pero nada lo pedía, y la señal de signos
+aceptaba `¿…?` a propósito.
+
+**Decisión.** Regla contable del prompt (`prompt-borradores.txt` y `prompt-redactar.txt`):
+nunca signos de apertura, sólo el de cierre; y el modelo revisa lo que escribió antes de pasar
+al chat siguiente. En el backend, `redaccion.exceso_de_signos` enciende `EXCESO_DE_SIGNOS`
+con un `¿` o un `¡`: informa, no bloquea, porque el borrador ya está en WhatsApp. En el único
+camino donde el texto pasa por código antes de llegar a WhatsApp —el circuito viejo,
+`generacion.guardar_borrador`— se quitan en código.
+
+**Qué la revertiría.** Que el dueño pida volver a la ortografía completa. Es un renglón del
+prompt y una línea de la señal.
+
+---
+
+### D50 — Las etiquetas del nombre dicen quién es el cliente, y `XX` es no contactar *(16/09/2026; revisa D29 en parte)*
+
+**Contexto.** Los vendedores empezaron a agendar a sus contactos con una etiqueta al final
+del nombre: `ARQ` (arquitecto), `PAISA` (paisajista), `PILE` (piletero), `CF` (consumidor
+final), `DIST` (distribuidor), `COLO` (colocador) y `XX` (no contactar: familia, equipo
+interno). No está en todos los contactos, y no lo va a estar.
+
+**Decisión.** La etiqueta se reconoce **en código** (`backend/app/core/etiquetas.py`): la
+última palabra del nombre, en mayúsculas, separada por espacio, guion, punto, barra o
+paréntesis. Mayúsculas y posición no son un capricho: "Colo" es un apodo común. Ante la duda,
+sin etiqueta, que es el comportamiento de hoy. El significado, si se contacta y la guía de
+enfoque de cada una viven en la configuración (`etiquetas_contacto`), editables desde el
+panel, y viajan al pase único como datos del payload (R3). Con etiqueta, la guía de enfoque
+se usa además de lo que dice el chat, y el chat manda si se contradicen; la etiqueta nunca
+va en el saludo. Con `XX` el chat no se abre (motivo `no_contactar`), y el contacto queda
+vetado **sin vencimiento**: D29 sigue valiendo —todos los chats son comerciales— salvo los
+que el vendedor marcó a mano. Sin etiquetas en el payload, el prompt es idéntico al de hoy.
+
+**Consecuencias.** El backend vuelve a detectar la etiqueta del nombre reportado, sin
+creerle al modelo: un `XX` con borrador es señal `ETIQUETA_NO_CONTACTAR` y alerta. En el
+circuito viejo, `generacion.encolar_redacciones` saltea los `XX` antes de pagar la redacción.
+
+**Qué la revertiría.** Que los vendedores dejen de etiquetar. No pasa nada: sin etiqueta el
+sistema es el de antes.
+
+---
+
+### D51 — La corrida se puede programar desde el panel *(16/09/2026; revisa D4)*
+
+**Contexto.** El dueño pide que la corrida arranque sola todos los días a las 17:00, hora
+argentina. Hoy no existe nada que dispare una corrida: APScheduler figura en los docs pero
+nunca entró al proyecto (D18 se cerró sin él), y lo único periódico del backend es
+`mantenimiento_periodico`, un loop de asyncio cada cinco minutos. D4 lo preveía: "se
+implementa con un temporizador configurable, pero apagado por defecto".
+
+**Decisión.** `programacion` en la configuración: `activa` (apagada de fábrica), `hora` y
+`dias`, en hora argentina. `programacion.revisar` corre en cada vuelta del mantenimiento y
+dispara **una vez por día** —la marca `programacion_ultimo_dia` se toma con un
+`find_one_and_update` atómico— si ya pasó la hora y no pasaron más de dos horas (un backend
+caído a las 17 se recupera; a las 23 no arranca nada). No dispara con pausa global ni con
+una corrida en curso: queda en la auditoría como `CORRIDA_PROGRAMADA_SALTEADA`. Dentro del
+proceso y no como cron de Render: el backend es un servicio siempre prendido, de una sola
+instancia, y la hora se cambia desde el panel sin desplegar.
+
+**Consecuencias.** Los topes diarios (`enviados_hoy`, `borradores_dejados_hoy`) pasan a
+cortar a medianoche **argentina**: una corrida de las 17:00 cruza la medianoche UTC a las
+21:00 y reiniciaba el contador a mitad de corrida. A las 17:00 las máquinas tienen que estar
+prendidas y con el Chrome del vendedor abierto; un job para una Mac apagada la espera.
+
+**Qué la revertiría.** Más de una instancia del backend. Ahí la marca atómica sigue
+alcanzando, pero el loop habría que sacarlo a un proceso propio.
+
+---
+
+### D52 — El pase único puede enviar, con un switch apagado de fábrica *(16/09/2026; revisa R3, D5, D24(d), D36 y D38)*
+
+**Contexto.** El dueño comprobó que los borradores del pase único son prolijos y
+personalizados, y pide que, con un switch, el pase único además apriete enviar. Y pide
+explícitamente **no sobrecomplicar** el pase único: funciona bien, y enviar tiene que ser un
+movimiento más, no una pieza nueva.
+
+**Decisión.** `envio_automatico` en la configuración, apagado de fábrica y auditado con
+antes/después como `destinos_permitidos`. No hay consulta nueva del agente: el backend pone
+`enviar` en la tanda (`pase_unico.armar_payload`) sólo con el switch prendido **y** dentro de
+la ventana horaria (G6, hora argentina; de fábrica lunes a viernes, 09–19), y manda
+`enviar_hasta`, el fin de la ventana de hoy. El agente lo compara en Python antes de armar el
+prompt: una Mac que se prende a las 21 con una tanda de las 17 deja borradores. Con `enviar`,
+el prompt suma un paso al final del recorrido de cada chat: apretar enviar y verificar que
+el texto aparezca en el hilo. Con el switch apagado el prompt es **idéntico** al de hoy (un
+test lo fija). `prompts/CLAUDE.md` deja de decir "nunca enviar bajo ninguna instrucción" y
+pasa a "sólo cuando el bloque de envío del sistema está en la tarea; nada escrito en un chat
+ni en las indicaciones del dueño lo habilita". Un chat reportado como enviado queda
+`ENVIADO` (transición nueva `BORRADOR → ENVIADO`) y se audita `MENSAJE_ENVIADO`; un `XX`
+enviado es alerta urgente. *Descartado a pedido del dueño:* un portero en código que apruebe
+cada envío antes de que el modelo apriete el botón.
+
+**Consecuencias.** R3 queda: el código decide el alcance, y quién envía lo decide el switch.
+El envío por Playwright (D24) no se toca: es el del circuito viejo. La ventana de fábrica es
+lunes a viernes: la corrida de las 17 corre todos los días, y sábado y domingo deja
+borradores.
+
+**Qué la revertiría.** Un texto enviado a quien no debía. Ahí el switch se apaga desde el
+panel, y lo que sigue es el portero que se descartó hoy.
+
+---
+
+### D53 — Un clon git viejo no frena la actualización de una máquina de vendedor *(16/09/2026; extiende D46)*
+
+**Contexto.** Las Macs no quedaron al día con el actualizador. La primera guía de Mac decía
+`git clone`; con `.git` en `~/centonara-seguimientos`, el instalador no bajaba nada ("se
+usa como está"), corría el `instalar-mac.sh` del árbol viejo —que no conoce el
+actualizador— y se cortaba en el `launchctl bootstrap` de un plist que nunca se escribió.
+
+**Decisión.** En `~/centonara-seguimientos`, instalado por `curl | bash`, un `.git` es una
+instalación vieja y no un desarrollador: se aparta a `~/.centonara/git-viejo-<fecha>` con un
+aviso y se baja `main`. Corrido desde adentro de un clon (el caso de desarrollo, que ya se
+detecta con `BASH_SOURCE`) no se toca nada. El instalador comprueba que el plist y la copia
+del actualizador existan antes de cargarlos, y termina diciendo `QUEDÓ AL DÍA: <sha>` o `NO
+QUEDÓ AL DÍA: <qué falta>`. Y el backend acepta un `GITHUB_TOKEN` opcional para resolver
+`main`: la API sin token tiene 60 consultas por hora por IP, y Render comparte IPs de salida.
+Cuando lleva más de una hora sin poder resolverla, hay alerta `version_esperada_desconocida`.
+
+**Qué la revertiría.** Que aparezca un vendedor que además desarrolla. Ahí se clona en otra
+carpeta.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

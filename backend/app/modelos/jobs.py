@@ -109,6 +109,15 @@ class PayloadEnviar(PayloadBase):
             raise ValueError(f"contacto_id no es un E.164 válido: {error.motivo}") from error
 
 
+class EtiquetaContacto(PayloadBase):
+    """Una etiqueta de contacto (D50), como viaja al pase único."""
+
+    etiqueta: Annotated[str, Field(min_length=1, max_length=8, pattern=r"^[A-Z]+$")]
+    significado: Annotated[str, Field(max_length=80)] = ""
+    contactar: bool = True
+    enfoque: Annotated[str, Field(max_length=300)] = ""
+
+
 class PayloadBorradores(PayloadBase):
     """El pase único: leer cada chat frío y dejar el borrador ahí mismo.
 
@@ -174,6 +183,15 @@ class PayloadBorradores(PayloadBase):
     mensaje_post_compra: bool = True
     # Qué ofrecer en el post-venta, si el dueño escribió algo. Vacío = nada.
     post_venta_ofrecer: Annotated[str, Field(max_length=500)] = ""
+    # Las etiquetas del nombre del contacto (D50), ya resueltas por el backend:
+    # qué significa cada una, si se contacta y cómo se le habla. Vacía = el
+    # prompt de siempre.
+    etiquetas: Annotated[list[EtiquetaContacto], Field(max_length=20)] = []
+    # El envío automático (D52): con `enviar`, la tanda además aprieta enviar.
+    # `enviar_hasta` (ISO 8601) es el fin de la ventana de hoy: pasado eso, el
+    # agente deja borradores aunque la tanda diga `enviar`.
+    enviar: bool = False
+    enviar_hasta: Annotated[str | None, Field(max_length=40)] = None
 
 
 class PayloadDiagnostico(PayloadBase):

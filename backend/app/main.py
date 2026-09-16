@@ -40,10 +40,14 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
     ahí» del 28/08. Un loop de asyncio dentro del proceso alcanza y no agrega
     dependencia.
 
+    Desde D51 también es el reloj de la corrida programada: cada vuelta
+    pregunta si es la hora (`programacion.revisar`), y dispara a lo sumo una
+    vez por día. Cinco minutos de granularidad alcanzan para "a las 17".
+
     Cada vuelta se protege sola: un hipo de Mongo se loguea y se vuelve a
     intentar en la próxima — el watchdog no puede ser otra cosa que se muere.
     """
-    from app.core import cola, mensajes
+    from app.core import cola, mensajes, programacion
 
     while True:
         await asyncio.sleep(intervalo_s)
@@ -51,8 +55,14 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
             base = db.obtener_base()
             recuperados = await cola.recuperar_colgados(base)
             vencidos = await mensajes.vencer_viejos(base)
-            if recuperados or vencidos:
-                log.info("mantenimiento_corrido", recuperados=recuperados, vencidos=vencidos)
+            programada = await programacion.revisar(base)
+            if recuperados or vencidos or programada:
+                log.info(
+                    "mantenimiento_corrido",
+                    recuperados=recuperados,
+                    vencidos=vencidos,
+                    programada=programada,
+                )
         except Exception as error:
             log.warning("mantenimiento_fallo", error=str(error), tipo=type(error).__name__)
 

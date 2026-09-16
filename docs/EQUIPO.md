@@ -125,8 +125,10 @@ CINCO COSAS QUE NO PUEDEN SALIR MAL:
 2. El modo prueba es visualmente inconfundible: alguien mira la pantalla dos segundos y sabe en
    qué modo está. Confundir prueba con real es de los errores más caros que puede cometer un
    operador.
-3. Enviar es un acto explícito. La corrida genera borradores y ahí se detiene. Nada sale por
-   inacción y nada sale por un temporizador. El botón de enviar dice cuántos mensajes van a salir.
+3. Enviar es un acto explícito. La corrida genera borradores y ahí se detiene, salvo que el
+   dueño haya prendido el envío automático (D52): es un switch del panel, apagado de fábrica, y
+   la banda de arriba lo grita mientras está prendido. Con la corrida programada (D51) la corrida
+   arranca sola a la hora fijada; lo que sale, sigue dependiendo del switch.
 4. Los retenidos van arriba y se distinguen de los que están listos. Cada uno muestra POR QUÉ se
    retuvo, no sólo que se retuvo.
 5. La fricción es proporcional: vetar tres es un click; liberar veinte retenidos de una pide

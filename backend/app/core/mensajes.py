@@ -19,6 +19,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.core import auditoria
 from app.core.estados import Estado, Motivo, es_terminal, tomar_para_enviar, transicionar
+from app.core.huso import inicio_del_dia
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -62,6 +63,7 @@ async def crear_borrador(
     tema: str | None = None,
     cita: str | None = None,
     post_venta: bool = False,
+    etiqueta: str | None = None,
     ahora: datetime | None = None,
 ) -> ObjectId:
     """Guarda un borrador recién redactado.
@@ -85,6 +87,8 @@ async def crear_borrador(
         "cita": cita or None,
         #  D41: escrito sobre una venta cerrada. Pregunta cómo le fue, no vende.
         "post_venta": bool(post_venta),
+        #  D50: la etiqueta del nombre del contacto (ARQ, XX...), si la tenía.
+        "etiqueta": etiqueta or None,
         "quien_hablo_ultimo": quien_hablo_ultimo,
         "antiguedad_dias": antiguedad_dias,
         "texto": texto,
@@ -285,9 +289,12 @@ async def le_escribimos_hace_poco(
 
 
 async def enviados_hoy(base, maquina: str, *, ahora: datetime | None = None) -> int:
-    """Cuántos salieron o están por salir hoy desde esta máquina (guardrail G4)."""
+    """Cuántos salieron o están por salir hoy desde esta máquina (guardrail G4).
+
+    "Hoy" es el día argentino (`huso.inicio_del_dia`, D51), no el día UTC.
+    """
     momento = ahora or datetime.now(UTC)
-    medianoche = momento.replace(hour=0, minute=0, second=0, microsecond=0)
+    medianoche = inicio_del_dia(momento)
     return await base["mensajes"].count_documents(
         {
             "maquina": maquina,
@@ -309,12 +316,13 @@ async def borradores_dejados_hoy(base, maquina: str, *, ahora: datetime | None =
     los mandó y el sistema los registró— porque el tope es sobre **cuántos se
     dejaron**, no sobre cuántos siguen sin tocar.
 
-    ⚠️ El día es el día UTC, igual que `enviados_hoy`. En la práctica da lo
-    mismo: la ventana comercial termina 19:00 en Argentina, tres horas antes de
-    que UTC cambie de día, así que ninguna corrida cae partida.
+    "Hoy" es el día argentino, igual que `enviados_hoy` (D51). Se cortaba a
+    medianoche UTC —las 21:00 acá— y daba igual mientras ninguna corrida pasara
+    de las 19:00; la corrida programada de las 17:00 dura hasta tres horas y
+    cruzaba ese corte en el medio, reiniciando el tope a mitad de corrida.
     """
     momento = ahora or datetime.now(UTC)
-    medianoche = momento.replace(hour=0, minute=0, second=0, microsecond=0)
+    medianoche = inicio_del_dia(momento)
     return await base["mensajes"].count_documents(
         {
             "maquina": maquina,
@@ -408,6 +416,7 @@ __all__ = [
     "editar_texto",
     "enviados_hoy",
     "es_terminal",
+    "inicio_del_dia",
     "le_escribimos_hace_poco",
     "mover",
     "tasa_de_edicion",

@@ -31,15 +31,19 @@ inesperado: no enviar. La opción segura es siempre la de no mandar el mensaje.
 
 Nunca un `except: pass` en el camino de envío. Un error tragado en silencio ahí es un incidente.
 
-### R3 — El modelo redacta y deja el borrador; el código decide el alcance y nadie envía
+### R3 — El modelo redacta y deja el borrador; el código decide el alcance, y quién envía lo decide el switch
 
-*(Reescrita el 01/09/2026 con el pase único. La versión anterior decía "el código decide y
-envía"; ya no envía nadie — el circuito termina en un borrador que manda el vendedor.)*
+*(Reescrita el 01/09/2026 con el pase único, y otra vez el 16/09/2026 con el envío automático,
+D52. La versión anterior decía "nadie envía"; ahora el switch del panel decide si envía el
+vendedor a mano o la misma tanda.)*
 
-El modelo produce el texto y lo deja escrito en el chat que está leyendo, **sin enviarlo**. Qué
-chats entran en una corrida, cuántos y con qué topes lo sigue decidiendo el backend, y viaja como
-**dato en el payload** —listas de no-escribir, números permitidos, cantidad por tanda—, no como
-criterio en un prompt. Apretar enviar no lo hace el sistema: lo hace el vendedor, chat por chat.
+El modelo produce el texto y lo deja escrito en el chat que está leyendo. Qué chats entran en
+una corrida, cuántos, con qué topes **y si esa tanda envía** lo decide el backend, y viaja como
+**dato en el payload** —listas de no-escribir, números permitidos, cantidad por tanda, `enviar` y
+hasta qué hora—, no como criterio en un prompt. Con el switch `envio_automatico` apagado, apretar
+enviar lo hace el vendedor, chat por chat. Prendido, y sólo dentro de la ventana horaria, la tanda
+además aprieta enviar y verifica que el texto haya aparecido en el hilo; el backend registra lo
+enviado como `ENVIADO` y lo cuenta en los topes de la línea.
 
 Corolario, que sigue en pie: **un límite vive en código Python, nunca en un prompt.** El prompt
 recibe las listas ya calculadas y las obedece; no las calcula. Y la verificación de qué se dejó y

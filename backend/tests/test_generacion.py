@@ -281,15 +281,33 @@ async def test_el_texto_redactado_se_guarda_como_borrador(base) -> None:
     mensaje_id = await generacion.guardar_borrador(
         base,
         job=job_redactar(corrida),
-        detalle={"status": "ok", "texto": "Hola, ¿confirmamos la cantidad?"},
+        detalle={"status": "ok", "texto": "Hola, confirmamos la cantidad?"},
     )
 
     guardado = await base["mensajes"].find_one({"_id": mensaje_id})
     assert guardado["estado"] == str(Estado.BORRADOR)
     assert guardado["contacto_id"] == TRES[0]
-    assert guardado["texto"] == "Hola, ¿confirmamos la cantidad?"
+    assert guardado["texto"] == "Hola, confirmamos la cantidad?"
     #  El contexto del chat viaja al borrador: el triage lo necesita.
     assert guardado["resumen_ultimo"] == "preguntó por hierro del 8"
+
+
+@sin_mongo
+async def test_los_signos_de_apertura_se_quitan_antes_de_guardar(base) -> None:
+    """D49: en este circuito el texto guardado es el que se escribe, así que se corrige acá."""
+    mensaje_id = await generacion.guardar_borrador(
+        base,
+        job=job_redactar(ObjectId()),
+        detalle={"status": "ok", "texto": "¡Hola! ¿Confirmamos la cantidad?"},
+    )
+    guardado = await base["mensajes"].find_one({"_id": mensaje_id})
+    assert guardado["texto"] == "Hola! Confirmamos la cantidad?"
+
+
+def test_sin_signos_de_apertura_no_toca_lo_demas() -> None:
+    assert generacion.sin_signos_de_apertura("Hola, como va? Todo bien!") == (
+        "Hola, como va? Todo bien!"
+    )
 
 
 @sin_mongo
@@ -463,6 +481,20 @@ async def test_la_memoria_de_telefonos_evita_volver_al_navegador(base) -> None:
     assert segunda.desde_cache == 1
     assert segunda.resolver_job is None
     assert segunda.total == 1
+
+
+@sin_mongo
+async def test_un_xx_en_el_nombre_no_se_redacta(base) -> None:
+    """D50: la familia y el equipo del vendedor. Ni se paga la redacción."""
+    await abrir_destinos(base)
+    encoladas = await generacion.encolar_redacciones(
+        base,
+        corrida_id=ObjectId(),
+        maquina="pc-1",
+        chats=[chat(contacto_nombre="Mamá XX"), chat(telefono=TRES[1])],
+    )
+    assert encoladas.no_contactar == 1
+    assert encoladas.total == 1
 
 
 @sin_mongo

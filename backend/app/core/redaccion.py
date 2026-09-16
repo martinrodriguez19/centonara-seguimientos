@@ -36,6 +36,9 @@ class Senal(StrEnum):
     #  La enciende `pase_unico`, no `revisar`: necesita la base. Un segundo
     #  borrador a la misma persona en la misma corrida, con otro nombre de chat.
     NUMERO_REPETIDO = "NUMERO_REPETIDO"
+    #  También la enciende `pase_unico` (D50): el nombre del chat lleva una
+    #  etiqueta de "no contactar" y el modelo le escribió igual.
+    ETIQUETA_NO_CONTACTAR = "ETIQUETA_NO_CONTACTAR"
 
 
 @dataclass(frozen=True)
@@ -47,8 +50,9 @@ class Hallazgo:
         return f"{self.senal}: {self.detalle}"
 
 
-# Cuántos signos de pregunta admite un borrador. "¿...?" cuenta como uno: se
-# mira sólo el de cierre.
+# Cuántos signos de pregunta admite un borrador. Se cuenta el de cierre; el de
+# apertura no se admite (D49): los vendedores escriben "como va?" y así lo
+# pidieron.
 MAX_PREGUNTAS = 1
 
 _EMOJI = re.compile("[\U0001f300-\U0001faff☀-➿]")
@@ -62,6 +66,8 @@ def exceso_de_signos(texto: str) -> str | None:
     """Lo primero que rompe la regla contable del prompt, o `None`."""
     if "!" in texto or "¡" in texto:
         return "signos de exclamación"
+    if "¿" in texto:
+        return "signo de apertura"
     if texto.count("?") > MAX_PREGUNTAS:
         return "más de una pregunta"
     if _PUNTOS_SUSPENSIVOS.search(texto):

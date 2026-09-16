@@ -32,7 +32,30 @@ import { textos } from "@/lib/textos";
  * la única situación en la que hay algo que temer — y ahora contrasta con lo de
  * al lado en vez de ser un tono más de la misma familia.
  */
-export function BandaModo({ destinosAbiertos }: { destinosAbiertos: boolean }) {
+export function BandaModo({
+  destinosAbiertos,
+  envioAutomatico = false,
+}: {
+  destinosAbiertos: boolean;
+  /** El pase único además aprieta enviar (D52). Manda sobre todo lo demás. */
+  envioAutomatico?: boolean;
+}) {
+  if (envioAutomatico) {
+    return (
+      <div
+        role="alert"
+        className="flex items-center justify-center gap-2 bg-critico px-4 py-2 text-center text-sm font-semibold text-background"
+      >
+        <AlertTriangle className="size-4 shrink-0" aria-hidden />
+        <span>{textos.modo.automatico}</span>
+        <span className="hidden font-normal opacity-90 sm:inline">
+          — {textos.modo.automaticoDetalle}
+          {destinosAbiertos ? "" : ` ${textos.modo.automaticoAcotado}`}
+        </span>
+      </div>
+    );
+  }
+
   if (destinosAbiertos) {
     return (
       <div

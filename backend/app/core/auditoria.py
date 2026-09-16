@@ -34,6 +34,10 @@ class Que(StrEnum):
     """
 
     CORRIDA_DISPARADA = "corrida_disparada"
+    CORRIDA_PROGRAMADA_SALTEADA = "corrida_programada_salteada"
+    """Era la hora de la corrida programada (D51) y no se disparó: pausa
+    global, una corrida todavía en curso, o ninguna máquina activa. Queda el
+    motivo, y el día se da por consumido — no se reintenta cada cinco minutos."""
     CORRIDA_CANCELADA = "corrida_cancelada"
     CORRIDA_REANUDADA = "corrida_reanudada"
     """Alguien miró por qué el canario frenó la corrida y decidió continuar

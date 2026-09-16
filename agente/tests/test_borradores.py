@@ -666,3 +666,167 @@ async def test_con_el_post_venta_apagado_la_oferta_no_viaja() -> None:
     await correr(invocador, mensaje_post_compra=False, post_venta_ofrecer="10% en accesorios")
     assert "10% en accesorios" not in invocador.visto["prompt"]
     assert "POST-VENTA" not in invocador.visto["prompt"]
+
+
+# ---------------------------------------------------------------------------
+# Las etiquetas del nombre (D50)
+# ---------------------------------------------------------------------------
+
+ETIQUETAS = [
+    {"etiqueta": "ARQ", "significado": "Arquitecto", "contactar": True, "enfoque": "Obra y proyecto."},
+    {"etiqueta": "XX", "significado": "No contactar", "contactar": False, "enfoque": ""},
+]
+
+
+async def test_sin_etiquetas_el_prompt_no_las_menciona_y_no_queda_hueco() -> None:
+    sin = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(sin)
+    vacia = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(vacia, etiquetas=[])
+
+    prompt = sin.visto["prompt"]
+    assert prompt == vacia.visto["prompt"]
+    assert "{{" not in prompt
+    assert "Etiquetas en el nombre" not in prompt
+    assert "no_contactar" not in prompt
+    #  El placeholder se fue con su renglón: lo que sigue pega directo.
+    assert "(ninguno)\n\n4. Restriccion de destinos" in prompt
+
+
+async def test_con_etiquetas_el_prompt_lleva_la_tabla_el_enfoque_y_la_regla_de_saludo() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, etiquetas=ETIQUETAS)
+
+    prompt = invocador.visto["prompt"]
+    assert "- ARQ: Arquitecto" in prompt
+    assert "- XX: No contactar -> NO CONTACTAR" in prompt
+    assert 'motivo "no_contactar"' in prompt
+    assert "- ARQ (Arquitecto): Obra y proyecto." in prompt
+    assert "NUNCA va en el saludo" in prompt
+    assert "{{" not in prompt
+
+
+async def test_una_etiqueta_rara_no_entra_al_prompt() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(
+        invocador,
+        etiquetas=[{"etiqueta": "no vale"}, "basura", {"etiqueta": "arq", "significado": "A"}],
+    )
+    prompt = invocador.visto["prompt"]
+    assert "- ARQ: A" in prompt
+    assert "no vale" not in prompt
+
+
+async def test_un_no_contactar_sin_abrir_se_acepta_sin_los_datos_del_chat() -> None:
+    """No se abrió: no hay quién habló último ni antigüedad, y eso no es un reporte roto."""
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [
+                {"contacto_nombre": "Mamá XX", "borrador_dejado": False, "motivo": "no_contactar"},
+                visitado(contacto_nombre="Juan ARQ", etiqueta="arq"),
+            ],
+        }
+    )
+    resultado = await correr(invocador, etiquetas=ETIQUETAS)
+
+    assert resultado.ok
+    chats = resultado.detalle["chats"]
+    assert chats[0]["motivo"] == "no_contactar"
+    assert chats[0]["quien_hablo_ultimo"] == "contacto"
+    assert chats[0]["antiguedad_dias"] == 0
+    assert chats[1]["etiqueta"] == "ARQ"
+    assert resultado.detalle["descartados"] == []
+
+
+async def test_un_chat_comun_sin_datos_sigue_siendo_un_reporte_roto() -> None:
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [{"contacto_nombre": "Juan", "borrador_dejado": False, "motivo": "sin_tema"}],
+        }
+    )
+    resultado = await correr(invocador)
+    assert resultado.detalle["chats"] == []
+    assert len(resultado.detalle["descartados"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# El envío automático (D52)
+# ---------------------------------------------------------------------------
+
+from datetime import UTC, datetime  # noqa: E402
+
+AHORA = datetime(2026, 9, 1, 14, 0, tzinfo=UTC)
+HASTA = "2026-09-01T22:00:00+00:00"
+
+
+async def test_sin_enviar_el_prompt_es_el_de_siempre_sin_marcas() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador)
+
+    prompt = invocador.visto["prompt"]
+    assert "<<SI_" not in prompt and "<<FIN_SI_" not in prompt
+    assert "Vos NUNCA envias" in prompt
+    assert "NUNCA aprietes enviar" in prompt
+    assert "toques el boton de enviar" in prompt
+    assert '"enviado"' not in prompt
+    assert "texto_enviado" in prompt
+
+
+async def test_con_enviar_el_prompt_pide_apretar_enviar_y_verificar_en_el_hilo() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, enviar=True, enviar_hasta=HASTA, ahora=AHORA)
+
+    prompt = invocador.visto["prompt"]
+    assert "<<SI_" not in prompt and "<<FIN_SI_" not in prompt
+    assert "Vos NUNCA envias" not in prompt
+    assert "NUNCA aprietes enviar" not in prompt
+    assert "apreta el boton de enviar (no Enter)" in prompt
+    assert "aparezca como mensaje enviado en el hilo" in prompt
+    assert '"enviado": true' in prompt
+    assert "texto_enviado" not in prompt
+    #  Lo que no cambia entre los dos modos: la redacción.
+    assert "CERO signos de exclamacion" in prompt and "Nivel B" in prompt
+
+
+async def test_con_enviar_vencido_se_dejan_borradores() -> None:
+    """Una Mac que se prende a las 21 con una tanda de las 17: el límite ya pasó."""
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": [visitado(enviado=True)]})
+    resultado = await correr(
+        invocador,
+        enviar=True,
+        enviar_hasta=HASTA,
+        ahora=datetime(2026, 9, 1, 22, 0, 1, tzinfo=UTC),
+    )
+    assert "Vos NUNCA envias" in invocador.visto["prompt"]
+    #  Y aunque el modelo diga que envió, sin `enviar` no se le cree.
+    assert resultado.detalle["chats"][0]["enviado"] is False
+    assert resultado.detalle["enviados"] == 0
+
+
+async def test_enviar_sin_hora_limite_no_envia() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, enviar=True, enviar_hasta=None, ahora=AHORA)
+    assert "Vos NUNCA envias" in invocador.visto["prompt"]
+
+
+async def test_lo_enviado_vuelve_contado() -> None:
+    invocador = responde(
+        {
+            "run_id": RUN,
+            "status": "ok",
+            "chats": [
+                visitado(enviado=True),
+                visitado(contacto_nombre="Otro", enviado=False),
+                visitado(contacto_nombre="Salteado", borrador_dejado=False, motivo="sin_tema"),
+            ],
+        }
+    )
+    resultado = await correr(invocador, enviar=True, enviar_hasta=HASTA, ahora=AHORA)
+
+    assert resultado.detalle["enviados"] == 1
+    assert resultado.detalle["dejados"] == 2
+    assert [c["enviado"] for c in resultado.detalle["chats"]] == [True, False, False]

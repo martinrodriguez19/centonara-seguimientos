@@ -19,8 +19,9 @@ import { textos } from "@/lib/textos";
 /**
  * El botón. Lo único que arranca el sistema.
  *
- * No hay cron y no hay temporizador: si nadie lo aprieta, no pasa nada. Eso es
- * una característica — el dueño sabe siempre por qué salieron mensajes hoy.
+ * Si nadie lo aprieta, no pasa nada — salvo que el dueño haya prendido la
+ * corrida programada (D51), que aprieta esto sola a la hora fijada. En los dos
+ * casos el dueño sabe por qué salieron mensajes hoy: el historial lo dice.
  *
  * **Son dos botones y no uno**, porque son dos cosas distintas y una cuesta
  * dinero:
@@ -42,12 +43,15 @@ export function BotonCorrida({
   pausado,
   enCurso,
   ultima,
+  envioAutomatico = false,
 }: {
   /** Cuántas máquinas activas y sin pausar van a recibir trabajo. */
   maquinas: number;
   pausado: boolean;
   enCurso: Corrida | null;
   ultima: Corrida | null;
+  /** Con el envío automático (D52), la confirmación tiene que decir que sale solo. */
+  envioAutomatico?: boolean;
 }) {
   const clienteQuery = useQueryClient();
   const [confirmando, setConfirmando] = useState(false);
@@ -134,6 +138,7 @@ export function BotonCorrida({
 
       {confirmando ? (
         <ConfirmarGeneracion
+          envioAutomatico={envioAutomatico}
           maquinas={maquinas}
           chats={chats}
           enviando={disparar.isPending}
@@ -192,12 +197,14 @@ function ConfirmarGeneracion({
   maquinas,
   chats,
   enviando,
+  envioAutomatico,
   onConfirmar,
   onCancelar,
 }: {
   maquinas: number;
   chats: number;
   enviando: boolean;
+  envioAutomatico: boolean;
   onConfirmar: () => void;
   onCancelar: () => void;
 }) {
@@ -209,7 +216,13 @@ function ConfirmarGeneracion({
           {textos.boton.generarConfirmarDetalle(maquinas, chats)}
         </p>
       </div>
-      <p className="text-sm text-muted-foreground">{textos.boton.generarConfirmarNota}</p>
+      {envioAutomatico ? (
+        <p className="text-sm font-medium text-critico">
+          {textos.boton.generarConfirmarNotaAutomatica}
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">{textos.boton.generarConfirmarNota}</p>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button size="lg" disabled={enviando} onClick={onConfirmar}>
           <Play className="size-4" aria-hidden />

@@ -60,6 +60,10 @@ export type Estado = {
   corrida_en_curso: Corrida | null;
   /** La más reciente, haya terminado o no. Es el enlace a "revisar borradores". */
   ultima_corrida: Corrida | null;
+  /** Cuándo arranca sola la próxima corrida (D51), o `null` si está apagada. */
+  proxima_corrida: string | null;
+  /** Si el pase único además aprieta enviar (D52). La banda lo grita. */
+  envio_automatico: boolean;
   pausa_global: boolean;
   enviados_hoy: number;
   /**
@@ -71,6 +75,13 @@ export type Estado = {
    */
   destinos_abiertos: boolean;
   destinos_permitidos: number;
+};
+
+export type EtiquetaContacto = {
+  etiqueta: string;
+  significado: string;
+  contactar: boolean;
+  enfoque: string;
 };
 
 export type Configuracion = {
@@ -121,11 +132,23 @@ export type Configuracion = {
   max_visitas_por_tanda: number;
   /**
    * La venta cerrada (D41): con `true`, si el chat es claro se deja un mensaje
-   * de post-venta ("¿te faltó algo?"); con `false`, nada. Nunca un seguimiento.
+   * de post-venta ("te faltó algo?"); con `false`, nada. Nunca un seguimiento.
    */
   mensaje_post_compra: boolean;
   /** Qué ofrecer en el post-venta, en palabras del dueño. Vacío = nada cambia. */
   post_venta_ofrecer: string;
+  /**
+   * Las etiquetas que los vendedores ponen al final del nombre del contacto
+   * (D50): qué es cada una, si se le escribe y cómo se le habla.
+   */
+  etiquetas_contacto: EtiquetaContacto[];
+  /** La corrida programada (D51): apagada de fábrica, en hora argentina. */
+  programacion: { activa: boolean; hora: string; dias: number[] };
+  /**
+   * El envío automático del pase único (D52): con el switch prendido, y sólo
+   * dentro de la ventana horaria, la tanda además aprieta enviar.
+   */
+  envio_automatico: boolean;
   /** Las frases de oficina que el borrador no puede usar (D40). Editables por API. */
   frases_prohibidas: string[];
   /**
@@ -196,6 +219,8 @@ export type Mensaje = {
   editado_por: string | null;
   /** Escrito sobre una venta cerrada (D41): pregunta cómo le fue, no vende. */
   post_venta: boolean;
+  /** La etiqueta del nombre del contacto (D50): ARQ, XX... o `null`. */
+  etiqueta: string | null;
 };
 
 export type Revision = {

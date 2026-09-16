@@ -14,6 +14,7 @@ import {
   guardarConfiguracion,
   traerConfiguracion,
   type Configuracion,
+  type EtiquetaContacto,
 } from "@/lib/panel";
 
 const TODOS = "*";
@@ -277,7 +278,7 @@ export default function Config() {
               <p className="text-xs text-muted-foreground">
                 Si en el chat se ve que la compra ya se hizo —con nosotros o en
                 otro lado— nunca se le pregunta por esa venta. Lo que se elige
-                acá es si se le deja un mensaje de post-venta («¿te faltó
+                acá es si se le deja un mensaje de post-venta («te faltó
                 algo?») o nada.
               </p>
               <div className="flex flex-wrap gap-2">
@@ -303,7 +304,7 @@ export default function Config() {
                 </Button>
               </div>
               {/* Qué ofrecerle a quien ya compró. Vacío no cambia nada: el
-                  post-venta sigue siendo «¿te faltó algo?». Con texto, pregunta
+                  post-venta sigue siendo «te faltó algo?». Con texto, pregunta
                   cómo le fue y ofrece esto en la misma línea. */}
               {(datos.mensaje_post_compra ?? true) && (
                 <PostVentaOfrecer
@@ -318,6 +319,13 @@ export default function Config() {
           )}
         </CardContent>
       </Card>
+
+      <Etiquetas
+        etiquetas={datos.etiquetas_contacto ?? []}
+        guardando={guardar.isPending}
+        error={guardar.isError ? (guardar.error as Error).message : undefined}
+        onGuardar={(etiquetas_contacto) => guardar.mutate({ etiquetas_contacto })}
+      />
 
       <Card>
         <CardHeader>
@@ -393,6 +401,22 @@ export default function Config() {
         </CardContent>
       </Card>
 
+      <CorridaProgramada
+        programacion={datos.programacion}
+        guardando={guardar.isPending}
+        onGuardar={(programacion) => guardar.mutate({ programacion })}
+      />
+
+      {(datos.modo_borrador ?? "playwright") !== "playwright" && (
+        <EnvioAutomatico
+          activo={datos.envio_automatico ?? false}
+          ventana={datos.ventana}
+          destinosAbiertos={datos.destinos_permitidos.includes(TODOS)}
+          guardando={guardar.isPending}
+          onGuardar={(envio_automatico) => guardar.mutate({ envio_automatico })}
+        />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Versión del agente</CardTitle>
@@ -420,6 +444,316 @@ export default function Config() {
       {/* Última de la pantalla, y a propósito: es la que borra. */}
       <EmpezarDeCero />
     </main>
+  );
+}
+
+/**
+ * Las etiquetas del nombre del contacto (D50).
+ *
+ * Los vendedores agendan a algunos contactos con una palabra en mayúsculas al
+ * final del nombre: qué tipo de cliente es. Acá el dueño dice qué significa
+ * cada una, si se le escribe, y cómo se le habla. Se guarda la lista entera al
+ * confirmar: una etiqueta a medio escribir no es una etiqueta.
+ */
+function Etiquetas({
+  etiquetas,
+  guardando,
+  error,
+  onGuardar,
+}: {
+  etiquetas: EtiquetaContacto[];
+  guardando: boolean;
+  error?: string;
+  onGuardar: (etiquetas: EtiquetaContacto[]) => void;
+}) {
+  const [filas, setFilas] = useState<EtiquetaContacto[]>(etiquetas);
+  const cambiado = JSON.stringify(filas) !== JSON.stringify(etiquetas);
+  const validas = filas.every((f) => /^[A-Za-z]{1,8}$/.test(f.etiqueta.trim()));
+
+  const cambiar = (i: number, cambios: Partial<EtiquetaContacto>) =>
+    setFilas((antes) => antes.map((f, j) => (j === i ? { ...f, ...cambios } : f)));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Etiquetas de contacto</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Los vendedores pueden agendar a un contacto con una palabra en
+          MAYÚSCULAS al final del nombre («Juan Pérez ARQ») que dice qué tipo
+          de cliente es. Acá se define qué significa cada una y cómo se le
+          habla. Una marcada <strong>no contactar</strong> hace que ese chat ni
+          se abra, y el contacto queda excluido para siempre. Sin etiqueta, el
+          sistema sigue como siempre.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {filas.map((fila, i) => (
+          <div
+            key={i}
+            className="grid gap-2 rounded-md border p-3 sm:grid-cols-[6rem_1fr_auto] sm:items-start"
+          >
+            <input
+              className="w-full rounded-md border border-input bg-background px-2 py-1.5 font-mono text-sm uppercase outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={fila.etiqueta}
+              maxLength={8}
+              aria-label="Etiqueta"
+              placeholder="ARQ"
+              onChange={(evento) =>
+                cambiar(i, { etiqueta: evento.target.value.toUpperCase() })
+              }
+            />
+            <div className="space-y-2">
+              <input
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={fila.significado}
+                maxLength={80}
+                aria-label="Qué es"
+                placeholder="Arquitecto"
+                onChange={(evento) => cambiar(i, { significado: evento.target.value })}
+              />
+              {fila.contactar && (
+                <textarea
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={fila.enfoque}
+                  maxLength={300}
+                  aria-label="Cómo se le habla"
+                  placeholder="Cómo enfocar el mensaje para este tipo de cliente (opcional)"
+                  onChange={(evento) => cambiar(i, { enfoque: evento.target.value })}
+                />
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                size="sm"
+                variant={fila.contactar ? "outline" : "destructive"}
+                onClick={() => cambiar(i, { contactar: !fila.contactar })}
+              >
+                {fila.contactar ? "Se contacta" : "No contactar"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setFilas((antes) => antes.filter((_, j) => j !== i))}
+              >
+                Quitar
+              </Button>
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={filas.length >= 20}
+            onClick={() =>
+              setFilas((antes) => [
+                ...antes,
+                { etiqueta: "", significado: "", contactar: true, enfoque: "" },
+              ])
+            }
+          >
+            Agregar etiqueta
+          </Button>
+          <Button
+            size="sm"
+            disabled={guardando || !cambiado || !validas}
+            onClick={() =>
+              onGuardar(
+                filas.map((f) => ({ ...f, etiqueta: f.etiqueta.trim().toUpperCase() })),
+              )
+            }
+          >
+            Guardar etiquetas
+          </Button>
+          {!validas && (
+            <span className="text-xs text-destructive">
+              Una etiqueta son letras solas, hasta 8, sin espacios ni tildes.
+            </span>
+          )}
+          {error && <span className="text-xs text-destructive">{error}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * La corrida programada (D51): que arranque sola a la hora que se fije, en
+ * hora argentina. Apagada de fábrica. Se guarda al confirmar.
+ */
+function CorridaProgramada({
+  programacion,
+  guardando,
+  onGuardar,
+}: {
+  programacion: { activa: boolean; hora: string; dias: number[] };
+  guardando: boolean;
+  onGuardar: (programacion: { activa: boolean; hora: string; dias: number[] }) => void;
+}) {
+  const [hora, setHora] = useState(programacion.hora);
+  const [dias, setDias] = useState<number[]>([...programacion.dias].sort((a, b) => a - b));
+  const NOMBRES = ["", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const horaValida = /^([01]\d|2[0-3]):[0-5]\d$/.test(hora);
+
+  const alternar = (dia: number) =>
+    setDias((antes) =>
+      antes.includes(dia) ? antes.filter((d) => d !== dia) : [...antes, dia].sort((a, b) => a - b),
+    );
+
+  return (
+    <Card className={programacion.activa ? "border-ok-borde" : undefined}>
+      <CardHeader>
+        <CardTitle className="text-base">Corrida automática</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {programacion.activa ? (
+            <>
+              <strong>Prendida.</strong> La corrida arranca sola a las{" "}
+              <span className="tabular-nums">{programacion.hora}</span> (hora
+              argentina), {diasDeLaVentana(programacion.dias)}. Las computadoras
+              tienen que estar prendidas a esa hora.
+            </>
+          ) : (
+            <>
+              <strong>Apagada.</strong> Hoy la corrida arranca sólo cuando
+              alguien aprieta «Generar seguimientos». Prendida, arranca sola a
+              la hora que se fije acá, en hora argentina.
+            </>
+          )}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-center font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={hora}
+            onChange={(evento) => setHora(evento.target.value)}
+            placeholder="17:00"
+            aria-label="Hora (HH:MM)"
+          />
+          <div className="flex flex-wrap gap-1">
+            {[1, 2, 3, 4, 5, 6, 7].map((dia) => (
+              <Button
+                key={dia}
+                type="button"
+                size="sm"
+                variant={dias.includes(dia) ? "default" : "outline"}
+                onClick={() => alternar(dia)}
+              >
+                {NOMBRES[dia]}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            disabled={guardando || !horaValida || dias.length === 0}
+            onClick={() => onGuardar({ activa: true, hora, dias })}
+          >
+            {programacion.activa ? "Guardar horario" : "Prender"}
+          </Button>
+          {programacion.activa && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={guardando}
+              onClick={() => onGuardar({ activa: false, hora, dias })}
+            >
+              Apagar
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Si el servidor estaba caído a esa hora, la corrida sale cuando vuelve,
+          hasta dos horas después. Con el sistema frenado o una corrida en
+          curso, ese día se saltea y queda en el historial.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * El envío automático del pase único (D52).
+ *
+ * Es el control que hace que un mensaje salga sin que una persona lo mire. Por
+ * eso pide escribir la palabra para prenderlo, y por eso la banda de arriba
+ * del panel lo grita mientras está prendido. Sólo actúa dentro del horario de
+ * envío: fuera de él, y los fines de semana si no están en la ventana, la
+ * corrida deja borradores como siempre.
+ */
+function EnvioAutomatico({
+  activo,
+  ventana,
+  destinosAbiertos,
+  guardando,
+  onGuardar,
+}: {
+  activo: boolean;
+  ventana: { inicio: string; fin: string; dias: number[] };
+  destinosAbiertos: boolean;
+  guardando: boolean;
+  onGuardar: (activo: boolean) => void;
+}) {
+  const [confirmacion, setConfirmacion] = useState("");
+  return (
+    <Card className={activo ? "border-critico-borde bg-critico-suave" : "border-atencion-borde"}>
+      <CardHeader>
+        <CardTitle className="text-base">Envío automático</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Con esto prendido, el pase único no deja el borrador: lo{" "}
+          <strong>envía</strong>, sin que nadie lo revise antes. Sólo dentro del
+          horario de envío (
+          <span className="tabular-nums">
+            {ventana.inicio} a {ventana.fin}
+          </span>
+          , {diasDeLaVentana(ventana.dias)}); fuera de eso deja borradores como
+          siempre.{" "}
+          {destinosAbiertos
+            ? "Los destinos están abiertos: le puede escribir a cualquier contacto."
+            : "Los destinos están acotados: sólo sale a los números de la lista."}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {activo ? (
+          <div className="flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden />
+            <div className="space-y-2">
+              <p className="font-semibold text-destructive">Prendido: los seguimientos salen solos</p>
+              <Button variant="outline" size="sm" disabled={guardando} onClick={() => onGuardar(false)}>
+                Apagar el envío automático
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 rounded-md border border-destructive/40 p-3">
+            <p className="text-sm text-muted-foreground">
+              Para prenderlo, escribí <code className="font-mono">ENVIAR</code>.
+            </p>
+            <div className="flex gap-2">
+              <input
+                className="w-32 rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={confirmacion}
+                onChange={(evento) => setConfirmacion(evento.target.value)}
+                aria-label="Escribí ENVIAR para confirmar"
+              />
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={confirmacion !== "ENVIAR" || guardando}
+                onClick={() => {
+                  onGuardar(true);
+                  setConfirmacion("");
+                }}
+              >
+                Prender
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

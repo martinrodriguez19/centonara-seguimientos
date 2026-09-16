@@ -2,8 +2,9 @@
 
 > **Qué hace este sistema.** Lee los chats de WhatsApp de cada vendedor, busca
 > los clientes que quedaron sin respuesta, redacta un mensaje de seguimiento
-> para cada uno, y los manda **después de que una persona los revise y apriete
-> enviar**. Nada sale solo.
+> para cada uno, y lo deja como borrador en el chat para que el vendedor lo
+> mande. Sólo si en el panel se prende el **envío automático**, los manda solo,
+> de lunes a viernes dentro del horario de envío.
 >
 > **Cuánto lleva ponerlo a andar:** unos 20 minutos en el panel y otros 20 en
 > cada Mac. Se hace una sola vez por computadora.

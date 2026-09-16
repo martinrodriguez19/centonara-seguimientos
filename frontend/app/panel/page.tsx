@@ -80,7 +80,10 @@ export default function Panel() {
 
   return (
     <div className="min-h-svh">
-      <BandaModo destinosAbiertos={datos.destinos_abiertos} />
+      <BandaModo
+        destinosAbiertos={datos.destinos_abiertos}
+        envioAutomatico={datos.envio_automatico}
+      />
 
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-3">
@@ -88,6 +91,16 @@ export default function Panel() {
             <h1 className="text-lg font-semibold">{textos.panel.titulo}</h1>
             <p className="text-sm tabular-nums text-muted-foreground">
               {textos.panel.enviadosHoy}: <strong>{datos.enviados_hoy}</strong>
+            </p>
+            <p className="hidden text-sm text-muted-foreground md:block">
+              {datos.proxima_corrida ? (
+                <>
+                  {textos.panel.proximaCorrida}:{" "}
+                  <strong className="tabular-nums">{cuandoEs(datos.proxima_corrida)}</strong>
+                </>
+              ) : (
+                textos.panel.proximaCorridaApagada
+              )}
             </p>
           </div>
 
@@ -131,6 +144,7 @@ export default function Panel() {
           pausado={datos.pausa_global}
           enCurso={datos.corrida_en_curso}
           ultima={datos.ultima_corrida}
+          envioAutomatico={datos.envio_automatico}
         />
 
         {tokenNuevo && (
@@ -176,4 +190,24 @@ export default function Panel() {
       </main>
     </div>
   );
+}
+
+/**
+ * "hoy 17:00", "mañana 17:00" o "lunes 17:00", en hora argentina (D51).
+ *
+ * El backend manda el instante en UTC; acá se muestra como lo piensa quien
+ * mira el panel, que está en Buenos Aires aunque el navegador diga otra cosa.
+ */
+function cuandoEs(iso: string): string {
+  const zona = "America/Argentina/Buenos_Aires";
+  const cuando = new Date(iso);
+  const diaDe = (fecha: Date) =>
+    fecha.toLocaleDateString("es-AR", { timeZone: zona, year: "numeric", month: "2-digit", day: "2-digit" });
+  const hoy = new Date();
+  const manana = new Date(hoy.getTime() + 24 * 60 * 60 * 1000);
+  const hora = cuando.toLocaleTimeString("es-AR", { timeZone: zona, hour: "2-digit", minute: "2-digit" });
+  if (diaDe(cuando) === diaDe(hoy)) return `hoy ${hora}`;
+  if (diaDe(cuando) === diaDe(manana)) return `mañana ${hora}`;
+  const dia = cuando.toLocaleDateString("es-AR", { timeZone: zona, weekday: "long" });
+  return `${dia} ${hora}`;
 }

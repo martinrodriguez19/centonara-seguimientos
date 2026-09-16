@@ -97,9 +97,16 @@ TRANSICIONES: dict[Estado, frozenset[Estado]] = {
     # BORRADOR → BORRADOR_DEJADO es del pase único (01/09): cuando el reporte
     # del agente llega, el texto YA está escrito en el chat — el estado sólo se
     # pone al día con la realidad. No pasa por EN_ESPERA porque no hay envío
-    # que esperar: en esta ruta no envía nadie.
+    # que esperar. BORRADOR → ENVIADO es lo mismo con el envío automático
+    # (D52): el reporte dice que además salió, y salió.
     Estado.BORRADOR: frozenset(
-        {Estado.RETENIDO, Estado.EN_ESPERA, Estado.BORRADOR_DEJADO, Estado.DESCARTADO}
+        {
+            Estado.RETENIDO,
+            Estado.EN_ESPERA,
+            Estado.BORRADOR_DEJADO,
+            Estado.ENVIADO,
+            Estado.DESCARTADO,
+        }
     ),
     Estado.RETENIDO: frozenset({Estado.EN_ESPERA, Estado.DESCARTADO}),
     Estado.EN_ESPERA: frozenset({Estado.ENVIANDO, Estado.DESCARTADO}),

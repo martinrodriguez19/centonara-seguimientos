@@ -27,7 +27,7 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core import cola, configuracion, mensajes, triage
+from app.core import cola, configuracion, etiquetas, mensajes, triage
 from app.core.contactos import NumeroInvalido, normalizar
 from app.core.estados import Estado
 from app.logging import obtener_logger
@@ -53,6 +53,8 @@ class Encoladas:
     ya_contactados: int = 0
     #  El número salió de la memoria de resoluciones anteriores, sin navegador.
     desde_cache: int = 0
+    #  El nombre lleva la etiqueta de "no contactar" (D50): ni se redacta.
+    no_contactar: int = 0
     #  El job RESOLVER que quedó encolado con los sin-teléfono, si hubo.
     resolver_job: ObjectId | None = None
     #  Ya se habían encolado: el agente reportó dos veces el mismo `LISTAR`.
@@ -253,6 +255,13 @@ async def encolar_redacciones(
             resultado.fuera_de_antiguedad += 1
             continue
 
+        #  XX en el nombre (D50): la familia y el equipo del vendedor. Antes de
+        #  pagar nada, y antes de resolver el número: no hace falta.
+        etiqueta = etiquetas.detectar(str(chat.get("contacto_nombre") or ""), config)
+        if etiqueta is not None and etiqueta.no_contactar:
+            resultado.no_contactar += 1
+            continue
+
         contacto_id = _a_e164(chat.get("contacto_telefono"))
         if contacto_id is None:
             # A resolver: el número vive en el panel de contacto de ese chat, y
@@ -401,6 +410,17 @@ async def encolar_redacciones_resueltas(
     return resultado
 
 
+def sin_signos_de_apertura(texto: str) -> str:
+    """Quita `¿` y `¡` (D49): los vendedores escriben sin apertura y así lo pidieron.
+
+    Sólo acá, en el circuito viejo: es el único camino en que el texto pasa por
+    código antes de escribirse en WhatsApp (`ENVIAR` escribe `mensaje["texto"]`
+    tal cual). En el pase único el borrador ya está en el chat cuando llega, y
+    ahí lo que hay es una señal, no una corrección.
+    """
+    return texto.replace("¿", "").replace("¡", "")
+
+
 async def guardar_borrador(
     base,
     *,
@@ -429,7 +449,7 @@ async def guardar_borrador(
         return None
 
     sin_contexto = detalle.get("status") == "sin_contexto"
-    texto = "" if sin_contexto else str(detalle.get("texto", ""))
+    texto = "" if sin_contexto else sin_signos_de_apertura(str(detalle.get("texto", "")))
 
     try:
         mensaje_id = await mensajes.crear_borrador(
