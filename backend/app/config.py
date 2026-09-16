@@ -62,6 +62,12 @@ class Configuracion(BaseSettings):
     # preguntan al backend, que resuelve la rama a un sha y lo cachea.
     repo_github: str = "martinrodriguez19/centonara-seguimientos"
     rama_agente: str = "main"
+    # Opcional (D53): un token de GitHub de sólo lectura para resolver la rama.
+    # Sin token, la API pública admite 60 consultas por hora **por IP**, y
+    # Render comparte las IPs de salida entre servicios ajenos: cuando el cupo
+    # se agota, el backend no sabe qué versión toca y las máquinas no se mueven.
+    # Con token son 5.000 por hora, propias. Vacío = como hasta ahora.
+    github_token: str = ""
 
     @property
     def logs_en_json(self) -> bool:

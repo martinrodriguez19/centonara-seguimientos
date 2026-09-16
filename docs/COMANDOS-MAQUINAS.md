@@ -74,6 +74,32 @@ cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main -
 cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main --diagnostico
 ```
 
+## La Mac no se actualiza
+
+Primero, ver qué pasa. Este comando no cambia nada:
+
+```bash
+echo "--- git:"; ls -d ~/centonara-seguimientos/.git; echo "--- servicios:"; ls ~/Library/LaunchAgents | grep centonara; echo "--- actualizador:"; ls ~/.centonara/bin/; echo "--- version:"; cat ~/centonara-seguimientos/agente/VERSION; echo "--- log:"; tail -15 ~/Library/Logs/centonara/actualizador.log
+```
+
+| Lo que dice | Qué es |
+|---|---|
+| Aparece `.git`, hay 2 servicios y no hay `actualizar.py` | Es una instalación vieja (de cuando la guía decía `git clone`). Correr el arreglo de abajo |
+| 3 servicios, y el log dice `al día` pero la versión es vieja | En el panel, Configuración → **Versión del agente** tiene un commit fijado. Tiene que estar vacío |
+| El log dice `desconocida` | GitHub no le contesta al servidor. Se ve también como alerta en el panel; no es de esta Mac |
+
+El arreglo para el primer caso. **No borrar la carpeta**: adentro está el `.env` con el token de
+la máquina. Se aparta sólo el `.git` y se vuelve a correr el instalador, que baja lo último y deja
+los tres servicios:
+
+```bash
+mv ~/centonara-seguimientos/.git ~/centonara-git-viejo; curl -fsSL --http1.1 https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | bash
+```
+
+Al final el instalador dice `QUEDÓ AL DÍA: <commit>` o `NO QUEDÓ AL DÍA: <qué falta>`. Después,
+"Verificar que quedó bien" de arriba: **tres** líneas con `centonara`, y el commit en la tarjeta
+de la máquina del panel.
+
 ---
 
 # PC de Sofía (Windows, ya funciona)

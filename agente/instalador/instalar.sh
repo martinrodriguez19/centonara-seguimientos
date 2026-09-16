@@ -49,10 +49,16 @@ BACKEND_POR_DEFECTO="https://backend-produccion-7yqr.onrender.com"
 export PATH="$HOME/.local/bin:$PATH"
 
 # Si el script se está corriendo desde un repositorio ya clonado en otro lado
-# (una máquina de desarrollo), se usa ese y no ~/centonara-seguimientos.
+# (una máquina de desarrollo), se usa ese y no ~/centonara-seguimientos. Y se
+# recuerda que es desarrollo: es la única situación en la que un `.git` en el
+# repo se respeta (ver el paso 3).
+DESARROLLO=no
 if [ -f "${BASH_SOURCE[0]:-}" ]; then
   posible=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-  [ -f "$posible/agente/instalador/instalar-mac.sh" ] && REPO="$posible"
+  if [ -f "$posible/agente/instalador/instalar-mac.sh" ]; then
+    REPO="$posible"
+    DESARROLLO=si
+  fi
 fi
 
 titulo() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -138,8 +144,8 @@ fi
 # ---------------------------------------------------------------------------
 titulo "[3/8] El proyecto"
 
-if [ -d "$REPO/.git" ]; then
-  # Un repositorio git es de alguien que desarrolla: no se le pisa nada, y
+if [ -d "$REPO/.git" ] && [ "$DESARROLLO" = si ]; then
+  # Un repositorio git de alguien que desarrolla: no se le pisa nada, y
   # tampoco se hace un `git pull` callado. Eso era lo de antes: si la rama
   # era otra, había cambios locales o la credencial venció, el pull fallaba
   # en silencio y esto seguía instalando código viejo como si fuera nuevo.
@@ -148,6 +154,20 @@ if [ -d "$REPO/.git" ]; then
   echo "      rama: $(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
   echo "      commit: $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo '?')"
 else
+  if [ -d "$REPO/.git" ]; then
+    # ⚠️ Un `.git` en la carpeta de un vendedor NO es de un desarrollador: es
+    # una instalación vieja, de cuando la guía decía `git clone` (D53). Antes
+    # esto lo trataba como un clon y no bajaba nada — y entonces corría el
+    # instalar-mac.sh viejo, que no conoce el actualizador, y se cortaba a la
+    # mitad: así quedaron las Macs sin actualizarse. Se aparta el `.git` (no se
+    # borra: por si hiciera falta mirarlo) y se sigue como en una Mac limpia.
+    # El .env, el .venv y todo lo demás quedan en su lugar.
+    aparte="$HOME/.centonara/git-viejo-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$HOME/.centonara"
+    mv "$REPO/.git" "$aparte"
+    echo "  aviso: $REPO era un clon de git de una instalación vieja."
+    echo "         Se apartó a $aparte y se baja la última versión."
+  fi
   echo "  bajando la última versión a $REPO"
   mkdir -p "$REPO"
   # El tarball trae el código y nada más: el .env y el entorno de esta máquina
@@ -352,11 +372,32 @@ echo "  ok  agente corriendo"
 # es "lo último de main", que puede no ser lo que el panel pide— y así la
 # tarjeta de la máquina muestra desde el primer minuto qué versión corre.
 # Después queda el LaunchAgent, que lo corre al iniciar sesión y cada hora.
-echo "  poniéndose en la versión que fija el panel..."
-"$PYTHON" "$HOME/.centonara/bin/actualizar.py" --repo "$REPO" --sin-verificar \
-  || echo "  aviso: el actualizador no pudo terminar; lo va a reintentar solo en una hora"
-launchctl bootstrap "gui/$uid" "$HOME/Library/LaunchAgents/com.centonara.actualizador.plist"
-echo "  ok  actualizador al iniciar sesión y cada hora"
+#
+# Y antes de cargarlo se comprueba que exista: un `launchctl bootstrap` sobre
+# un plist que no está corta el instalador (set -e) sin decir por qué, con el
+# agente ya andando con código viejo. Pasó (D53). Si falta algo, se dice qué y
+# se sigue: lo que queda instalado sirve igual, y el resumen final lo repite.
+PLIST_ACTUALIZADOR="$HOME/Library/LaunchAgents/com.centonara.actualizador.plist"
+COPIA_ACTUALIZADOR="$HOME/.centonara/bin/actualizar.py"
+ACTUALIZADOR_FALTA=""
+[ -f "$COPIA_ACTUALIZADOR" ] || ACTUALIZADOR_FALTA="no está la copia $COPIA_ACTUALIZADOR"
+[ -f "$PLIST_ACTUALIZADOR" ] || ACTUALIZADOR_FALTA="${ACTUALIZADOR_FALTA:+$ACTUALIZADOR_FALTA; }no está $PLIST_ACTUALIZADOR"
+
+if [ -z "$ACTUALIZADOR_FALTA" ]; then
+  echo "  poniéndose en la versión que fija el panel..."
+  "$PYTHON" "$COPIA_ACTUALIZADOR" --repo "$REPO" --sin-verificar \
+    || echo "  aviso: el actualizador no pudo terminar; lo va a reintentar solo en una hora"
+  if launchctl bootstrap "gui/$uid" "$PLIST_ACTUALIZADOR"; then
+    echo "  ok  actualizador al iniciar sesión y cada hora"
+  else
+    ACTUALIZADOR_FALTA="launchctl no pudo cargar $PLIST_ACTUALIZADOR"
+  fi
+fi
+if [ -n "$ACTUALIZADOR_FALTA" ]; then
+  echo "  MAL el actualizador no quedó instalado: $ACTUALIZADOR_FALTA" >&2
+  echo "      Esta Mac NO se va a actualizar sola hasta que se resuelva. Suele ser" >&2
+  echo "      que instalar-mac.sh es viejo: volvé a correr este instalador." >&2
+fi
 
 # ---------------------------------------------------------------------------
 titulo "[8/8] El navegador que escribe los mensajes"
@@ -400,6 +441,34 @@ elif [ "$TECLADO" = si ]; then
 else
   echo "  Sin teclado para preguntar. Cuando puedas, corré:"
   echo "    $VINCULAR_CMD"
+fi
+
+# ---------------------------------------------------------------------------
+titulo "¿Quedó al día?"
+#
+# Lo que importa al final no es que cada paso haya dicho "ok" sino que la Mac
+# haya quedado como tiene que quedar: los tres servicios cargados y una versión
+# escrita. Se comprueba de verdad, contra launchctl y contra el disco, y se dice
+# en una línea que se pueda leer por teléfono: QUEDÓ AL DÍA o NO QUEDÓ AL DÍA.
+FALTA=""
+cargados=$(launchctl list 2>/dev/null || true)
+for etiqueta in com.centonara.chrome com.centonara.agente com.centonara.actualizador; do
+  printf '%s\n' "$cargados" | grep -q "$etiqueta" \
+    || FALTA="${FALTA:+$FALTA; }falta el servicio $etiqueta"
+done
+SHA_INSTALADO=""
+if [ -f "$REPO/agente/VERSION" ]; then
+  SHA_INSTALADO=$(awk 'NR==1 {print $1}' "$REPO/agente/VERSION")
+fi
+[ -n "$SHA_INSTALADO" ] || FALTA="${FALTA:+$FALTA; }no se escribió agente/VERSION"
+
+if [ -z "$FALTA" ]; then
+  echo "  QUEDÓ AL DÍA: $SHA_INSTALADO"
+  echo "  (el panel muestra ese commit en la tarjeta de esta máquina)"
+else
+  echo "  NO QUEDÓ AL DÍA: $FALTA" >&2
+  echo "  Volvé a correr este instalador. Si vuelve a decir lo mismo, mandá" >&2
+  echo "  esta pantalla entera y el log: ~/Library/Logs/centonara/actualizador.log" >&2
 fi
 
 # ---------------------------------------------------------------------------

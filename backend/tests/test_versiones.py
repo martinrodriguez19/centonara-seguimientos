@@ -122,3 +122,131 @@ async def test_una_respuesta_que_no_es_un_sha_no_se_toma() -> None:
 
     esperada = await versiones.esperada({}, repo=REPO, rama="main", resolver=_raro)
     assert esperada.sha == ""
+
+
+# ---------------------------------------------------------------------------
+# El token de GitHub y "desde cuándo no se sabe" (D53)
+# ---------------------------------------------------------------------------
+
+
+# El resolvedor real, guardado al importar: el `conftest` lo reemplaza en cada
+# test por uno de mentira, y los tests del token necesitan el de verdad (con el
+# cliente HTTP falseado abajo, así que ninguno toca la red).
+RESOLVER_REAL = versiones._resolver_en_github
+
+
+def resolvedor_real_falso(monkeypatch, *, contesta: str = "1234567890ab"):
+    """El resolvedor real con el cliente HTTP falseado: captura los headers que irían a GitHub."""
+    import httpx
+
+    monkeypatch.setattr(versiones, "_resolver_en_github", RESOLVER_REAL)
+    visto: dict = {}
+
+    class _Respuesta:
+        text = contesta
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Cliente:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            return None
+
+        async def get(self, url: str, headers: dict):
+            visto["url"] = url
+            visto["headers"] = headers
+            return _Respuesta()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Cliente)
+    return visto
+
+
+async def test_con_token_va_en_el_header_y_no_en_el_log(monkeypatch, caplog) -> None:
+    visto = resolvedor_real_falso(monkeypatch)
+    esperada = await versiones.esperada({}, repo=REPO, rama="main", token="ghp_secreto")
+    assert esperada.sha == "1234567890ab"
+    assert visto["headers"]["Authorization"] == "Bearer ghp_secreto"
+    assert "ghp_secreto" not in caplog.text
+
+
+async def test_sin_token_no_se_manda_authorization(monkeypatch) -> None:
+    visto = resolvedor_real_falso(monkeypatch)
+    await versiones.esperada({}, repo=REPO, rama="main")
+    assert "Authorization" not in visto["headers"]
+    assert visto["headers"]["Accept"] == "application/vnd.github.sha"
+
+
+async def test_el_token_no_aparece_en_el_log_cuando_github_falla(monkeypatch, caplog) -> None:
+    import httpx
+
+    class _Cliente:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            return None
+
+        async def get(self, url: str, headers: dict):
+            raise OSError("sin red")
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Cliente)
+    monkeypatch.setattr(versiones, "_resolver_en_github", RESOLVER_REAL)
+    esperada = await versiones.esperada({}, repo=REPO, rama="main", token="ghp_secreto")
+    assert esperada.sha == ""
+    assert "ghp_secreto" not in caplog.text
+
+
+async def test_desconocida_desde_se_anota_la_primera_vez_que_falla() -> None:
+    async def _roto(repo: str, rama: str) -> str:
+        raise OSError("sin red")
+
+    assert versiones.desconocida_desde() is None
+    await versiones.esperada({}, repo=REPO, rama="main", resolver=_roto, ahora=100.0)
+    assert versiones.desconocida_desde() == 100.0
+    #  La segunda falla no mueve la marca: lo que interesa es cuánto lleva así.
+    await versiones.esperada({}, repo=REPO, rama="main", resolver=_roto, ahora=500.0)
+    assert versiones.desconocida_desde() == 100.0
+
+
+async def test_desconocida_desde_se_anota_aunque_valga_la_cache_vieja() -> None:
+    """Con caché vencida y GitHub caído, las máquinas siguen con lo viejo: un push no llega."""
+    resolver, _ = contar("1234567890ab")
+    await versiones.esperada({}, repo=REPO, rama="main", resolver=resolver, ahora=0.0)
+
+    async def _roto(repo: str, rama: str) -> str:
+        raise OSError("sin red")
+
+    momento = versiones.TTL_S * 10.0
+    esperada = await versiones.esperada({}, repo=REPO, rama="main", resolver=_roto, ahora=momento)
+    assert esperada.sha == "1234567890ab"
+    assert versiones.desconocida_desde() == momento
+
+
+async def test_desconocida_desde_se_limpia_al_resolver() -> None:
+    async def _roto(repo: str, rama: str) -> str:
+        raise OSError("sin red")
+
+    await versiones.esperada({}, repo=REPO, rama="main", resolver=_roto, ahora=100.0)
+    resolver, _ = contar()
+    await versiones.esperada({}, repo=REPO, rama="main", resolver=resolver, ahora=200.0)
+    assert versiones.desconocida_desde() is None
+
+
+async def test_la_version_fijada_no_toca_la_marca() -> None:
+    async def _roto(repo: str, rama: str) -> str:
+        raise OSError("sin red")
+
+    await versiones.esperada({}, repo=REPO, rama="main", resolver=_roto, ahora=100.0)
+    await versiones.esperada(
+        {"version_agente_esperada": "4decc8c"}, repo=REPO, rama="main", resolver=_roto
+    )
+    assert versiones.desconocida_desde() == 100.0

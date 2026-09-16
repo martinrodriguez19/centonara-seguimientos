@@ -62,6 +62,13 @@ class Esperada:
 # backend es uno (D17) y es lo único que la consulta.
 _cache: dict[str, tuple[str, float]] = {}
 
+# Desde cuándo (monotonic) no se puede resolver la rama, o `None` si la última
+# resolución salió bien (D53). Existe para que las alertas puedan decir "lleva
+# más de una hora sin poder saber qué versión toca": con la caché vencida y
+# GitHub sin contestar, las máquinas siguen con lo que tienen —que es lo
+# correcto— pero un push no llega a ninguna, y nadie se entera.
+_sin_resolver_desde: float | None = None
+
 
 def normalizar(sha: Any) -> str:
     """Un sha como lo acepta la configuración: minúsculas, o vacío si no lo es."""
@@ -69,20 +76,28 @@ def normalizar(sha: Any) -> str:
     return texto if SHA.match(texto) else ""
 
 
-async def _resolver_en_github(repo: str, rama: str) -> str:
+async def _resolver_en_github(repo: str, rama: str, token: str = "") -> str:
     """El sha de la punta de `rama`, preguntado a la API pública de GitHub.
 
     `Accept: application/vnd.github.sha` devuelve el sha pelado, sin JSON que
-    parsear. Sin token: el repositorio es público, y un token en el backend
-    sería un secreto más que cuidar para ahorrar una llamada por cinco minutos.
+    parsear. El repositorio es público, así que el token es opcional (D53):
+    sin él, la API admite 60 consultas por hora por IP, y Render comparte las
+    IPs de salida; con él, 5.000 propias. Nunca se loguea.
     """
+    encabezados = {"Accept": "application/vnd.github.sha", "User-Agent": "centonara-backend"}
+    if token:
+        encabezados["Authorization"] = f"Bearer {token}"
     async with httpx.AsyncClient(timeout=8.0) as cliente:
         respuesta = await cliente.get(
-            f"https://api.github.com/repos/{repo}/commits/{rama}",
-            headers={"Accept": "application/vnd.github.sha", "User-Agent": "centonara-backend"},
+            f"https://api.github.com/repos/{repo}/commits/{rama}", headers=encabezados
         )
         respuesta.raise_for_status()
         return respuesta.text.strip()
+
+
+def desconocida_desde() -> float | None:
+    """Desde cuándo (monotonic) no se puede resolver la rama; `None` si se puede."""
+    return _sin_resolver_desde
 
 
 async def esperada(
@@ -90,6 +105,7 @@ async def esperada(
     *,
     repo: str,
     rama: str,
+    token: str = "",
     resolver: Resolver | None = None,
     ahora: float | None = None,
 ) -> Esperada:
@@ -98,9 +114,12 @@ async def esperada(
     `config` es la configuración operativa (la de la base): si trae
     `version_agente_esperada`, manda. Si no, la rama, con caché de `TTL_S`.
 
+    `token` es el de GitHub (D53), si hay; sólo lo usa el resolvedor real.
     `resolver` se resuelve al llamar y no en la firma, a propósito: los tests
     reemplazan `_resolver_en_github` en el módulo y ningún test toca la red.
     """
+    global _sin_resolver_desde
+
     fijada = normalizar(config.get("version_agente_esperada"))
     if fijada:
         return Esperada(fijada, "panel")
@@ -112,14 +131,28 @@ async def esperada(
         return Esperada(guardado[0], "rama")
 
     try:
-        sha = normalizar(await (resolver or _resolver_en_github)(repo, rama))
+        if resolver is not None:
+            crudo = await resolver(repo, rama)
+        elif token:
+            crudo = await _resolver_en_github(repo, rama, token)
+        else:
+            #  Sin token, la llamada de siempre: los tests reemplazan
+            #  `_resolver_en_github` por una función de dos argumentos.
+            crudo = await _resolver_en_github(repo, rama)
+        sha = normalizar(crudo)
     except Exception as error:
         sha = ""
+        #  El error puede traer la URL, nunca el token: va en un header.
         log.warning("version_esperada_no_resuelta", rama=rama, error=str(error)[:200])
 
     if sha:
         _cache[clave] = (sha, momento)
+        _sin_resolver_desde = None
         return Esperada(sha, "rama")
+    #  Se anota la PRIMERA vez que falla, no cada vez: lo que interesa es
+    #  cuánto lleva así, y eso se mide desde el primer tropiezo.
+    if _sin_resolver_desde is None:
+        _sin_resolver_desde = momento
     if guardado is not None:
         #  GitHub no contestó pero hubo una respuesta antes: mejor vieja que
         #  ninguna. Las máquinas ya estaban convergiendo a ésa.
@@ -149,4 +182,6 @@ def coincide(reportada: str | None, sha_esperado: str) -> bool | None:
 
 def olvidar_cache() -> None:
     """Para los tests, y para nada más."""
+    global _sin_resolver_desde
     _cache.clear()
+    _sin_resolver_desde = None

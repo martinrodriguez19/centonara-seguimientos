@@ -374,7 +374,9 @@ async def version_esperada(
     respuesta es la misma para todas las máquinas; el token sólo autentica.
     """
     config = await configuracion.obtener(db.obtener_base())
-    esperada = await versiones.esperada(config, repo=ajustes.repo_github, rama=ajustes.rama_agente)
+    esperada = await versiones.esperada(
+        config, repo=ajustes.repo_github, rama=ajustes.rama_agente, token=ajustes.github_token
+    )
     return {
         **esperada.a_dict(),
         "repo": ajustes.repo_github,
