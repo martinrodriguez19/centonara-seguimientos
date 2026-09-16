@@ -673,7 +673,12 @@ async def test_con_el_post_venta_apagado_la_oferta_no_viaja() -> None:
 # ---------------------------------------------------------------------------
 
 ETIQUETAS = [
-    {"etiqueta": "ARQ", "significado": "Arquitecto", "contactar": True, "enfoque": "Obra y proyecto."},
+    {
+        "etiqueta": "ARQ",
+        "significado": "Arquitecto",
+        "contactar": True,
+        "enfoque": "Obra y proyecto.",
+    },
     {"etiqueta": "XX", "significado": "No contactar", "contactar": False, "enfoque": ""},
 ]
 
