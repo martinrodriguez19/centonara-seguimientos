@@ -239,6 +239,9 @@ export type Alerta = {
   /** La corrida involucrada, cuando la acción es sobre una en particular
    * (D31): permite mostrar el botón que la resuelve al lado de la alerta. */
   corrida_id: string | null;
+  /** La máquina de la que habla, o `null` si es de todo el sistema. Es lo que
+   * usa la página de errores para filtrar por máquina. */
+  maquina: string | null;
 };
 
 /** Cómo salió una corrida. Lo que devuelve `GET /corridas/{id}/metricas`. */

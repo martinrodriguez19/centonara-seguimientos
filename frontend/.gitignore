@@ -8,3 +8,7 @@ next-env.d.ts
 /out/
 /coverage/
 .vercel
+
+# Playwright
+/test-results/
+/playwright-report/

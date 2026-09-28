@@ -148,7 +148,7 @@ en ninguna máquina y no hay forma de arreglarlo desde el sistema.</p>
 <p>Se hace desde cualquier computadora, sin la Mac delante.</p>
 <p><strong>El panel:</strong> https://frontend-produccion.onrender.com</p>
 <h2>1.1 — Contarle al sistema sobre la empresa</h2>
-<p><strong>Configuración → Sobre la empresa.</strong></p>
+<p><strong>Ajustes → Mensajes → Indicaciones para redactar.</strong></p>
 <p>Acá va todo lo que el redactor necesita saber para escribir mensajes que sirvan:
 qué vende la empresa, qué productos y servicios ofrece, promociones vigentes,
 cómo le habla a sus clientes, con qué conviene recuperar a alguien que se
@@ -159,7 +159,7 @@ había pedido y le ofrece algo real.</p>
 <p>Se puede cambiar cuando se quiera: cada mensaje que se redacta usa la versión
 del momento.</p>
 <h2>1.2 — Decir a quién se le puede escribir ⚠️</h2>
-<p><strong>Configuración → Destinos permitidos.</strong></p>
+<p><strong>Ajustes → Seguridad → Destinos permitidos.</strong></p>
 <p>Esta lista es el freno de mano del sistema: <strong>sólo se le escribe a los números
 que estén ahí</strong>. Arranca vacía, y vacía significa <strong>a nadie</strong>.</p>
 <p>Para las pruebas, cargar dos o tres números propios y nada más. Cuando el
@@ -171,7 +171,7 @@ los chats y <strong>no genera casi nada</strong>. No está roto: está haciendo 
 pidió.</p>
 </blockquote>
 <h2>1.3 — Elegir qué chats se siguen</h2>
-<p><strong>Configuración → Qué chats se siguen.</strong> Dos formas:</p>
+<p><strong>Ajustes → Qué chats y cuántos.</strong> Dos formas:</p>
 <ul>
 <li><strong>Los más recientes</strong> — mira los chats de arriba de la lista, dentro de la
   ventana de silencio que se configure (por ejemplo, entre 5 y 90 días sin
@@ -185,7 +185,7 @@ pidió.</p>
 empezar con 10</strong>: tandas chicas que terminan rinden más que tandas grandes que
 se cortan por la mitad.</p>
 <h2>1.4 — El horario en que pueden salir mensajes</h2>
-<p><strong>Configuración → Cuándo y a qué ritmo sale.</strong> Por defecto es de 9 a 19, de
+<p><strong>Ajustes → Envío y horarios → Horario de envío.</strong> Por defecto es de 9 a 19, de
 lunes a viernes, hora de Argentina. Se cambia, o se saca del medio con el botón
 <strong>Sin restricción (24/7)</strong>.</p>
 <h2>1.5 — Dar de alta la máquina</h2>
@@ -258,7 +258,7 @@ esa sesión vence más adelante, se hace con:</p>
 <h2>3.1 — La conversación con el vendedor, y registrarla</h2>
 <p>El sistema manda mensajes <strong>desde la línea del vendedor, con su nombre</strong>. Eso
 tiene que estar hablado y aceptado, no supuesto.</p>
-<p>Cuando la conversación ya pasó: en el panel, en la tarjeta de la máquina, botón
+<p>Cuando la conversación ya pasó: en el panel, en Máquinas → la máquina → menú ⋯, botón
 <strong>Registrar consentimiento</strong>. Queda con fecha en el historial, y sin eso el
 sistema no le encola ningún envío.</p>
 <h2>3.2 — Activar la máquina</h2>
@@ -375,7 +375,7 @@ nada:</p>
 <pre><code class="language-bash">cd ~/centonara-seguimientos &amp;&amp; uv run --directory agente python -m agente.main --verificar-selectores --chat +549XXXXXXXXXX
 </code></pre>
 <p><strong>Para entregar el sistema a otra empresa</strong> (o para limpiar las pruebas):
-Configuración → <strong>Empezar de cero</strong>. Borra corridas, borradores, mensajes y los
+Ajustes → Sistema → <strong>Empezar de cero</strong>. Borra corridas, borradores, mensajes y los
 números que el sistema había averiguado, y deja la lista de destinos vacía otra
 vez. No borra el historial de auditoría — ese registro es inmutable a propósito,
 ni siquiera el sistema puede borrarlo — ni toca los chats de WhatsApp de nadie.</p>

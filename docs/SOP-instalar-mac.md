@@ -38,7 +38,7 @@ Se hace desde cualquier computadora, sin la Mac delante.
 
 ## 1.1 — Contarle al sistema sobre la empresa
 
-**Configuración → Sobre la empresa.**
+**Ajustes → Mensajes → Indicaciones para redactar.**
 
 Acá va todo lo que el redactor necesita saber para escribir mensajes que sirvan:
 qué vende la empresa, qué productos y servicios ofrece, promociones vigentes,
@@ -54,7 +54,7 @@ del momento.
 
 ## 1.2 — Decir a quién se le puede escribir ⚠️
 
-**Configuración → Destinos permitidos.**
+**Ajustes → Seguridad → Destinos permitidos.**
 
 Esta lista es el freno de mano del sistema: **sólo se le escribe a los números
 que estén ahí**. Arranca vacía, y vacía significa **a nadie**.
@@ -69,7 +69,7 @@ la palabra `ABRIR` — es un acto deliberado y queda registrado.
 
 ## 1.3 — Elegir qué chats se siguen
 
-**Configuración → Qué chats se siguen.** Dos formas:
+**Ajustes → Qué chats y cuántos.** Dos formas:
 
 - **Los más recientes** — mira los chats de arriba de la lista, dentro de la
   ventana de silencio que se configure (por ejemplo, entre 5 y 90 días sin
@@ -85,7 +85,7 @@ se cortan por la mitad.
 
 ## 1.4 — El horario en que pueden salir mensajes
 
-**Configuración → Cuándo y a qué ritmo sale.** Por defecto es de 9 a 19, de
+**Ajustes → Envío y horarios → Horario de envío.** Por defecto es de 9 a 19, de
 lunes a viernes, hora de Argentina. Se cambia, o se saca del medio con el botón
 **Sin restricción (24/7)**.
 
@@ -157,8 +157,8 @@ comando**. Es seguro correrlo las veces que haga falta.
 
 **Actualizar no requiere volver a correrlo.** El instalador deja un tercer
 servicio, el actualizador, que corre al iniciar sesión y cada hora y pone el
-agente en la versión que fija el panel (Configuración → *Versión del agente*).
-La tarjeta de cada máquina muestra qué versión corre y si está al día.
+agente en la versión que fija el panel (Ajustes → Sistema → *Versión del agente*).
+El detalle de cada máquina (Máquinas → la máquina) muestra qué versión corre y si está al día.
 
 Cuando termina dice **INSTALACIÓN COMPLETA**.
 
@@ -188,7 +188,7 @@ cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main -
 El sistema manda mensajes **desde la línea del vendedor, con su nombre**. Eso
 tiene que estar hablado y aceptado, no supuesto.
 
-Cuando la conversación ya pasó: en el panel, en la tarjeta de la máquina, botón
+Cuando la conversación ya pasó: en el panel, en Máquinas → la máquina → menú ⋯, botón
 **Registrar consentimiento**. Queda con fecha en el historial, y sin eso el
 sistema no le encola ningún envío.
 
@@ -307,7 +307,7 @@ cd ~/centonara-seguimientos && uv run --directory agente python -m agente.main -
 ```
 
 **Para entregar el sistema a otra empresa** (o para limpiar las pruebas):
-Configuración → **Empezar de cero**. Borra corridas, borradores, mensajes y los
+Ajustes → Sistema → **Empezar de cero**. Borra corridas, borradores, mensajes y los
 números que el sistema había averiguado, y deja la lista de destinos vacía otra
 vez. No borra el historial de auditoría — ese registro es inmutable a propósito,
 ni siquiera el sistema puede borrarlo — ni toca los chats de WhatsApp de nadie.
@@ -322,8 +322,8 @@ hora:
 bash ~/centonara-seguimientos/agente/instalador/actualizar.sh
 ```
 
-**Volver a una versión anterior:** desde el panel, Configuración → *Versión del
-agente* → pegar el commit. Todas las máquinas van a ése en menos de una hora,
+**Volver a una versión anterior:** desde el panel, Ajustes → Sistema → *Versión
+del agente* → pegar el commit. Todas las máquinas van a ése en menos de una hora,
 sin tocar ninguna. Vaciar el campo las devuelve a lo último publicado.
 
 **Una PC con Windows:** ver [`SOP-instalar-windows.md`](SOP-instalar-windows.md).

@@ -121,6 +121,7 @@ async def test_el_selector_roto_es_urgente(base) -> None:
     alerta = next(a for a in encontradas if a.codigo == "selector_roto")
     assert alerta.nivel is alertas.Nivel.URGENTE
     assert alerta.accion, "una alerta sin acción es una queja"
+    assert alerta.maquina is None, "es de todo el sistema, no de una máquina"
 
 
 @sin_mongo
@@ -251,6 +252,7 @@ async def test_una_maquina_degradada_es_un_aviso(base) -> None:
     )
     assert alerta.nivel is alertas.Nivel.AVISO
     assert "claude_bin" in alerta.detalle, "dice QUÉ chequeo falla"
+    assert alerta.maquina == "mac-rocio", "el panel filtra los errores por máquina con esto"
 
 
 @sin_mongo
@@ -336,6 +338,14 @@ async def test_toda_alerta_dice_que_hacer(base) -> None:
         assert alerta.accion, f"{alerta.codigo} no dice qué hacer"
         assert alerta.titulo
         assert alerta.detalle
+
+
+def test_la_alerta_viaja_con_su_maquina() -> None:
+    """El panel filtra por `maquina`, no leyendo el nombre dentro del título."""
+    de_una = alertas.Alerta(alertas.Nivel.AVISO, "x", "t", "d", "a", maquina="mac-rocio")
+    global_ = alertas.Alerta(alertas.Nivel.AVISO, "x", "t", "d", "a")
+    assert de_una.a_dict()["maquina"] == "mac-rocio"
+    assert global_.a_dict()["maquina"] is None
 
 
 def test_solo_hay_dos_niveles() -> None:

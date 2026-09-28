@@ -1232,6 +1232,65 @@ carpeta.
 
 ---
 
+### D54 — La barra del panel: tres menús, un chip de modo y los errores en su página *(28/09/2026; revisa la banda de modo y D31)*
+
+**Contexto.** El sistema funciona, pero el panel no se podía usar: el inicio pintaba todas
+las alertas como carteles grandes arriba del botón, cada tarjeta de máquina sumaba los suyos,
+y una banda a todo el ancho —roja todo el día con el envío automático prendido— se leía como
+un error permanente. El cliente no sabía cuál importaba. Y la barra tenía ocho cosas al mismo
+nivel.
+
+**Decisión.** Un layout común (`app/(panel)/`, sin cambiar URLs) con una barra de tres menús
+—Operación, Análisis, Ajustes— y a la derecha sólo el chip de modo, el freno y la cuenta. **La
+banda pasa a chip** (Prueba / Envío real / Envío automático), que se sigue decidiendo por la
+lista de destinos (R4) y el switch de D52, y abre el detalle al tocarlo. **Las alertas salen
+del inicio** a `/errores`: urgentes y para mirar, filtro por máquina, y "Ya lo vi" (sólo de
+ese navegador: la alerta la sigue calculando el backend). En el inicio queda una línea si hay
+algo urgente. El freno se queda a la vista: no es una alerta, es un control. Para filtrar por
+máquina, cada alerta del backend lleva `maquina` (aditivo, de sólo lectura). Una Mac apagada
+sin trabajo esperando sigue sin ser un problema: el panel no suma lo que el backend no alerta.
+
+**Qué la revertiría.** Un envío real o automático que nadie advirtió porque el chip no se
+vio. Ahí vuelve una franja, fina.
+
+---
+
+### D55 — Sólo tema claro, con neutros fríos y acento cian *(28/09/2026; revisa la regla de reparto de `globals.css`)*
+
+**Contexto.** El dueño pidió sólo modo claro y un estilo más tecnológico y moderno.
+
+**Decisión.** Se sacan el selector de tema, el script del `<head>` y el bloque `.dark`. Paleta
+de neutros fríos (grafito, pizarra) con acento cian `#0891b2` para lo interactivo y lo "vivo"
+—foco, ítem activo, gráficos, el punto de una máquina conectada—, y `#0e7490` cuando el cian
+va como texto (el de relleno no llega al contraste mínimo en letra chica). Los tres colores de
+estado siguen reservados. Inter para todo, JetBrains Mono para cifras e identificadores; la
+marca (Playfair, marrón) queda sólo en el login.
+
+**Qué la revertiría.** Que el cliente pida la identidad cálida adentro. Es cambiar los tokens
+de `:root`: ningún componente usa colores sueltos (lo impide el lint).
+
+---
+
+### D56 — La configuración, en secciones y switches *(28/09/2026; revisa el "escribí ENVIAR" de D52)*
+
+**Contexto.** La configuración era una página de 1.500 líneas con quince tarjetas en fila. El
+envío automático estaba casi al final, detrás de un campo donde había que escribir `ENVIAR`.
+
+**Decisión.** Cinco secciones con subruta propia (Envío y horarios, Qué chats y cuántos,
+Mensajes, Seguridad, Sistema). Cada ajuste es una fila igual: nombre, una línea de ayuda, el
+control, y el porqué plegado en "¿Qué hace esto?". Los sí/no son switches y las elecciones,
+controles segmentados. Cada guardado avisa y ofrece "Deshacer". **El envío automático es un
+switch: prenderlo abre un diálogo con un botón; apagarlo no pide nada**, y no ofrece deshacer
+(sería prenderlo sin el diálogo). **Lo que no se simplificó, a propósito:** abrir la lista de
+destinos sigue pidiendo escribir `ABRIR`, y empezar de cero, `BORRAR`. Los `PATCH` son los
+mismos de siempre. No se expusieron ajustes que el panel no mostraba (frases prohibidas,
+palabras de veto): el pedido era simplificar.
+
+**Qué la revertiría.** Un envío automático prendido por error. Ahí vuelve la fricción de
+escribir.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

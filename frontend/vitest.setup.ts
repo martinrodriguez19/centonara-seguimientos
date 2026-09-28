@@ -9,11 +9,11 @@ import { afterEach, vi } from "vitest";
 afterEach(() => cleanup());
 
 /**
- * `matchMedia` no existe en jsdom, y el selector de tema lo usa.
+ * `matchMedia` no existe en jsdom, y algunos componentes de Radix lo consultan.
  *
- * Devuelve siempre "no oscuro": el tema no es lo que estos tests prueban, y una
- * preferencia que cambia entre corridas haría fallar cosas que no tienen nada
- * que ver.
+ * Devuelve siempre "no coincide": ninguna media query es lo que estos tests
+ * prueban, y una preferencia que cambia entre corridas haría fallar cosas que
+ * no tienen nada que ver.
  */
 Object.defineProperty(window, "matchMedia", {
   writable: true,

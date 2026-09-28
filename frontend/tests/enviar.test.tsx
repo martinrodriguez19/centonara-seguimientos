@@ -17,8 +17,8 @@ import { Enviar } from "@/components/enviar";
  *    es lo único que separa un click distraído de veinte mensajes a clientes.
  * 3. Que se ofrezca el envío real con la lista de destinos vacía, que por
  *    R4 significa "a nadie". Apretar y que no pase nada es peor que no poder.
- * 4. Que dejar borradores pida fricción. Si la pide, se usa menos — y es
- *    justamente lo que uno quiere que se use mucho (D30).
+ * 4. Que vuelva el botón de "Dejar borradores". Desde D36 los borradores se
+ *    dejan solos; un botón para eso sólo confunde con el envío real.
  */
 describe("Enviar", () => {
   const props = {
@@ -27,14 +27,10 @@ describe("Enviar", () => {
     enviando: false,
   };
 
-  it("dejar borradores sale con un solo click y en modo prueba", async () => {
-    const onEnviar = vi.fn();
-    render(<Enviar {...props} onEnviar={onEnviar} />);
+  it("no ofrece dejar borradores: se dejan solos (D36)", () => {
+    render(<Enviar {...props} onEnviar={vi.fn()} />);
 
-    await userEvent.click(screen.getByRole("button", { name: /dejar borradores/i }));
-
-    expect(onEnviar).toHaveBeenCalledTimes(1);
-    expect(onEnviar).toHaveBeenCalledWith("prueba");
+    expect(screen.queryByRole("button", { name: /dejar borradores/i })).not.toBeInTheDocument();
   });
 
   it("el envío no manda nada hasta que se escribe la cantidad", async () => {
@@ -52,7 +48,7 @@ describe("Enviar", () => {
     expect(onEnviar).not.toHaveBeenCalled();
   });
 
-  it("con la cantidad correcta, envía en modo real", async () => {
+  it("con la cantidad correcta, envía", async () => {
     const onEnviar = vi.fn();
     render(<Enviar {...props} onEnviar={onEnviar} />);
 
@@ -60,7 +56,7 @@ describe("Enviar", () => {
     await userEvent.type(screen.getByRole("textbox"), "3");
     await userEvent.click(screen.getByRole("button", { name: /enviar 3 mensajes/i }));
 
-    expect(onEnviar).toHaveBeenCalledWith("real");
+    expect(onEnviar).toHaveBeenCalledTimes(1);
   });
 
   it("sin destinos permitidos no se puede enviar, y dice por qué", () => {
@@ -68,8 +64,5 @@ describe("Enviar", () => {
 
     expect(screen.getByRole("button", { name: /^envío$/i })).toBeDisabled();
     expect(screen.getByText(/lista de destinos permitidos está vacía/i)).toBeInTheDocument();
-    // Dejar borradores sigue disponible: no envía a nadie, así que no hay
-    // nada que proteger.
-    expect(screen.getByRole("button", { name: /dejar borradores/i })).toBeEnabled();
   });
 });

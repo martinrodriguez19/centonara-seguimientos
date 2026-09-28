@@ -67,7 +67,9 @@ export function Dialogo({
           'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       );
-    enfocables()[0]?.focus() ?? caja.current?.focus();
+    const primero = enfocables()[0];
+    if (primero) primero.focus();
+    else caja.current?.focus();
 
     const alTeclear = (evento: KeyboardEvent) => {
       if (evento.key === "Escape" && !ocupado) {

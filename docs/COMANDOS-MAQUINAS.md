@@ -85,7 +85,7 @@ echo "--- git:"; ls -d ~/centonara-seguimientos/.git; echo "--- servicios:"; ls 
 | Lo que dice | Qué es |
 |---|---|
 | Aparece `.git`, hay 2 servicios y no hay `actualizar.py` | Es una instalación vieja (de cuando la guía decía `git clone`). Correr el arreglo de abajo |
-| 3 servicios, y el log dice `al día` pero la versión es vieja | En el panel, Configuración → **Versión del agente** tiene un commit fijado. Tiene que estar vacío |
+| 3 servicios, y el log dice `al día` pero la versión es vieja | En el panel, Ajustes → Sistema → **Versión del agente** tiene un commit fijado. Tiene que estar vacío |
 | El log dice `desconocida` | GitHub no le contesta al servidor. Se ve también como alerta en el panel; no es de esta Mac |
 
 El arreglo para el primer caso. **No borrar la carpeta**: adentro está el `.env` con el token de
@@ -216,9 +216,9 @@ cd ~\centonara-seguimientos; uv run --directory agente python -m agente.main --d
 
 ## Fijar qué versión corren todas las máquinas, o volver atrás
 
-Configuración → **Versión del agente** → pegar el commit → *Fijar versión*.
+Ajustes → Sistema → **Versión del agente** → pegar el commit → *Fijar versión*.
 Vacío = lo último publicado. Todas las máquinas van a ésa en menos de una hora.
 
 ## Ver qué versión corre cada máquina
 
-Panel → tarjeta de la máquina → **Versión**: el commit, y *al día* / *atrasada*.
+Panel → Máquinas → la máquina → **Versión**: el commit, y *al día* / *atrasada*.

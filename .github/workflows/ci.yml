@@ -118,9 +118,8 @@ jobs:
         run: pnpm lint
       - name: Tipos
         run: pnpm typecheck
-      # ⚠️ El paso de tests NO está acá todavía, y es a propósito: las
-      # dependencias de Vitest no están en el lockfile. Se agrega el mismo
-      # commit que las instale. Ver frontend/tests/README.md.
+      - name: Tests
+        run: pnpm test
       # ⚠️ `build` y no sólo `typecheck`. Son cosas distintas: `tsc --noEmit` no
       # ejecuta el prerender de Next, así que un error de compilación de una
       # página aparecía recién en el despliegue — con producción ya rota.

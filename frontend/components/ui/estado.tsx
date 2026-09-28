@@ -134,3 +134,35 @@ export function Aviso({
 
 /** Sólo la tinta de un nivel, para cuando hace falta teñir un número o un ícono suelto. */
 export const tintaDe = (nivel: Nivel) => TINTA[nivel];
+
+const PUNTO: Record<Nivel, string> = {
+  ok: "bg-ok",
+  atencion: "bg-atencion",
+  critico: "bg-critico",
+  neutro: "bg-muted-foreground/40",
+};
+
+/**
+ * Un punto de estado, para cuando la palabra ya está al lado (Panel v2).
+ *
+ * `latiendo` le agrega el pulso: sólo para "conectada", que es lo único que de
+ * verdad está pasando en vivo. Un punto rojo que late parece una sirena.
+ */
+export function Punto({
+  nivel,
+  latiendo = false,
+  className,
+}: {
+  nivel: Nivel;
+  latiendo?: boolean;
+  className?: string;
+}) {
+  return (
+    <span className={cn("relative inline-flex size-2.5 shrink-0", className)} aria-hidden>
+      {latiendo && (
+        <span className={cn("absolute inline-flex size-full animate-ping rounded-full opacity-60", PUNTO[nivel])} />
+      )}
+      <span className={cn("relative inline-flex size-2.5 rounded-full", PUNTO[nivel])} />
+    </span>
+  );
+}

@@ -7,7 +7,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAvisos } from "@/components/ui/avisos-flotantes";
 import { Confirmacion } from "@/components/ui/dialogo";
-import { Aviso } from "@/components/ui/estado";
 import { pausarSistema } from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
@@ -87,19 +86,5 @@ export function KillSwitch({ pausado }: { pausado: boolean }) {
         <p className="text-muted-foreground">{textos.killSwitch.confirmarNota}</p>
       </Confirmacion>
     </>
-  );
-}
-
-/**
- * El cartel de "está frenado", separado del botón.
- *
- * Con el sistema pausado, el botón dice "Reanudar" — que por sí solo no
- * comunica que hay algo detenido ahora mismo. Esto lo dice.
- */
-export function AvisoFrenado() {
-  return (
-    <Aviso nivel="critico" titulo={textos.killSwitch.frenado}>
-      {textos.killSwitch.frenadoDetalle}
-    </Aviso>
   );
 }

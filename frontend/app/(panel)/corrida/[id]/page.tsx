@@ -1,0 +1,473 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ClipboardList, Play, X } from "lucide-react";
+import Link from "next/link";
+import { use, useState } from "react";
+
+import { Pagina } from "@/components/navegacion/pagina";
+import { ErrorDeCarga } from "@/components/error-de-carga";
+import { Button } from "@/components/ui/button";
+import { useAvisos } from "@/components/ui/avisos-flotantes";
+import { Confirmacion } from "@/components/ui/dialogo";
+import { EsqueletoDeLista } from "@/components/ui/esqueleto";
+import { Pildora, type Nivel } from "@/components/ui/estado";
+import {
+  Cuerpo,
+  Encabezado,
+  Fila,
+  SinFilas,
+  Tabla,
+  Td,
+  Th,
+} from "@/components/ui/tabla";
+import {
+  cancelarCorrida,
+  reanudarCorrida,
+  traerCorrida,
+  traerMensajes,
+  traerMetricasDeCorrida,
+  type Mensaje,
+} from "@/lib/panel";
+import { textos } from "@/lib/textos";
+
+/**
+ * Una corrida, de punta a punta.
+ *
+ * **Es la pantalla que faltaba, y el hueco que tapaba era grande.** El panel
+ * acompañaba hasta que alguien apretaba enviar, decía "se encolaron 3 mensajes"
+ * y a partir de ahí no volvía a hablar del tema: los estados `ENVIANDO` y
+ * `ENVIADO` no se mostraban en ningún lado. No había forma de saber si salieron,
+ * si alguno abortó, ni por qué.
+ *
+ * Y tampoco había forma de abrir una corrida de la semana pasada: `traerCorrida`
+ * estaba escrito en el cliente de API y no lo usaba nadie, y la ruta de métricas
+ * por corrida ni siquiera estaba en el cliente.
+ *
+ * Se refresca sola mientras haya algo en movimiento, y deja de hacerlo cuando
+ * todo terminó. Una pantalla que consulta para siempre contra un backend que ya
+ * no tiene nada que decir es ruido.
+ */
+const MIGAS = [{ href: "/corridas", texto: textos.navegacion.corridas }];
+
+export default function DetalleDeCorrida({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+
+  const corrida = useQuery({
+    queryKey: ["corrida", id],
+    queryFn: () => traerCorrida(id),
+    refetchInterval: (consulta) =>
+      consulta.state.data?.terminada ? false : 4000,
+  });
+
+  const revision = useQuery({
+    queryKey: ["mensajes", id],
+    queryFn: () => traerMensajes(id),
+    refetchInterval: (consulta) => {
+      const enMovimiento = consulta.state.data?.mensajes.some(
+        (m) => m.estado === "ENVIANDO" || m.estado === "EN_ESPERA",
+      );
+      return enMovimiento ? 4000 : false;
+    },
+  });
+
+  const metricas = useQuery({
+    queryKey: ["metricas-corrida", id],
+    queryFn: () => traerMetricasDeCorrida(id),
+    refetchInterval: () => (corrida.data?.terminada ? false : 8000),
+  });
+
+  if (corrida.isPending) {
+    return (
+      <Pagina titulo={textos.corridas.titulo} migas={MIGAS}>
+        <EsqueletoDeLista filas={3} />
+      </Pagina>
+    );
+  }
+
+  if (corrida.isError) {
+    return (
+      <Pagina titulo={textos.corridas.titulo} migas={MIGAS}>
+        <ErrorDeCarga
+          error={corrida.error}
+          onReintentar={() => void corrida.refetch()}
+        />
+      </Pagina>
+    );
+  }
+
+  const datos = corrida.data;
+  const mensajes = revision.data?.mensajes ?? [];
+  const enviados = mensajes.filter(
+    (m) =>
+      m.estado === "ENVIADO" ||
+      m.estado === "ENVIANDO" ||
+      m.estado === "BORRADOR_DEJADO",
+  );
+  const hayBorradores = mensajes.some(
+    (m) =>
+      m.estado === "RETENIDO" ||
+      m.estado === "EN_ESPERA" ||
+      m.estado === "BORRADOR",
+  );
+  const hechos = datos.jobs.total - datos.jobs.pendientes;
+  const frenada = datos.estado === "frenada";
+  const cancelada = datos.estado === "cancelada";
+
+  return (
+    <Pagina
+      migas={MIGAS}
+      titulo={
+        datos.tipo === "generacion"
+          ? textos.corrida.tituloGeneracion
+          : textos.corrida.tituloDiagnostico
+      }
+      bajada={new Date(datos.creada_en).toLocaleString("es-AR", {
+        dateStyle: "long",
+        timeStyle: "short",
+      })}
+      acciones={
+        <>
+          {/* ⚠️ El modo, siempre visible. Mirando una corrida vieja, saber si
+              quedaron borradores o salieron mensajes de verdad es lo primero. */}
+          <Pildora nivel={datos.modo === "real" ? "critico" : "neutro"}>
+            {datos.modo === "real"
+              ? textos.corrida.modoReal
+              : textos.corrida.modoPrueba}
+          </Pildora>
+          {/* Frenada y cancelada eran invisibles (D31): el campo estado no se
+              mostraba en ninguna pantalla y una corrida frenada parecía "casi
+              terminada". */}
+          {frenada ? (
+            <Pildora nivel="critico">{textos.corrida.frenada}</Pildora>
+          ) : cancelada ? (
+            <Pildora nivel="neutro">{textos.corrida.cancelada}</Pildora>
+          ) : (
+            <Pildora nivel={datos.terminada ? "ok" : "atencion"}>
+              {datos.terminada
+                ? textos.corrida.terminada
+                : textos.corrida.enCurso}
+            </Pildora>
+          )}
+        </>
+      }
+    >
+
+      <AccionesDeCorrida
+        id={id}
+        frenada={frenada}
+        puedeCancelar={!cancelada && datos.jobs.pendientes > 0}
+      />
+
+      <section
+        className="grid gap-3 sm:grid-cols-4"
+        aria-label={textos.corrida.resumen}
+      >
+        <Dato
+          titulo={textos.corrida.avance}
+          valor={`${hechos} / ${datos.jobs.total}`}
+          ayuda={textos.corrida.avanceAyuda}
+        />
+        <Dato
+          titulo={textos.corrida.maquinas}
+          valor={String(datos.maquinas.length)}
+        />
+        <Dato
+          titulo={textos.corrida.borradores}
+          valor={metricas.data ? String(metricas.data.mensajes) : "—"}
+          ayuda={
+            metricas.data && metricas.data.editados > 0
+              ? textos.corrida.editados(metricas.data.editados)
+              : undefined
+          }
+        />
+        <Dato
+          titulo={textos.corrida.costo}
+          valor={`US$ ${datos.costo_usd.toFixed(3)}`}
+          ayuda={
+            metricas.data && metricas.data.mensajes > 0
+              ? textos.corrida.costoPorBorrador(
+                  datos.costo_usd / metricas.data.mensajes,
+                )
+              : undefined
+          }
+        />
+      </section>
+
+      {hayBorradores && (
+        <Button variant="outline" asChild>
+          <Link href={`/revision/${id}`}>
+            <ClipboardList className="size-4" aria-hidden />
+            {textos.corrida.irARevision}
+          </Link>
+        </Button>
+      )}
+
+      {/* El tramo que no existía: qué pasó con cada mensaje después de apretar
+          enviar. Si todavía no se envió nada, la sección no aparece. */}
+      {enviados.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold">{textos.corrida.envio}</h2>
+          <p className="text-sm text-muted-foreground">
+            {textos.corrida.envioAyuda}
+          </p>
+          <TablaDeEnvio mensajes={enviados} />
+        </section>
+      )}
+
+      {/* El pase único, tanda por tanda (D39, D44): sin el desglose de motivos no
+          hay forma de saber si los 20 se sostienen o si hay que aflojar una regla. */}
+      {datos.tandas.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold">{textos.corrida.tandas}</h2>
+          <p className="text-sm text-muted-foreground">
+            {textos.corrida.tandasResumen(
+              datos.tandas.reduce(
+                (suma, t) => suma + t.dejados + t.salteados,
+                0,
+              ),
+              datos.tandas.reduce((suma, t) => suma + t.dejados, 0),
+            )}{" "}
+            {textos.corrida.tandasAyuda}
+          </p>
+          <Tabla etiqueta={textos.corrida.tandas}>
+            <Encabezado>
+              <Th>{textos.corrida.maquina}</Th>
+              <Th numerica>{textos.corrida.borradores}</Th>
+              <Th>{textos.corrida.salteadosPorQue}</Th>
+              <Th>{textos.corrida.comoTermino}</Th>
+            </Encabezado>
+            <Cuerpo>
+              {datos.tandas.map((tanda, i) => (
+                <Fila key={`${tanda.maquina}-${i}`}>
+                  <Td>{tanda.maquina}</Td>
+                  <Td numerica>
+                    {textos.corrida.dejadosDePedidos(
+                      tanda.dejados,
+                      tanda.pedidos,
+                    )}
+                  </Td>
+                  <Td>{describirSalteos(tanda.salteados, tanda.motivos)}</Td>
+                  <Td>
+                    {tanda.fin
+                      ? (textos.corrida.finDeTanda[tanda.fin] ?? tanda.fin)
+                      : textos.corrida.enCurso}
+                    {/* Por qué falló, en palabras del agente. El 09/09 el
+                        motivo estaba en Mongo y en ningún otro lado. */}
+                    {tanda.error && (
+                      <span className="block text-xs text-muted-foreground">
+                        {textos.corrida.porQueFallo(
+                          tanda.error.codigo,
+                          tanda.error.motivo,
+                        )}
+                      </span>
+                    )}
+                  </Td>
+                </Fila>
+              ))}
+            </Cuerpo>
+          </Tabla>
+        </section>
+      )}
+
+      {metricas.data && metricas.data.mensajes > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-base font-semibold">{textos.corrida.reparto}</h2>
+          <Tabla etiqueta={textos.corrida.reparto}>
+            <Encabezado>
+              <Th>{textos.corrida.estado}</Th>
+              <Th numerica>{textos.corrida.cuantos}</Th>
+            </Encabezado>
+            <Cuerpo>
+              {Object.entries(metricas.data.por_estado).map(
+                ([estado, cuantos]) => (
+                  <Fila key={estado}>
+                    <Td>{textos.estados[estado] ?? estado}</Td>
+                    <Td numerica>{cuantos}</Td>
+                  </Fila>
+                ),
+              )}
+            </Cuerpo>
+          </Tabla>
+        </section>
+      )}
+    </Pagina>
+  );
+}
+
+/**
+ * Reanudar y cancelar, desde el detalle (D31).
+ *
+ * Antes cancelar sólo se podía desde el botón del panel, y sólo para la última
+ * corrida con pendientes; y reanudar no existía: una corrida que el canario
+ * frenaba quedaba en `frenada` para siempre, con su alerta encendida.
+ */
+function AccionesDeCorrida({
+  id,
+  frenada,
+  puedeCancelar,
+}: {
+  id: string;
+  frenada: boolean;
+  puedeCancelar: boolean;
+}) {
+  const clienteQuery = useQueryClient();
+  const { avisar } = useAvisos();
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+
+  const refrescar = () => {
+    void clienteQuery.invalidateQueries({ queryKey: ["corrida", id] });
+    void clienteQuery.invalidateQueries({ queryKey: ["mensajes", id] });
+    void clienteQuery.invalidateQueries({ queryKey: ["alertas"] });
+    void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
+  };
+
+  const reanudar = useMutation({
+    mutationFn: () => reanudarCorrida(id),
+    onSuccess: () => avisar(textos.alertas.avisoReanudada),
+    onError: () => avisar(textos.alertas.avisoFalloReanudar, "critico"),
+    onSettled: refrescar,
+  });
+
+  const cancelar = useMutation({
+    mutationFn: () => cancelarCorrida(id),
+    onSuccess: () => setConfirmandoCancelar(false),
+    onError: () => avisar(textos.maquina.avisoFallo, "critico"),
+    onSettled: refrescar,
+  });
+
+  if (!frenada && !puedeCancelar) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {frenada && (
+        <Button disabled={reanudar.isPending} onClick={() => reanudar.mutate()}>
+          <Play className="size-4" aria-hidden />
+          {reanudar.isPending
+            ? textos.alertas.reanudando
+            : textos.alertas.reanudar}
+        </Button>
+      )}
+      {puedeCancelar && (
+        <>
+          <Button
+            variant="outline"
+            onClick={() => setConfirmandoCancelar(true)}
+          >
+            <X className="size-4" aria-hidden />
+            {textos.boton.cancelar}
+          </Button>
+          <Confirmacion
+            abierto={confirmandoCancelar}
+            onCerrar={() => setConfirmandoCancelar(false)}
+            onConfirmar={() => cancelar.mutate()}
+            titulo={textos.boton.confirmarCancelarTitulo}
+            confirmar={textos.boton.cancelar}
+            peligrosa
+            ocupado={cancelar.isPending}
+          >
+            {textos.boton.confirmarCancelar}
+          </Confirmacion>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Dato({
+  titulo,
+  valor,
+  ayuda,
+}: {
+  titulo: string;
+  valor: string;
+  ayuda?: string;
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <p className="text-xs text-muted-foreground">{titulo}</p>
+      <p className="text-2xl font-semibold tabular-nums">{valor}</p>
+      {ayuda && <p className="text-xs text-muted-foreground">{ayuda}</p>}
+    </div>
+  );
+}
+
+/**
+ * Qué pasó con cada mensaje que se mandó a enviar.
+ *
+ * El motivo se traduce. Un `SIN_CONFIRMAR` crudo en la pantalla no le dice a
+ * nadie que **el mensaje puede haber salido** y que conviene mirar el teléfono
+ * del vendedor antes de tocar nada — y esa es exactamente la única fila de esta
+ * tabla que pide una acción inmediata.
+ */
+function TablaDeEnvio({ mensajes }: { mensajes: Mensaje[] }) {
+  const nivelDe = (mensaje: Mensaje): Nivel => {
+    if (mensaje.estado === "ENVIADO") return "ok";
+    // El resultado esperado de una corrida de borradores (D30): quedó escrito
+    // en el WhatsApp del vendedor, sin enviarse.
+    if (mensaje.estado === "BORRADOR_DEJADO") return "ok";
+    if (mensaje.estado === "ENVIANDO") return "neutro";
+    return "critico";
+  };
+
+  return (
+    <Tabla etiqueta={textos.corrida.envio}>
+      <Encabezado>
+        <Th>{textos.corrida.contacto}</Th>
+        <Th>{textos.corrida.maquina}</Th>
+        <Th>{textos.corrida.estado}</Th>
+        <Th>{textos.corrida.quePaso}</Th>
+      </Encabezado>
+      <Cuerpo>
+        {mensajes.length === 0 && (
+          <SinFilas columnas={4}>{textos.corrida.sinEnvios}</SinFilas>
+        )}
+        {mensajes.map((mensaje) => (
+          <Fila key={mensaje.id}>
+            <Td>
+              <span className="font-medium">
+                {mensaje.contacto_nombre || "Sin nombre"}
+              </span>
+              <span className="block font-mono text-xs text-muted-foreground">
+                {mensaje.contacto_id}
+              </span>
+            </Td>
+            <Td className="font-mono text-xs">{mensaje.maquina}</Td>
+            <Td>
+              <Pildora nivel={nivelDe(mensaje)}>
+                {textos.estados[mensaje.estado] ?? mensaje.estado}
+              </Pildora>
+            </Td>
+            <Td className="text-muted-foreground">
+              {mensaje.motivo
+                ? (textos.motivos[mensaje.motivo] ?? mensaje.motivo)
+                : "—"}
+            </Td>
+          </Fila>
+        ))}
+      </Cuerpo>
+    </Tabla>
+  );
+}
+
+/**
+ * "9 con el campo ocupado, 6 sin tema, 3 disconformes". Sin desglose —tandas
+ * anteriores a D44— se dice sólo el total, que es lo que había.
+ */
+function describirSalteos(
+  salteados: number,
+  motivos?: Record<string, number>,
+): string {
+  if (salteados === 0) return "—";
+  const partes = Object.entries(motivos ?? {})
+    .sort(([, a], [, b]) => b - a)
+    .map(
+      ([motivo, cuantos]) =>
+        `${cuantos} ${textos.corrida.motivosDeSalteo[motivo] ?? motivo}`,
+    );
+  return partes.length > 0 ? partes.join(", ") : String(salteados);
+}

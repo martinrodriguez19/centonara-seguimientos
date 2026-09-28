@@ -1,0 +1,285 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { use, useState } from "react";
+
+import { Borrador } from "@/components/borrador";
+import { Pagina } from "@/components/navegacion/pagina";
+import { ErrorDeCarga } from "@/components/error-de-carga";
+import { Button } from "@/components/ui/button";
+import { EsqueletoDeLista } from "@/components/ui/esqueleto";
+import {
+  enviarCorrida,
+  ErrorDeApi,
+  liberarMensaje,
+  traerEstado,
+  traerMensajes,
+  validarCorrida,
+  type Mensaje,
+} from "@/lib/panel";
+import { Enviar } from "@/components/enviar";
+import { textos } from "@/lib/textos";
+
+/**
+ * La pantalla donde el dueño revisa una corrida.
+ *
+ * Desde D36 los borradores se dejan solos en los chats al generar, así que el
+ * orden de arriba abajo pasó a ser: lo que necesita una decisión (retenidos),
+ * lo que ya está hecho (borradores dejados), lo que espera un envío real
+ * (listos), y lo que no va a salir (descartados).
+ *
+ * Abajo queda un solo botón: el Envío real, que sigue siendo un segundo acto
+ * explícito con su fricción. Dice **cuántos** van a salir — "enviar" a secas
+ * no deja claro si son tres o treinta.
+ */
+export default function Revision({ params }: { params: Promise<{ corrida: string }> }) {
+  const { corrida } = use(params);
+  const clienteQuery = useQueryClient();
+  const migas = [
+    { href: "/corridas", texto: textos.navegacion.corridas },
+    { href: `/corrida/${corrida}`, texto: textos.navegacion.corrida },
+  ];
+  const [enviado, setEnviado] = useState<number | null>(null);
+
+  const revision = useQuery({
+    queryKey: ["mensajes", corrida],
+    queryFn: () => traerMensajes(corrida),
+  });
+
+  // Para saber si la lista de destinos está abierta. Enviar de verdad con la
+  // lista vacía no alcanza a nadie (regla R4), así que el botón lo dice en vez
+  // de dejar que alguien apriete y no pase nada.
+  const estado = useQuery({ queryKey: ["estado"], queryFn: traerEstado });
+
+  const validar = useMutation({
+    mutationFn: () => validarCorrida(corrida),
+    onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["mensajes", corrida] }),
+  });
+
+  const enviar = useMutation({
+    mutationFn: () => enviarCorrida(corrida, "real"),
+    onSuccess: (resultado) => {
+      setEnviado(resultado.mensajes);
+      void clienteQuery.invalidateQueries({ queryKey: ["mensajes", corrida] });
+      void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
+    },
+  });
+
+  if (revision.isPending) {
+    return (
+      <Pagina titulo={textos.revision.titulo} ancho="angosto" migas={migas}>
+        <EsqueletoDeLista filas={3} />
+      </Pagina>
+    );
+  }
+  if (revision.isError) {
+    return (
+      <Pagina titulo={textos.revision.titulo} ancho="angosto" migas={migas}>
+        <ErrorDeCarga error={revision.error} onReintentar={() => void revision.refetch()} />
+      </Pagina>
+    );
+  }
+
+  const mensajes = revision.data.mensajes;
+  const retenidos = mensajes.filter((m) => m.estado === "RETENIDO");
+  const listos = mensajes.filter((m) => m.estado === "EN_ESPERA");
+  //  Camino a estar en el chat, o ya ahí (D36). Se muestran juntos: para el
+  //  dueño la diferencia entre "escribiéndose" y "escrito" es cuestión de
+  //  minutos y no pide ninguna decisión.
+  const dejados = mensajes.filter(
+    (m) => m.estado === "BORRADOR_DEJADO" || m.estado === "ENVIANDO",
+  );
+  const descartados = mensajes.filter((m) => m.estado === "DESCARTADO");
+  const sinValidar = mensajes.filter((m) => m.estado === "BORRADOR");
+
+  return (
+    <Pagina titulo={textos.revision.titulo} ancho="angosto" migas={migas}>
+
+      {mensajes.length === 0 && (
+        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {textos.revision.sinMensajes}
+        </p>
+      )}
+
+      {/* Los borradores llegan sin pasar por las reglas: alguien tiene que
+          dispararlo. Lo normal es que el panel lo haga solo cuando la
+          generación termina, pero el botón queda por si quedó a medias. */}
+      {sinValidar.length > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-4">
+          <p className="flex-1 text-sm">
+            {sinValidar.length === 1
+              ? "Hay 1 borrador sin revisar por el sistema."
+              : `Hay ${sinValidar.length} borradores sin revisar por el sistema.`}
+          </p>
+          <Button size="sm" disabled={validar.isPending} onClick={() => validar.mutate()}>
+            {validar.isPending ? textos.revision.validando : "Revisar ahora"}
+          </Button>
+        </div>
+      )}
+
+      {retenidos.length > 0 && (
+        <Grupo
+          titulo={textos.revision.retenidos}
+          ayuda={textos.revision.retenidosAyuda}
+          mensajes={retenidos}
+          corrida={corrida}
+          accion={<LiberarTodos mensajes={retenidos} corrida={corrida} />}
+        />
+      )}
+
+      {dejados.length > 0 && (
+        <Grupo
+          titulo={textos.revision.dejados}
+          ayuda={textos.revision.dejadosAyuda}
+          mensajes={dejados}
+          corrida={corrida}
+        />
+      )}
+
+      {listos.length > 0 && (
+        <Grupo
+          titulo={textos.revision.listos}
+          ayuda={textos.revision.listosAyuda}
+          mensajes={listos}
+          corrida={corrida}
+        />
+      )}
+
+      {descartados.length > 0 && (
+        <Grupo
+          titulo={textos.revision.descartados}
+          ayuda={textos.revision.descartadosAyuda}
+          mensajes={descartados}
+          corrida={corrida}
+        />
+      )}
+
+      {/* El envío REAL sigue siendo un segundo acto explícito (D36 no lo
+          toca): nada le llega a un cliente por inacción. */}
+      <div className="sticky bottom-0 space-y-2 border-t bg-background/95 py-4 backdrop-blur">
+        {enviado !== null ? (
+          <p className="text-sm">
+            {textos.revision.enviadoReal(enviado)} {textos.revision.enviarAyuda}
+          </p>
+        ) : listos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{textos.revision.nadaQueEnviar}</p>
+        ) : (
+          <>
+            <Enviar
+              cuantos={listos.length}
+              // Ausente mientras carga el estado: hasta saberlo, se asume
+              // cerrada. Fallar cerrado también acá (regla R2).
+              destinosPermitidos={estado.data?.destinos_permitidos ?? 0}
+              enviando={enviar.isPending}
+              onEnviar={() => enviar.mutate()}
+            />
+            {enviar.error instanceof ErrorDeApi && (
+              <p className="text-sm text-destructive">{enviar.error.message}</p>
+            )}
+          </>
+        )}
+      </div>
+    </Pagina>
+  );
+}
+
+function Grupo({
+  titulo,
+  ayuda,
+  mensajes,
+  corrida,
+  accion,
+}: {
+  titulo: string;
+  ayuda?: string;
+  mensajes: Mensaje[];
+  corrida: string;
+  accion?: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">
+            {titulo}{" "}
+            <span className="tabular-nums text-muted-foreground">({mensajes.length})</span>
+          </h2>
+          {ayuda && <p className="text-sm text-muted-foreground">{ayuda}</p>}
+        </div>
+        {accion}
+      </div>
+      <div className="space-y-3">
+        {mensajes.map((mensaje) => (
+          <Borrador key={mensaje.id} mensaje={mensaje} corridaId={corrida} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Liberar todos los retenidos de una vez, escribiendo cuántos son.
+ *
+ * **Fricción proporcional.** Frenar uno es un click; soltar veinte que el
+ * sistema apartó a propósito no puede serlo — es exactamente la acción que
+ * alguien apurado haría sin mirar, y es la que el triage existe para evitar.
+ *
+ * Escribir el número obliga a leerlo, que es todo lo que hace falta.
+ */
+function LiberarTodos({ mensajes, corrida }: { mensajes: Mensaje[]; corrida: string }) {
+  const clienteQuery = useQueryClient();
+  const [confirmacion, setConfirmacion] = useState("");
+  const [abierto, setAbierto] = useState(false);
+
+  const liberar = useMutation({
+    mutationFn: async () => {
+      // De a uno y en orden: cada uno pasa por su propia validación en el
+      // backend, y si uno falla los demás no se pierden.
+      for (const mensaje of mensajes) {
+        await liberarMensaje(mensaje.id);
+      }
+    },
+    onSettled: () => {
+      setAbierto(false);
+      setConfirmacion("");
+      void clienteQuery.invalidateQueries({ queryKey: ["mensajes", corrida] });
+    },
+  });
+
+  if (mensajes.length < 2) return null;
+
+  if (!abierto) {
+    return (
+      <Button variant="ghost" size="sm" onClick={() => setAbierto(true)}>
+        {textos.revision.liberarTodos(mensajes.length)}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-atencion-borde bg-atencion-suave p-3">
+      <p className="max-w-xs text-sm">
+        {textos.revision.liberarTodosConfirmar(mensajes.length)}
+      </p>
+      <div className="flex gap-2">
+        <input
+          inputMode="numeric"
+          aria-label={`Escribí ${mensajes.length} para confirmar`}
+          className="w-20 rounded-md border border-input bg-background px-3 py-1.5 text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          value={confirmacion}
+          onChange={(evento) => setConfirmacion(evento.target.value)}
+        />
+        <Button
+          size="sm"
+          disabled={confirmacion !== String(mensajes.length) || liberar.isPending}
+          onClick={() => liberar.mutate()}
+        >
+          {textos.revision.liberar}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setAbierto(false)}>
+          {textos.revision.cancelar}
+        </Button>
+      </div>
+    </div>
+  );
+}

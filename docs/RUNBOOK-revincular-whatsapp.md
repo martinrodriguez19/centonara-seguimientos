@@ -22,7 +22,7 @@ urgente con esta acción. Antes de eso, la única señal era una corrida falland
 | Señal | Dónde se ve |
 |---|---|
 | Alerta "La sesión de WhatsApp del motor de X venció" | Panel |
-| Chequeo `whatsapp_sesion: falla` | Tarjeta de la máquina en el panel |
+| Chequeo `whatsapp_sesion: falla` | En el panel: Análisis → Errores y avisos, o Máquinas → la máquina → Chequeos |
 | Jobs con código `SESION_CAIDA` y detalle "pide escanear el código" | Detalle de la corrida |
 
 ⚠️ Un `SESION_CAIDA` aislado con la alerta del panel en verde ya no debería pasar (el orden

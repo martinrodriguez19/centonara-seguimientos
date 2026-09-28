@@ -29,11 +29,20 @@ test.describe("el recorrido del panel", () => {
     await expect(page).toHaveURL(/\/panel/);
   });
 
-  test("el panel dice en qué modo está antes que cualquier otra cosa", async ({ page }) => {
-    // La banda de modo es lo primero de la pantalla, y tiene que decir una de
-    // las dos cosas. Que no diga ninguna es el peor resultado posible.
-    const banda = page.getByText(/modo prueba|envío real habilitado/i).first();
-    await expect(banda).toBeVisible();
+  test("la barra dice en qué modo está, en todas las pantallas", async ({ page }) => {
+    // El chip de modo (D54) reemplazó a la banda de todo el ancho. Tiene que
+    // decir una de las tres cosas; que no diga ninguna es el peor resultado.
+    for (const ruta of ["/panel", "/errores", "/config/envio"]) {
+      await page.goto(ruta);
+      await expect(page.getByRole("button", { name: /modo del sistema: (prueba|envío real|envío automático)/i })).toBeVisible();
+    }
+  });
+
+  test("los errores no están en el inicio: tienen su página", async ({ page }) => {
+    await page.getByRole("button", { name: /análisis/i }).click();
+    await page.getByRole("menuitem", { name: /errores y avisos/i }).click();
+    await expect(page).toHaveURL(/\/errores/);
+    await expect(page.getByRole("heading", { name: /errores y avisos/i })).toBeVisible();
   });
 
   test("se puede pedir una generación, y confirma antes de arrancar", async ({ page }) => {
@@ -68,17 +77,33 @@ test.describe("el recorrido del panel", () => {
     await expect(frenar).toBeVisible();
   });
 
-  test("se llega a las corridas, la configuración y el historial", async ({ page }) => {
-    await page.getByRole("link", { name: /^corridas$/i }).click();
+  test("se llega a las corridas, las estadísticas, los ajustes y el historial", async ({ page }) => {
+    await page.getByRole("button", { name: /operación/i }).click();
+    await page.getByRole("menuitem", { name: /^corridas/i }).click();
     await expect(page.getByRole("heading", { name: /corridas/i })).toBeVisible();
 
+    await page.goto("/estadisticas");
+    await expect(page.getByRole("heading", { name: /estadísticas/i })).toBeVisible();
+
+    // `/config` lleva a la primera sección, donde está el envío automático.
     await page.goto("/config");
-    await expect(page.getByRole("heading", { name: /configuración/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/config\/envio/);
+    await expect(page.getByRole("switch", { name: /envío automático/i })).toBeVisible();
     // Lo que no se edita pero hay que poder mirar.
-    await expect(page.getByText(/cuándo y a qué ritmo sale/i)).toBeVisible();
+    await expect(page.getByText(/espera entre mensajes/i)).toBeVisible();
 
     await page.goto("/historial");
     await expect(page.getByRole("heading", { name: /historial/i })).toBeVisible();
+  });
+
+  test("cada máquina tiene su página de detalle", async ({ page }) => {
+    await page.goto("/maquinas");
+    // Esperar a que cargue: o hay tarjetas, o el cartel de que no hay ninguna.
+    await expect(page.locator("article").or(page.getByText(/todavía no hay ninguna máquina/i)).first()).toBeVisible();
+    test.skip((await page.locator("article").count()) === 0, "no hay máquinas dadas de alta");
+    await page.locator("article h3 a").first().click();
+    await expect(page).toHaveURL(/\/maquinas\/.+/);
+    await expect(page.getByRole("tab", { name: /chequeos/i })).toBeVisible();
   });
 
   test("una dirección que no existe no deja la pantalla en blanco", async ({ page }) => {

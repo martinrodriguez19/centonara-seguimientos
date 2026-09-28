@@ -121,6 +121,6 @@ minuto. Si el nuevo no vuelve a dar señales de vida, el actualizador restaura e
 powershell -ExecutionPolicy Bypass -File ~\centonara-seguimientos\agente\instalador\actualizar.ps1
 ```
 
-**Volver a una versión anterior:** desde el panel, Configuración → *Versión del agente* →
+**Volver a una versión anterior:** desde el panel, Ajustes → Sistema → *Versión del agente* →
 pegar el commit. Todas las máquinas —Mac y Windows— van a ése en menos de una hora, sin tocar
 ninguna.

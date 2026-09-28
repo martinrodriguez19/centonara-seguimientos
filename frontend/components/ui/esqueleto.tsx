@@ -41,20 +41,20 @@ export function Cargando({
   );
 }
 
-/** El esqueleto de la pantalla principal: la banda, el botón y las tarjetas. */
+/** El esqueleto de la pantalla principal: los números, el botón y las tarjetas. */
 export function EsqueletoDelPanel() {
   return (
     <Cargando>
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-6">
-        <Esqueleto className="h-11 w-64" />
-        <div className="grid gap-3 sm:grid-cols-4">
+      <div className="space-y-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <Esqueleto key={i} className="h-20" />
+            <Esqueleto key={i} className="h-24" />
           ))}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[0, 1].map((i) => (
-            <Esqueleto key={i} className="h-52" />
+        <Esqueleto className="h-20" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Esqueleto key={i} className="h-44" />
           ))}
         </div>
       </div>

@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialogo } from "@/components/ui/dialogo";
 import { altaMaquina, ErrorDeApi } from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
@@ -45,27 +46,26 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
     onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["estado"] }),
   });
 
-  if (!abierto) {
-    return (
-      <Button variant="outline" onClick={() => setAbierto(true)}>
-        <Plus className="size-4" aria-hidden />
-        {textos.alta.titulo}
-      </Button>
-    );
-  }
-
   // Cualquier fallo tiene que verse. Antes sólo se mostraba el 409, así que un
   // 422 o un 500 dejaban el formulario sin decir nada: el botón se
   // des-deshabilitaba y no pasaba nada, que para quien usa esto es peor que un
   // mensaje feo.
   const problema = mensajeDeError(crear.error);
 
+  // En un diálogo y no desplegado en el lugar (Panel v2): el botón vive en el
+  // encabezado de "Máquinas", y un formulario abierto ahí empujaba la página.
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{textos.alta.titulo}</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <>
+      <Button variant="outline" onClick={() => setAbierto(true)}>
+        <Plus className="size-4" aria-hidden />
+        {textos.alta.titulo}
+      </Button>
+      <Dialogo
+        abierto={abierto}
+        onCerrar={() => setAbierto(false)}
+        titulo={textos.alta.titulo}
+        ocupado={crear.isPending}
+      >
         <form
           className="space-y-3"
           onSubmit={(evento) => {
@@ -118,8 +118,8 @@ export function AltaMaquina({ onToken }: { onToken: (token: string, nombre: stri
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </Dialogo>
+    </>
   );
 }
 

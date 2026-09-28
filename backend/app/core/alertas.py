@@ -65,6 +65,9 @@ class Alerta:
     #  La corrida involucrada, cuando la acción es sobre una en particular:
     #  el panel puede ofrecer el botón que la resuelve (D31).
     corrida_id: str | None = None
+    #  La máquina de la que habla, cuando habla de una. El panel la usa para
+    #  filtrar los errores por máquina sin leer el nombre dentro del título.
+    maquina: str | None = None
 
     def a_dict(self) -> dict[str, str | None]:
         return {
@@ -74,6 +77,7 @@ class Alerta:
             "detalle": self.detalle,
             "accion": self.accion,
             "corrida_id": self.corrida_id,
+            "maquina": self.maquina,
         }
 
 
@@ -256,6 +260,7 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
                     "Sus primeros envíos de la corrida fallaron, así que sus envíos "
                     "pendientes no salen. Las demás máquinas siguen.",
                     "Mirá por qué fallaron. Reanudar o cancelar la corrida suelta el freno.",
+                    maquina=maquina,
                 )
             )
             continue
@@ -279,6 +284,7 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
                         f"Tiene {pendientes} trabajos esperando y no da señales "
                         f"hace más de {MINUTOS_CAIDA} minutos.",
                         "Fijate si la computadora está prendida y con sesión iniciada.",
+                        maquina=maquina,
                     )
                 )
             continue
@@ -302,6 +308,7 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
                     "va a fallar con SESION_CAIDA hasta re-vincular.",
                     "En esa Mac: correr el agente con --vincular y escanear el QR "
                     "desde el teléfono del vendedor.",
+                    maquina=maquina,
                 )
             )
 
@@ -313,6 +320,7 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
                     f"{vendedor.get('nombre') or maquina} está a medias",
                     f"No pasa estos chequeos: {', '.join(fallando)}.",
                     "No va a tomar envíos hasta que se resuelvan.",
+                    maquina=maquina,
                 )
             )
 
@@ -364,6 +372,7 @@ async def _maquinas_que_fallan_siempre(base) -> list[Alerta]:
                 + " Las corridas siguen sin ella y nadie lo nota hasta contar los borradores.",
                 "Mirá el motivo en la corrida y los chequeos de la máquina. Si habla de "
                 "Chrome o del deviceId, es esa computadora; si no, avisá.",
+                maquina=maquina,
             )
         )
     return alertas
@@ -405,6 +414,7 @@ async def _maquinas_desactualizadas(base, ahora: datetime, version_esperada: str
                 f"Lleva más de {HORAS_PARA_ACTUALIZARSE} horas sin ponerse al día.",
                 "En esa computadora, mirá el log del actualizador "
                 "(~/Library/Logs/centonara/actualizador.log en Mac): ahí dice por qué no pudo.",
+                maquina=maquina,
             )
         )
     return alertas

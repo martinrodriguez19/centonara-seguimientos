@@ -2,67 +2,43 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *)); /* nunca se aplica: ver abajo */
 
 /* ===========================================================================
-   El sistema visual del panel.
+   El sistema visual del panel (v2, D55).
    ===========================================================================
 
-   Antes esto era el archivo que genera shadcn con `baseColor: neutral`, sin una
-   sola modificación: TODOS los colores estaban declarados con croma cero
-   —`oklch(0.556 0 0)`—, así que no había color de marca ni colores de estado, y
-   una máquina sana, una degradada y una sin conexión terminaban siendo el mismo
-   gris con un texto distinto. Donde hacía falta señalar algo se inventaba la
-   clase en el momento: había 41 usos sueltos de `amber-500/40` y
-   `destructive/10` repartidos por seis componentes, cada uno con su intensidad.
+   **Un solo tema: claro.** El oscuro se sacó (D55). Nada aplica la clase
+   `.dark`, y la variante de arriba queda apuntando a ella sólo para que un
+   `dark:` que venga copiado de shadcn no se active con la preferencia del
+   sistema operativo: sin esto Tailwind lo resolvería con `prefers-color-scheme`.
 
    ---------------------------------------------------------------------------
-   ## La regla de reparto, que es lo único importante de este archivo
+   ## La regla de reparto
    ---------------------------------------------------------------------------
 
-   La identidad de Centonara es enteramente cálida: marrón, terracota, greige.
-   Y los colores con los que se avisa un peligro también son cálidos. Si se
-   mezclan, "el sistema puede escribirle a un cliente real" se parece al
-   encabezado — y el criterio que este panel se puso es reconocer el modo en dos
-   segundos.
-
-   Así que:
-
-   1. **La aplicación se viste de neutros cálidos.** El papel, la tinta y los
-      grises salen del sitio de Centonara. Eso es lo que la hace suya.
-   2. **Lo interactivo usa un color frío** (`--accion`). Un azul pizarra no se
-      puede confundir con una advertencia por más cálido que sea el resto.
+   1. **La aplicación se viste de neutros fríos** (grafito, pizarra). Es lo que
+      le da el aire técnico que se pidió.
+   2. **Lo interactivo y lo "vivo" es cian** (`--accion`): el foco, el ítem
+      activo de la barra, los gráficos, el punto de una máquina conectada.
+      Como texto se usa `--accion-tinta`, más oscuro: el cian de relleno sobre
+      blanco no llega al contraste mínimo para letra chica.
    3. **Los tres colores de estado no aparecen en ningún otro lado.** Si algo
       está en ámbar es porque pide una decisión, nunca porque queda lindo.
-   4. **El marrón de marca no viste ningún control.** Vive en `--marca` y se usa
-      sólo en el logotipo de la pantalla de ingreso. Un botón marrón, al lado de
-      un aviso ámbar, es exactamente la ambigüedad que hay que evitar.
-
-   ---------------------------------------------------------------------------
-   ## Por qué hexadecimales y no `oklch`
-   ---------------------------------------------------------------------------
-
-   Porque estos valores se comparan a ojo contra el sitio de Centonara y contra
-   una captura de pantalla, y en ese trabajo `#6E4034` se verifica y
-   `oklch(0.42 0.06 38)` no. Tailwind acepta los dos.
-
-   ⚠️ Los valores de marca están leídos de una captura del sitio, porque desde
-   la máquina donde se escribió esto la red no deja abrir `centonara.com.ar`.
-   Hay que confirmarlos contra su CSS. Si difieren, manda el sitio.
+   4. **El marrón de marca vive sólo en la pantalla de ingreso** (`--marca`).
    =========================================================================== */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Dos familias con trabajos separados. Antes era una sola (Geist) para todo,
-     incluido `--font-heading`, y por eso nada tenía jerarquía.
+  /* Inter para texto y títulos, mono para identificadores y cifras (D55).
 
      Con pila de reserva de verdad: si la fuente no llega —red del cliente,
      bloqueo de Google Fonts— el panel cae en la del sistema y se sigue leyendo,
      en vez de caer en la serif por defecto del navegador. */
   --font-sans: var(--fuente-cuerpo), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-heading: var(--fuente-titulo), var(--fuente-cuerpo), ui-sans-serif, sans-serif;
+  --font-heading: var(--fuente-cuerpo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--fuente-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-ring: var(--ring);
@@ -89,6 +65,7 @@
   /* Lo interactivo. Frío a propósito. */
   --color-accion: var(--accion);
   --color-accion-suave: var(--accion-suave);
+  --color-accion-tinta: var(--accion-tinta);
 
   /* Los estados. Cada uno con su tinta, su fondo teñido y su borde, para que
      un aviso se arme siempre igual y no haya que elegir una opacidad. */
@@ -126,147 +103,71 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* --------------------------------------------------------------------------
-   Claro
-   -------------------------------------------------------------------------- */
 :root {
-  /* El papel y la tinta salen del sitio: blanco roto cálido y el negro del
-     logotipo. Nada de gris plano. */
-  --background: #faf8f6;
-  --foreground: #211a16;
+  color-scheme: light;
+
+  --background: #f5f7fa;
+  --foreground: #0b1220;
   --card: #ffffff;
-  --card-foreground: #211a16;
+  --card-foreground: #0b1220;
   --popover: #ffffff;
-  --popover-foreground: #211a16;
+  --popover-foreground: #0b1220;
 
-  /* El botón primario es grafito cálido, no marrón: tiene que poder estar al
-     lado de un aviso sin competir con él. */
-  --primary: #2b2724;
-  --primary-foreground: #faf8f6;
+  /* El botón primario es tinta, no cian: tiene que poder estar al lado de un
+     aviso sin competir con él, y el cian queda para señalar. */
+  --primary: #0b1220;
+  --primary-foreground: #ffffff;
 
-  --secondary: #f0ece8;
-  --secondary-foreground: #2b2724;
-  --muted: #f0ece8;
-  --muted-foreground: #6e6560;
-  --accent: #ede8e3;
-  --accent-foreground: #2b2724;
+  --secondary: #eef1f5;
+  --secondary-foreground: #0b1220;
+  --muted: #eef1f5;
+  --muted-foreground: #5b6678;
+  --accent: #eef1f5;
+  --accent-foreground: #0b1220;
 
-  --border: #e6e1dd;
-  --input: #ddd6d0;
-
-  /* El foco, frío. Se ve sobre cualquier fondo de esta paleta y no se lee como
-     una advertencia. */
-  --ring: #35606f;
+  --border: #e3e7ee;
+  --input: #d5dbe4;
+  --ring: #0891b2;
 
   --marca: #6e4034;
   --marca-contraste: #faf8f6;
 
-  --accion: #35606f;
-  --accion-suave: #e7eff2;
+  --accion: #0891b2;
+  --accion-suave: #e0f5f9;
+  --accion-tinta: #0e7490;
 
-  --estado-ok: #2f6b4a;
-  --estado-ok-suave: #e4f0e9;
-  --estado-ok-borde: #a9cdb8;
+  --estado-ok: #1f7a4d;
+  --estado-ok-suave: #e6f4ec;
+  --estado-ok-borde: #a7d7bb;
 
-  /* Ámbar profundo y saturado. Un ocre tira a marrón y se pierde contra los
-     neutros cálidos, que es justo lo que no puede pasar. */
-  --estado-atencion: #9a5b00;
-  --estado-atencion-suave: #fbeedc;
-  --estado-atencion-borde: #e3be7e;
+  --estado-atencion: #a15c00;
+  --estado-atencion-suave: #fdf1dc;
+  --estado-atencion-borde: #ecc788;
 
-  --estado-critico: #b32318;
-  --estado-critico-suave: #fbe7e4;
-  --estado-critico-borde: #e9a9a1;
+  --estado-critico: #c0261b;
+  --estado-critico-suave: #fdeceb;
+  --estado-critico-borde: #f1b0aa;
 
   /* `destructive` es el mismo rojo que el estado crítico: son la misma cosa
      dicha por dos vocabularios, y si se separan terminan siendo dos rojos. */
-  --destructive: #b32318;
+  --destructive: #c0261b;
 
-  --chart-1: #35606f;
-  --chart-2: #2f6b4a;
-  --chart-3: #9a5b00;
-  --chart-4: #6e4034;
-  --chart-5: #6e6560;
+  --chart-1: #0891b2;
+  --chart-2: #1f7a4d;
+  --chart-3: #a15c00;
+  --chart-4: #6d5bd0;
+  --chart-5: #94a3b8;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 
-  --sidebar: #f0ece8;
-  --sidebar-foreground: #211a16;
-  --sidebar-primary: #2b2724;
-  --sidebar-primary-foreground: #faf8f6;
-  --sidebar-accent: #ede8e3;
-  --sidebar-accent-foreground: #2b2724;
-  --sidebar-border: #e6e1dd;
-  --sidebar-ring: #35606f;
-}
-
-/* --------------------------------------------------------------------------
-   Oscuro
-   --------------------------------------------------------------------------
-
-   No es el claro invertido. Dos cosas cambian de rol a propósito:
-
-   - El marrón de la barra de promoción no funciona sobre fondo oscuro: no
-     contrasta. Se aclara hasta una terracota que sí.
-   - Los tres colores de estado suben en luminosidad y bajan en saturación. El
-     mismo rojo del modo claro sobre negro vibra y cansa.
-   -------------------------------------------------------------------------- */
-.dark {
-  --background: #17130f;
-  --foreground: #ede7e1;
-  --card: #1f1a16;
-  --card-foreground: #ede7e1;
-  --popover: #1f1a16;
-  --popover-foreground: #ede7e1;
-
-  --primary: #ede7e1;
-  --primary-foreground: #1f1a16;
-
-  --secondary: #2a241f;
-  --secondary-foreground: #ede7e1;
-  --muted: #2a241f;
-  --muted-foreground: #a69c94;
-  --accent: #2a241f;
-  --accent-foreground: #ede7e1;
-
-  --border: #322b25;
-  --input: #3d352e;
-  --ring: #7fafc1;
-
-  --marca: #c08a78;
-  --marca-contraste: #17130f;
-
-  --accion: #8fbece;
-  --accion-suave: #17282e;
-
-  --estado-ok: #6fc08e;
-  --estado-ok-suave: #16281d;
-  --estado-ok-borde: #2e5540;
-
-  --estado-atencion: #e0a64e;
-  --estado-atencion-suave: #2c2114;
-  --estado-atencion-borde: #5a4322;
-
-  --estado-critico: #e4796c;
-  --estado-critico-suave: #2e1815;
-  --estado-critico-borde: #5c2a24;
-
-  --destructive: #e4796c;
-
-  --chart-1: #8fbece;
-  --chart-2: #6fc08e;
-  --chart-3: #e0a64e;
-  --chart-4: #c08a78;
-  --chart-5: #a69c94;
-
-  --sidebar: #1f1a16;
-  --sidebar-foreground: #ede7e1;
-  --sidebar-primary: #ede7e1;
-  --sidebar-primary-foreground: #1f1a16;
-  --sidebar-accent: #2a241f;
-  --sidebar-accent-foreground: #ede7e1;
-  --sidebar-border: #322b25;
-  --sidebar-ring: #7fafc1;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0b1220;
+  --sidebar-primary: #0b1220;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef1f5;
+  --sidebar-accent-foreground: #0b1220;
+  --sidebar-border: #e3e7ee;
+  --sidebar-ring: #0891b2;
 }
 
 @layer base {
@@ -276,6 +177,14 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Los títulos, apretados: es lo que más cambia la sensación de "herramienta"
+     sin tocar nada más. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
   }
 
   html {
@@ -327,4 +236,20 @@
   .backdrop-blur-\[2px\] {
     -webkit-backdrop-filter: blur(8px);
   }
+}
+
+/* La grilla de fondo del encabezado de cada página. Sutil a propósito: un
+   patrón que se nota compite con los datos. */
+@utility fondo-grilla {
+  background-image:
+    linear-gradient(to right, rgb(11 18 32 / 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(11 18 32 / 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* La sombra de las superficies: apenas, para separar la tarjeta del fondo. */
+@utility sombra-suave {
+  box-shadow:
+    0 1px 2px rgb(16 24 40 / 0.05),
+    0 1px 3px rgb(16 24 40 / 0.04);
 }

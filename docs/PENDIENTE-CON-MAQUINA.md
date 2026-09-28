@@ -489,7 +489,7 @@ Todo lo que se podía probar sin una máquina está probado: el actualizador ent
 por cambio de `VERSION` en `test_bucle.py` y `test_reinicio.py`. Lo que queda necesita hierro:
 
 - [ ] **En una Mac de prueba, la vuelta entera.** Correr `instalar.sh`; ver el sha en la tarjeta
-      del panel; fijar en Configuración → *Versión del agente* el commit anterior y ver que baja
+      del panel; fijar en Ajustes → Sistema → *Versión del agente* el commit anterior y ver que baja
       sola en menos de una hora (o ya, con `actualizar.sh`); vaciar el campo y ver que vuelve.
       Es lo que dice "funcionó" en `PLAN-ACTUALIZADOR.md` §6.
 - [ ] **El rollback con un commit roto.** Fijar un sha cuyo agente no arranque: la máquina tiene
@@ -529,7 +529,7 @@ hierro, en el orden en que conviene hacerlo:
 - [ ] **Un contacto `XX` y uno `ARQ` de prueba** en el WhatsApp de una máquina: el primero tiene
       que aparecer en la corrida como `no_contactar` sin abrirse (y vetado sin vencimiento), el
       segundo con un borrador que saluda sin la etiqueta.
-- [ ] **La corrida de las 17.** Prenderla en Configuración → *Corrida automática* con la hora
+- [ ] **La corrida de las 17.** Prenderla en Ajustes → Envío y horarios → *Corrida automática* con la hora
       cinco minutos adelante, y ver que aparece sola con `disparada_por: programacion`, una sola
       vez. Después dejarla en 17:00.
 - [ ] **El envío automático, con dos números propios.** Destinos acotados a dos números de

@@ -19,19 +19,25 @@ import { cn } from "@/lib/utils";
  * lado se queda creyendo que guardó. Los de nivel crítico se quedan hasta que
  * alguien los cierra.
  */
+/** Un botón dentro del aviso: "Deshacer" después de guardar un ajuste. */
+export type AccionDeAviso = { texto: string; alHacer: () => void };
+
 type AvisoFlotante = {
   id: number;
   nivel: Nivel;
   texto: string;
+  accion?: AccionDeAviso;
 };
 
 type Contexto = {
-  avisar: (texto: string, nivel?: Nivel) => void;
+  avisar: (texto: string, nivel?: Nivel, accion?: AccionDeAviso) => void;
 };
 
 const ContextoAvisos = createContext<Contexto | null>(null);
 
 const SEGUNDOS_VISIBLE = 4000;
+// Con un botón adentro, más tiempo: hay que leerlo y decidir si apretarlo.
+const SEGUNDOS_CON_ACCION = 8000;
 
 const COLOR: Record<Nivel, string> = {
   ok: "border-ok-borde bg-ok-suave text-ok",
@@ -48,13 +54,13 @@ export function ProveedorDeAvisos({ children }: { children: React.ReactNode }) {
   }, []);
 
   const avisar = useCallback(
-    (texto: string, nivel: Nivel = "ok") => {
+    (texto: string, nivel: Nivel = "ok", accion?: AccionDeAviso) => {
       // Contador monótono y no `Date.now()`: dos avisos en el mismo
       // milisegundo compartirían clave y React reusaría el nodo del anterior.
       const id = siguienteId++;
-      setAvisos((previos) => [...previos, { id, nivel, texto }]);
+      setAvisos((previos) => [...previos, { id, nivel, texto, accion }]);
       if (nivel !== "critico") {
-        setTimeout(() => cerrar(id), SEGUNDOS_VISIBLE);
+        setTimeout(() => cerrar(id), accion ? SEGUNDOS_CON_ACCION : SEGUNDOS_VISIBLE);
       }
     },
     [cerrar],
@@ -82,6 +88,18 @@ export function ProveedorDeAvisos({ children }: { children: React.ReactNode }) {
             )}
           >
             <span className="min-w-0 flex-1">{aviso.texto}</span>
+            {aviso.accion && (
+              <button
+                type="button"
+                className="shrink-0 rounded font-medium underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  aviso.accion?.alHacer();
+                  cerrar(aviso.id);
+                }}
+              >
+                {aviso.accion.texto}
+              </button>
+            )}
             <button
               type="button"
               aria-label="Cerrar aviso"
