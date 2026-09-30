@@ -148,6 +148,9 @@ def resolvedor_real_falso(monkeypatch, *, contesta: str = "1234567890ab"):
         def raise_for_status(self) -> None:
             return None
 
+        def json(self) -> list:
+            return [{"sha": contesta}]
+
     class _Cliente:
         def __init__(self, *a, **k) -> None:
             pass
@@ -158,9 +161,10 @@ def resolvedor_real_falso(monkeypatch, *, contesta: str = "1234567890ab"):
         async def __aexit__(self, *a) -> None:
             return None
 
-        async def get(self, url: str, headers: dict):
+        async def get(self, url: str, headers: dict, params: dict | None = None):
             visto["url"] = url
             visto["headers"] = headers
+            visto["params"] = params or {}
             return _Respuesta()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Cliente)
@@ -179,7 +183,46 @@ async def test_sin_token_no_se_manda_authorization(monkeypatch) -> None:
     visto = resolvedor_real_falso(monkeypatch)
     await versiones.esperada({}, repo=REPO, rama="main")
     assert "Authorization" not in visto["headers"]
-    assert visto["headers"]["Accept"] == "application/vnd.github.sha"
+    assert visto["headers"]["Accept"] == "application/vnd.github+json"
+
+
+async def test_lo_ultimo_es_el_ultimo_commit_que_toco_agente_y_no_la_punta(monkeypatch) -> None:
+    """Un push del panel no es una versión nueva del agente (30/09/2026)."""
+    visto = resolvedor_real_falso(monkeypatch, contesta="abcdef1234567890")
+    esperada = await versiones.esperada({}, repo=REPO, rama="main")
+    assert esperada.sha == "abcdef1234567890"
+    assert visto["url"].endswith(f"/repos/{REPO}/commits")
+    assert visto["params"] == {"sha": "main", "path": "agente", "per_page": 1}
+
+
+async def test_sin_commits_de_agente_no_se_afirma_nada(monkeypatch) -> None:
+    import httpx
+
+    class _Respuesta:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list:
+            return []
+
+    class _Cliente:
+        def __init__(self, *a, **k) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a) -> None:
+            return None
+
+        async def get(self, url: str, headers: dict, params: dict | None = None):
+            return _Respuesta()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Cliente)
+    monkeypatch.setattr(versiones, "_resolver_en_github", RESOLVER_REAL)
+    esperada = await versiones.esperada({}, repo=REPO, rama="main")
+    assert esperada.sha == ""
+    assert esperada.origen == "desconocida"
 
 
 async def test_el_token_no_aparece_en_el_log_cuando_github_falla(monkeypatch, caplog) -> None:
@@ -195,7 +238,7 @@ async def test_el_token_no_aparece_en_el_log_cuando_github_falla(monkeypatch, ca
         async def __aexit__(self, *a) -> None:
             return None
 
-        async def get(self, url: str, headers: dict):
+        async def get(self, url: str, headers: dict, params: dict | None = None):
             raise OSError("sin red")
 
     monkeypatch.setattr(httpx, "AsyncClient", _Cliente)

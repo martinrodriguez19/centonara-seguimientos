@@ -76,23 +76,39 @@ def normalizar(sha: Any) -> str:
     return texto if SHA.match(texto) else ""
 
 
-async def _resolver_en_github(repo: str, rama: str, token: str = "") -> str:
-    """El sha de la punta de `rama`, preguntado a la API pública de GitHub.
+# La carpeta cuyo último commit es "la versión del agente". Un push que sólo toca
+# el panel o los docs no cambia nada en las máquinas: no las pone atrasadas ni
+# las hace reiniciarse (30/09/2026: dos commits del panel seguidos dejaron a
+# todas "atrasadas" y al actualizador reiniciando agentes por nada).
+CARPETA_AGENTE = "agente"
 
-    `Accept: application/vnd.github.sha` devuelve el sha pelado, sin JSON que
-    parsear. El repositorio es público, así que el token es opcional (D53):
-    sin él, la API admite 60 consultas por hora por IP, y Render comparte las
-    IPs de salida; con él, 5.000 propias. Nunca se loguea.
+
+async def _resolver_en_github(repo: str, rama: str, token: str = "") -> str:
+    """El sha del último commit de `rama` que tocó `agente/`, preguntado a GitHub.
+
+    No la punta de la rama: la punta cambia con cada commit del panel o de los
+    docs, y eso no es una versión nueva del agente. La API de commits con
+    `path=` devuelve la lista filtrada, ordenada de la más nueva a la más
+    vieja; alcanza con la primera.
+
+    El repositorio es público, así que el token es opcional (D53): sin él, la
+    API admite 60 consultas por hora por IP, y Render comparte las IPs de
+    salida; con él, 5.000 propias. Nunca se loguea.
     """
-    encabezados = {"Accept": "application/vnd.github.sha", "User-Agent": "centonara-backend"}
+    encabezados = {"Accept": "application/vnd.github+json", "User-Agent": "centonara-backend"}
     if token:
         encabezados["Authorization"] = f"Bearer {token}"
     async with httpx.AsyncClient(timeout=8.0) as cliente:
         respuesta = await cliente.get(
-            f"https://api.github.com/repos/{repo}/commits/{rama}", headers=encabezados
+            f"https://api.github.com/repos/{repo}/commits",
+            params={"sha": rama, "path": CARPETA_AGENTE, "per_page": 1},
+            headers=encabezados,
         )
         respuesta.raise_for_status()
-        return respuesta.text.strip()
+        commits = respuesta.json()
+        if not isinstance(commits, list) or not commits:
+            raise ValueError(f"GitHub no devolvió commits de {CARPETA_AGENTE}/ en {rama}")
+        return str(commits[0]["sha"]).strip()
 
 
 def desconocida_desde() -> float | None:

@@ -1325,6 +1325,21 @@ desinstalador está incompleto, y lo que falta se agrega a él, no a un runbook.
 
 ---
 
+### D58 — "Lo último" es el último commit que tocó `agente/`, no la punta de la rama *(30/09/2026; precisa D45)*
+
+**Contexto.** Dos commits seguidos del panel dejaron a todas las máquinas "atrasadas" y al
+actualizador reiniciando agentes que no habían cambiado.
+
+**Decisión.** Con la versión sin fijar en el panel, el backend resuelve `main` al último commit
+que tocó `agente/` (`GET /repos/…/commits?sha=main&path=agente&per_page=1`). Un push del panel,
+del backend o de los docs no es una versión nueva del agente: no marca atrasada a nadie ni
+reinicia nada. Fijar un sha en el panel sigue mandando sobre esto.
+
+**Qué la revertiría.** Que el agente pase a depender de algo fuera de `agente/`. Ahí la carpeta
+se suma a la consulta.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |
