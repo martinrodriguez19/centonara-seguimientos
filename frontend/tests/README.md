@@ -30,7 +30,7 @@ lo que acaba de hacer:
 | `errores.test.tsx` | Que la lista de errores separe urgentes de avisos, filtre por el campo `maquina` de la alerta y que "Ya lo vi" saque de la vista sin hacer desaparecer |
 | `derivados.test.ts` | Las cuentas que hace el panel y no el backend: el "hoy" en hora argentina, los borradores por máquina y por día, y que una Mac apagada sin trabajo no cuente como problema |
 | `navegacion.test.ts` | Que la barra de tres grupos llegue a todas las pantallas y marque el grupo correcto en las subrutas |
-| `comandos.test.ts` | El catálogo de comandos para copiar |
+| `comandos.test.ts` | La guía de instalación: ids únicos, sin saltos de línea, huecos declarados, los mismos pasos en Mac, Mac vieja y Windows, instalar y reinstalar en cada una, y **ningún comando de Windows con `irm \| iex`** |
 
 El recorrido de `e2e/` es el de la demostración: entrar, ver el modo, llegar a
 los errores, pedir una generación (y cancelarla), el freno, las corridas, las

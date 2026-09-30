@@ -4,7 +4,7 @@ import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import type { Comando as Datos } from "@/lib/comandos";
+import type { Comando as Datos } from "@/lib/guia";
 import { textos } from "@/lib/textos";
 
 /**

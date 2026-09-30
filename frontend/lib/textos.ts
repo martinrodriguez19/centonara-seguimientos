@@ -563,14 +563,16 @@ export const textos = {
     naceInactiva: "La máquina nace inactiva. Instalar no es activar.",
   },
 
-  // La página de comandos. El catálogo en sí —cada comando con su explicación—
-  // vive en `lib/comandos.ts`, y ahí está escrito por qué.
+  // La guía de instalación y reparación. El contenido —pasos y comandos—
+  // vive en `lib/guia.ts`, y ahí está escrito por qué.
   comandos: {
-    titulo: "Comandos",
+    titulo: "Instalar y reparar",
     intro:
-      "Los comandos que hacen falta para instalar, revisar y arreglar el sistema. Se copian de acá y se pegan tal cual: tipearlos a mano es donde aparecen los errores que después no se encuentran.",
+      "Cómo poner a andar una computadora nueva, comprobar que quedó bien, y qué hacer cuando algo se rompe: incluido tirar el agente y traer uno nuevo desde cero. Los comandos se copian de acá y se pegan tal cual; tipearlos a mano es donde aparecen los errores que después no se encuentran.",
     aviso:
-      "Ninguno de estos comandos envía mensajes. Para frenar el sistema está el botón rojo del panel, que es inmediato y queda registrado.",
+      "Ninguno de estos comandos envía mensajes. Para frenar el sistema está el botón «Frenar todo» de la barra, que es inmediato y queda registrado.",
+    sistema: "Computadora",
+    pasos: "Pasos",
     indice: "Ir a",
     copiar: "Copiar",
     copiado: "Copiado",
@@ -578,7 +580,11 @@ export const textos = {
       "No se pudo copiar solo. Seleccioná el texto y copialo con el mouse.",
     reemplazar: "Reemplazar",
     cuando: "Cuándo",
-    pie: "Instalación paso a paso en la guía de puesta en marcha.",
+    problemas: "Si algo no anda",
+    sintoma: "Lo que se ve",
+    queEs: "Qué es",
+    queHacer: "Qué hacer",
+    pie: "La misma guía, para imprimir o mandar: docs/SOP-instalar-mac.md y docs/SOP-instalar-windows.md en el repositorio.",
   },
   // La barra de arriba (D54). Tres grupos y nada que grite: el modo es un chip,
   // los errores un número chico.
@@ -602,8 +608,8 @@ export const textos = {
     erroresAyuda: "Lo que hay que mirar, en un solo lugar",
     historial: "Historial",
     historialAyuda: "Quién hizo qué y cuándo",
-    comandos: "Instalar una máquina",
-    comandosAyuda: "Los comandos para copiar y pegar",
+    comandos: "Instalar y reparar",
+    comandosAyuda: "Instalar, comprobar, reinstalar desde cero",
     menu: "Menú",
     cerrarMenu: "Cerrar el menú",
     cuenta: "Cuenta",

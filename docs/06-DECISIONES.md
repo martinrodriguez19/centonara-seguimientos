@@ -1291,6 +1291,40 @@ escribir.
 
 ---
 
+### D57 — Reinstalar desde cero es un desinstalador más el instalador de siempre, y el instalador no dice "completa" sin señal de vida *(30/09/2026; extiende D46 y D53)*
+
+**Contexto.** Varias máquinas fallaron y siguieron fallando. En Windows ninguno de los comandos
+de la documentación funcionó (BOM + `irm | iex`, notas de campo del 25/09), un agente relanzado
+por una actualización ya no cuelga de la tarea y podía quedar duplicado, y en Mac el instalador
+decía "INSTALACIÓN COMPLETA" mirando que los servicios figuraran en `launchctl`, no que el
+agente estuviera vivo. No había forma de "matar el agente y traer uno nuevo desde cero".
+
+**Decisión.** (1) `desinstalar.sh` / `desinstalar.ps1`: paran y borran servicios o tareas,
+matan todos los procesos del agente, borran proyecto, estado y logs; conservan la sesión del
+navegador de envío y el login de Claude Code salvo `--todo`; piden `SI`; se bajan de GitHub y
+no del repositorio de la máquina. Reinstalar = desinstalar + el instalador de siempre; en el
+panel no se da de baja nada. (2) Los dos instaladores terminan **esperando `vivo.json`** (hasta
+90 s) y dicen `QUEDÓ AL DÍA` o `NO QUEDÓ AL DÍA` con `exit 1`: "completa" sólo cuando es
+verdad. (3) El comando de Windows es **bajar a archivo y correr con `-File`**; `irm | iex` no
+se usa más, y un test falla si vuelve a una guía. (4) **El BOM de los `.ps1` se queda**:
+Windows PowerShell 5.1 lee un `.ps1` sin BOM como ANSI y rompe los acentos; con `-File` el BOM
+no molesta. (5) El instalador de Windows mata los agentes relanzados antes de arrancar, aplica
+D53 a un `.git` viejo y baja siempre `main`; el de Mac aplica D53 aunque se lo corra por ruta,
+revisa macOS ≥ 13 antes de instalar Claude Code, y los dos conservan las claves ajenas del
+`.env`. (6) La guía vive en el panel (Ajustes → Instalar y reparar) con los mismos nueve pasos
+para Mac, Mac vieja y Windows.
+
+**Consecuencias.** `sop.html` se borra: era del 26/08 y no conocía nada de esto. Lo que sigue
+sin resolverse —que el agente avise *antes* de la corrida que la sesión de Claude Code venció,
+que una corrida venza sola, que el agente de Windows no se desacople de la tarea— es el sprint
+3 de `PLAN-INSTALACION-Y-REINSTALACION.md`, que toca el agente y el backend y espera
+aprobación.
+
+**Qué la revertiría.** Una máquina que no se pueda reinstalar con estos dos comandos. Ahí el
+desinstalador está incompleto, y lo que falta se agrega a él, no a un runbook.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

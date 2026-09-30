@@ -538,3 +538,44 @@ hierro, en el orden en que conviene hacerlo:
       Con el switch apagado, la misma corrida deja borradores. ⚠️ Lo que nadie verificó: que
       `claude -p --chrome` apriete el botón de enviar en la Mac con macOS 10.15 y en Windows.
 - [ ] **Recién entonces:** `ABRIR` los destinos con el switch prendido, con el vendedor avisado.
+
+---
+
+## G — Instalación y reinstalación (D57) · **30 de septiembre de 2026**
+
+Nada de esto se puede probar desde una computadora de desarrollo: hace falta una máquina real de
+cada tipo. El orden importa: primero la que ya falla, que es donde se ve si el desinstalador
+alcanza.
+
+- [ ] **G1 — Windows, PC que falla (windows-julian o windows-ignacio).** Desinstalar
+      (`desinstalar.ps1`, pegar `SI`) → tiene que decir `DESINSTALACIÓN COMPLETA` y en el panel
+      la máquina pasa a "sin conexión". Instalar de nuevo con el comando de `-File` → se pega dos
+      veces si pide sesión → tiene que decir `QUEDÓ AL DÍA: <sha>` y `INSTALACIÓN COMPLETA`, y
+      el panel la ve conectada en menos de un minuto. Acentos legibles en los mensajes (el BOM).
+- [ ] **G2 — Windows, un solo agente.** Después de G1, `Get-CimInstance Win32_Process | Where
+      CommandLine -match 'agente.main'` tiene que devolver **uno**. Repetir después de la
+      próxima actualización automática: ahí es donde antes se duplicaba.
+- [ ] **G3 — Windows, logs legibles.** `Get-Content $env:LOCALAPPDATA\Centonara\logs\agente.log
+      -Tail 20` y `actualizador.log` se leen (UTF-8, sin caracteres raros), incluida la línea
+      `LISTO:` del actualizador con su flecha.
+- [ ] **G4 — Mac, instalación limpia.** En una Mac nueva (o después de `desinstalar.sh`):
+      `instalar.sh` → se detiene en [2/8] → `claude` → de nuevo → `QUEDÓ AL DÍA` con "el agente
+      dio señal de vida" → `INSTALACIÓN COMPLETA`. Y con el agente parado a propósito
+      (`launchctl bootout` antes del final) tiene que decir `NO QUEDÓ AL DÍA` e `INSTALACIÓN
+      INCOMPLETA` con `exit 1`.
+- [ ] **G5 — Mac vieja (clon git).** En una Mac que todavía tenga `.git` en
+      `~/centonara-seguimientos`: correr `bash ~/centonara-seguimientos/agente/instalador/instalar.sh`
+      (por ruta, no por curl) y ver que aparta el `.git` a `~/.centonara/git-viejo-*` y termina
+      `QUEDÓ AL DÍA`. Antes ese camino se salteaba D53.
+- [ ] **G6 — Mac, [8/8] "ya estaba vinculado".** En una Mac ya vinculada, volver a correr el
+      instalador tiene que decir "ya estaba vinculado, no hace falta escanear de nuevo" en vez de
+      ofrecer el QR.
+- [ ] **G7 — Mac con macOS < 13.** Sin `claude` instalado, el instalador tiene que detenerse
+      diciendo "macOS 13 o más" y apuntar a la pestaña del panel; con `claude` ya instalado por
+      el rodeo de Node 18, tiene que seguir de largo.
+- [ ] **G8 — .env con claves ajenas.** Poner `AGENTE_NAVEGADOR_DIR=/algo` en el `.env`, correr
+      el instalador, y ver que la línea sigue ahí bajo "Conservado de la instalación anterior".
+- [ ] **G9 — La guía del panel, en el teléfono.** Abrir Ajustes → Instalar y reparar desde el
+      celular, pestaña Windows, y copiar el comando de instalar con el botón: tiene que pegarse
+      entero, en una línea, en la PowerShell.
+

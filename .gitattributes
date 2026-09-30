@@ -13,3 +13,9 @@ referencia/** linguist-vendored
 # Los dos que importan corren fuera de Windows: `instalar-mac.sh` en la Mac del
 # vendedor, y `backup.sh` adentro del contenedor del cron.
 *.sh text eol=lf
+
+# Los .ps1 también con LF: PowerShell los lee igual, y así el archivo es el
+# mismo en el checkout de Windows del CI que en el repositorio — el test
+# `test_instalador.py` compara los bytes (BOM, sin CRLF). Con `autocrlf=true`
+# el checkout de Windows los convertiría y ese test fallaría sin motivo.
+*.ps1 text eol=lf

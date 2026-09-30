@@ -106,6 +106,19 @@ test.describe("el recorrido del panel", () => {
     await expect(page.getByRole("tab", { name: /chequeos/i })).toBeVisible();
   });
 
+  test("la guía de instalación tiene una pestaña por computadora, y la de Windows no usa iex", async ({ page }) => {
+    await page.goto("/comandos#windows");
+    // El hash elige la pestaña: un enlace a la guía de Windows se manda por WhatsApp.
+    await expect(page.getByRole("tab", { name: "Windows" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Mac", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /macOS anterior a 13/i })).toBeVisible();
+    const instalar = page.locator("#win-instalar code");
+    await expect(instalar).toContainText("-ExecutionPolicy Bypass -File");
+    await expect(instalar).not.toContainText("| iex");
+    // Y reinstalar desde cero existe en las tres.
+    await expect(page.locator("#win-desinstalar")).toBeVisible();
+  });
+
   test("una dirección que no existe no deja la pantalla en blanco", async ({ page }) => {
     await page.goto("/corrida/no-es-un-id");
     // O el 404 propio, o el error de carga del panel. Lo que no puede pasar es

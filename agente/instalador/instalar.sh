@@ -24,7 +24,14 @@
 #   5. Escribe el .env — sólo pregunta el identificador y el token del panel,
 #      y si ya estaban, no pregunta nada
 #   6. Configura el arranque automático (delegando en instalar-mac.sh)
-#   7. Arranca Chrome con el puerto y el agente, y comprueba que quedaron vivos
+#   7. Arranca Chrome con el puerto y el agente
+#   8. Ofrece vincular el navegador que escribe los mensajes
+#   Y al final espera la señal de vida del agente: dice QUEDÓ AL DÍA con el
+#   commit, o NO QUEDÓ AL DÍA con lo que falta. Sin señal de vida no dice
+#   "completa" y sale con 1.
+#
+# Para dejar la Mac como si nunca se hubiera instalado (y reinstalar desde
+# cero): desinstalar.sh, en esta misma carpeta.
 #
 # Qué NO hace, a propósito:
 #   - No da el permiso de sitio de la extensión: es una puerta de
@@ -52,10 +59,16 @@ export PATH="$HOME/.local/bin:$PATH"
 # (una máquina de desarrollo), se usa ese y no ~/centonara-seguimientos. Y se
 # recuerda que es desarrollo: es la única situación en la que un `.git` en el
 # repo se respeta (ver el paso 3).
+#
+# ⚠️ "En otro lado" es literal: si el archivo está en ~/centonara-seguimientos
+# es la Mac de un vendedor corriéndolo por ruta (`bash ~/centonara-…/instalar.sh`,
+# que es lo que el propio script recomienda cuando no se puede bajar), y NO es
+# desarrollo. Antes se lo tomaba por desarrollo, se respetaba el `.git` viejo y
+# el arreglo D53 no se aplicaba: la Mac terminaba en NO QUEDÓ AL DÍA.
 DESARROLLO=no
 if [ -f "${BASH_SOURCE[0]:-}" ]; then
   posible=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-  if [ -f "$posible/agente/instalador/instalar-mac.sh" ]; then
+  if [ -f "$posible/agente/instalador/instalar-mac.sh" ] && [ "$posible" != "$REPO" ]; then
     REPO="$posible"
     DESARROLLO=si
   fi
@@ -86,6 +99,20 @@ fi
 if command -v claude >/dev/null 2>&1; then
   echo "  ok  claude"
 else
+  # Claude Code pide macOS 13. Con menos, su instalador aborta con "error 134"
+  # y `set -e` cortaba esto sin decir por qué. Sólo se revisa cuando hay que
+  # instalarlo: una Mac vieja que ya lo tiene (por el rodeo de Node 18 que
+  # describe el panel en "macOS anterior a 13") sigue de largo.
+  macos_mayor=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)
+  if [ -n "$macos_mayor" ] && [ "$macos_mayor" -lt 13 ] 2>/dev/null; then
+    echo "  Esta Mac tiene macOS $(sw_vers -productVersion), y Claude Code pide 13 o más." >&2
+    echo "  No es una falla de este instalador: es el sistema." >&2
+    echo >&2
+    echo "  Qué hacer: en el panel, Instalar y reparar → «Mac con macOS anterior a 13»." >&2
+    echo "  Son diez pasos que dejan Claude Code instalado; después se vuelve a correr" >&2
+    echo "  este mismo comando y sigue de largo." >&2
+    exit 1
+  fi
   echo "  instalando Claude Code..."
   curl -fsSL https://claude.ai/install.sh | bash
 fi
@@ -327,6 +354,16 @@ else
   echo "  ok  identificador y token ya estaban en el .env: se conservan"
 fi
 
+# Lo que alguien puso a mano en el .env y el instalador no conoce (otro
+# navegador de envío, otro repositorio) se conserva: antes se perdía en cada
+# reinstalación, y la Mac volvía en silencio a la configuración de fábrica.
+AJENAS=""
+if [ -f "$ENV_ARCHIVO" ]; then
+  AJENAS=$(grep -E '^[A-Z_]+=' "$ENV_ARCHIVO" \
+    | grep -Ev '^(AGENTE_BACKEND_URL|CLAUDE_BIN|CHROME_PERFIL_DIR|CHROME_PUERTO|AGENTE_DEVICE_ID|AGENTE_MACHINE_ID|AGENTE_TOKEN)=' \
+    || true)
+fi
+
 cat > "$ENV_ARCHIVO" <<ENV_EOF
 # Escrito por agente/instalador/instalar.sh. Volver a correr el instalador lo
 # regenera conservando estos valores. NO se comparte: tiene el token.
@@ -338,6 +375,12 @@ AGENTE_DEVICE_ID=$DEVICE_ID
 AGENTE_MACHINE_ID=$MACHINE_ID
 AGENTE_TOKEN=$TOKEN
 ENV_EOF
+if [ -n "$AJENAS" ]; then
+  printf '# Conservado de la instalación anterior:\n%s\n' "$AJENAS" >> "$ENV_ARCHIVO"
+  echo "  ok  conservadas del .env anterior: $(printf '%s\n' "$AJENAS" | cut -d= -f1 | tr '\n' ' ')"
+fi
+# Tiene el token: que sólo lo lea este usuario.
+chmod 600 "$ENV_ARCHIVO"
 echo "  ok  .env escrito: $ENV_ARCHIVO"
 
 # ---------------------------------------------------------------------------
@@ -408,9 +451,10 @@ titulo "[8/8] El navegador que escribe los mensajes"
 
 VINCULAR_CMD="cd $REPO && uv run --directory agente python -m agente.main --vincular"
 
-if "$PYTHON" - <<'PY' >/dev/null 2>&1
+# El `cd` es obligatorio (ver el paso 5): sin él el import fallaba siempre y
+# el instalador volvía a ofrecer vincular en cada corrida, aunque ya estuviera.
+if (cd "$REPO/agente" && "$PYTHON" - <<'PY') >/dev/null 2>&1
 import sys
-from pathlib import Path
 
 from agente.adaptadores import conexion
 
@@ -447,9 +491,13 @@ fi
 titulo "¿Quedó al día?"
 #
 # Lo que importa al final no es que cada paso haya dicho "ok" sino que la Mac
-# haya quedado como tiene que quedar: los tres servicios cargados y una versión
-# escrita. Se comprueba de verdad, contra launchctl y contra el disco, y se dice
-# en una línea que se pueda leer por teléfono: QUEDÓ AL DÍA o NO QUEDÓ AL DÍA.
+# haya quedado como tiene que quedar: los tres servicios cargados, una versión
+# escrita, y el agente DANDO SEÑAL DE VIDA. Se comprueba de verdad, contra
+# launchctl, contra el disco y contra ~/.centonara/estado/vivo.json —que el
+# agente escribe en cada latido, y que es lo mismo que mira el actualizador—, y
+# se dice en una línea que se pueda leer por teléfono: QUEDÓ AL DÍA o NO QUEDÓ
+# AL DÍA. Que el servicio figure en launchctl no alcanza: un agente que se cae
+# en bucle también figura.
 FALTA=""
 cargados=$(launchctl list 2>/dev/null || true)
 for etiqueta in com.centonara.chrome com.centonara.agente com.centonara.actualizador; do
@@ -462,13 +510,39 @@ if [ -f "$REPO/agente/VERSION" ]; then
 fi
 [ -n "$SHA_INSTALADO" ] || FALTA="${FALTA:+$FALTA; }no se escribió agente/VERSION"
 
+echo "  esperando la señal de vida del agente (hasta 90 segundos)..."
+VIVO=no
+for _ in $(seq 1 30); do
+  if "$PYTHON" - <<'PY' 2>/dev/null
+import json, sys
+from datetime import UTC, datetime
+from pathlib import Path
+try:
+    marca = json.loads((Path.home() / ".centonara" / "estado" / "vivo.json").read_text())
+    cuando = datetime.fromisoformat(marca["cuando"])
+    edad = (datetime.now(UTC) - cuando).total_seconds()
+    sys.exit(0 if edad < 120 else 1)
+except Exception:
+    sys.exit(1)
+PY
+  then VIVO=si; break; fi
+  sleep 3
+done
+if [ "$VIVO" = si ]; then
+  echo "  ok  el agente dio señal de vida"
+else
+  FALTA="${FALTA:+$FALTA; }el agente no dio señal de vida en 90 s (mirá ~/Library/Logs/centonara/agente.err)"
+fi
+
 if [ -z "$FALTA" ]; then
   echo "  QUEDÓ AL DÍA: $SHA_INSTALADO"
   echo "  (el panel muestra ese commit en la tarjeta de esta máquina)"
 else
   echo "  NO QUEDÓ AL DÍA: $FALTA" >&2
   echo "  Volvé a correr este instalador. Si vuelve a decir lo mismo, mandá" >&2
-  echo "  esta pantalla entera y el log: ~/Library/Logs/centonara/actualizador.log" >&2
+  echo "  esta pantalla entera y los logs de ~/Library/Logs/centonara/" >&2
+  titulo "INSTALACIÓN INCOMPLETA"
+  exit 1
 fi
 
 # ---------------------------------------------------------------------------

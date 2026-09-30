@@ -600,6 +600,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Bajo la tarea programada de Windows, stdout es un pipe hacia PowerShell
+    # con la página de códigos del sistema (cp1252): el `print` final, con su
+    # flecha y sus acentos, levantaba UnicodeEncodeError DESPUÉS de actualizar,
+    # y el log decía "ERROR inesperado" de una actualización que salió bien.
+    # Lo mismo que hace el agente en `logging.py`.
+    for flujo in (sys.stdout, sys.stderr):
+        reconfigurar = getattr(flujo, "reconfigure", None)
+        if reconfigurar is not None:
+            reconfigurar(encoding="utf-8", errors="replace")
+
     entorno = entorno_real()
     repo = args.repo
     if repo is None:

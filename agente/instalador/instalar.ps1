@@ -1,7 +1,18 @@
 ﻿# Instala TODO el agente en la PC Windows de un vendedor, con un solo comando
 # (pegado en una PowerShell común, sin ser administrador):
 #
-#   irm https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.ps1 | iex
+#   irm https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.ps1 -OutFile "$env:TEMP\instalar.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\instalar.ps1"
+#
+# ⚠️ Se baja a un archivo y se corre con -File, y no `irm … | iex`, a
+# propósito. Con `iex` el script llega como texto: un `exit` cierra la ventana
+# entera —y se pierde el mensaje que decía qué arreglar—, no se le pueden pasar
+# opciones, y el BOM del archivo queda pegado adelante del primer comentario y
+# rompe el `param()` (pasó el 25/09/2026 en las dos primeras PC: ninguno de los
+# comandos de la documentación anduvo).
+#
+# El BOM se QUEDA, y un test vigila que esté: Windows PowerShell 5.1 lee un
+# .ps1 sin BOM como ANSI, y entonces todos los acentos de estos mensajes salen
+# rotos. Con -File el BOM no molesta y los acentos se leen bien.
 #
 # Es el hermano de instalar.sh (Mac): los mismos ocho pasos, con lo que cambia
 # en Windows. Es seguro correrlo las veces que haga falta: lo que ya está hecho
@@ -9,6 +20,9 @@
 # que falte. Actualizar NO requiere volver a correr esto: queda una tarea
 # programada ("Centonara Actualizador", D46) que corre al iniciar sesión y cada
 # hora y pone el agente en el commit que fija el panel.
+#
+# Para dejar la PC como si nunca se hubiera instalado (y reinstalar desde cero):
+# desinstalar.ps1, en esta misma carpeta.
 #
 # Qué hace:
 #   1. Instala las herramientas que falten (uv y Claude Code)
@@ -22,6 +36,9 @@
 #      (que se vuelve a levantar solo si se cae o se reinicia), y el actualizador
 #   7. Arranca todo y se pone en la versión que fija el panel
 #   8. Ofrece vincular el navegador que escribe los mensajes
+#   Y al final espera la señal de vida del agente: dice QUEDÓ AL DÍA con el
+#   commit, o NO QUEDÓ AL DÍA con lo que falta. Sin señal de vida no dice
+#   "completa".
 #
 # Qué NO hace, a propósito:
 #   - No da el permiso de sitio de la extensión: lo abre una persona, en la extensión.
@@ -66,6 +83,41 @@ RefrescarPath
 # interactiva: la extensión vive en su Chrome y el agente tiene que verlo.
 # ---------------------------------------------------------------------------
 
+# Los comandos de las tareas escriben sus logs con `*>>`, que en PowerShell 5
+# usa UTF-16 salvo que se le diga otra cosa — y el agente, cuando se relanza
+# solo, escribe UTF-8 en el mismo archivo. Con esto los dos escriben igual y el
+# log se puede leer. `$PSDefaultParameterValues` gobierna también la redirección.
+$PREFACIO_UTF8 = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; `$PSDefaultParameterValues['Out-File:Encoding']='utf8'; "
+
+function DetenerAgente() {
+    # La tarea, y además todo python que corra `agente.main`: cuando llega una
+    # versión nueva el agente se relanza desacoplado de la tarea (reinicio.py),
+    # y a ése `Stop-ScheduledTask` no lo alcanza. Sin esto, volver a correr el
+    # instalador dejaba DOS agentes con el mismo token.
+    Stop-ScheduledTask -TaskName $TAREA_AGENTE -ErrorAction SilentlyContinue
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^python' -and $_.CommandLine -and $_.CommandLine -match 'agente\.main' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
+
+function EsperarSenalDeVida($segundos) {
+    # El agente escribe ~\.centonara\estado\vivo.json al registrarse y en cada
+    # latido (30 s). Una marca de menos de 120 s es un agente vivo. Es lo mismo
+    # que mira el actualizador, y lo único que dice la verdad: que la tarea
+    # exista no significa que el agente esté corriendo.
+    $archivo = Join-Path $HOME ".centonara\estado\vivo.json"
+    $limite = (Get-Date).AddSeconds($segundos)
+    while ((Get-Date) -lt $limite) {
+        try {
+            $marca = Get-Content $archivo -Raw -ErrorAction Stop | ConvertFrom-Json
+            $edad = ((Get-Date).ToUniversalTime() - [DateTimeOffset]::Parse($marca.cuando).UtcDateTime).TotalSeconds
+            if ($edad -lt 120) { return $true }
+        } catch { }
+        Start-Sleep -Seconds 3
+    }
+    return $false
+}
+
 function RegistrarTarea($nombre, $ejecutable, $argumentos, $carpeta, $disparador, $ajustes) {
     $accion = New-ScheduledTaskAction -Execute $ejecutable -Argument $argumentos -WorkingDirectory $carpeta
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
@@ -89,7 +141,7 @@ function RegistrarActualizador($python) {
     $disparador.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
     $ajustes = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-    $arg = "-WindowStyle Hidden -NoProfile -Command `"& '$python' '$BIN\actualizar.py' --repo '$Repo' *>> '$LOGS\actualizador.out'`""
+    $arg = "-WindowStyle Hidden -NoProfile -Command `"$PREFACIO_UTF8& '$python' '$BIN\actualizar.py' --repo '$Repo' *>> '$LOGS\actualizador.out'`""
     RegistrarTarea $TAREA_ACTUALIZADOR "powershell.exe" $arg $Repo $disparador $ajustes
 }
 
@@ -151,21 +203,41 @@ if ($sesionOk) { Ok "sesión iniciada y viva" } else {
 # ---------------------------------------------------------------------------
 Titulo "[3/8] El proyecto"
 
+# Un `.git` en la carpeta de un vendedor no es de un desarrollador: es una
+# instalación vieja hecha con `git clone` (D53, igual que en Mac). Se aparta
+# —no se borra— y se sigue como en una PC limpia. El .env y el .venv quedan.
 if (Test-Path (Join-Path $Repo ".git")) {
-    Ok "ya está clonado con git en $Repo — se usa como está (sin git pull: quien tiene un clon actualiza con git)"
-} elseif (Test-Path (Join-Path $Repo "agente\pyproject.toml")) {
-    Ok "el proyecto ya está en $Repo — el actualizador lo pone al día al final"
-} else {
-    Write-Host "  bajando la última versión a $Repo"
-    $temporal = Join-Path $env:TEMP ("centonara-" + [guid]::NewGuid().ToString("N"))
+    $aparte = Join-Path $HOME (".centonara\git-viejo-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+    New-Item -ItemType Directory -Force -Path (Split-Path $aparte) | Out-Null
+    Move-Item (Join-Path $Repo ".git") $aparte
+    Write-Host "  aviso: $Repo era un clon de git de una instalación vieja."
+    Write-Host "         Se apartó a $aparte y se baja la última versión."
+}
+# Se baja SIEMPRE, encima de lo que haya: el zip trae el código y nada más, así
+# que el .env y el .venv de esta PC no se tocan. Antes, si el proyecto ya
+# estaba, no se bajaba nada — y una PC instalada a mano seguía con código
+# viejo hasta que el actualizador corriera. Si no se puede bajar pero ya hay
+# una copia, se sigue con ésa: no poder actualizar no es no poder instalar.
+Write-Host "  bajando la última versión a $Repo"
+$temporal = Join-Path $env:TEMP ("centonara-" + [guid]::NewGuid().ToString("N"))
+try {
     New-Item -ItemType Directory -Force -Path $temporal | Out-Null
     Invoke-WebRequest -Uri $ZIP -OutFile (Join-Path $temporal "main.zip")
     Expand-Archive -Path (Join-Path $temporal "main.zip") -DestinationPath $temporal -Force
     $raiz = Get-ChildItem $temporal -Directory | Select-Object -First 1
     New-Item -ItemType Directory -Force -Path $Repo | Out-Null
     Copy-Item -Path (Join-Path $raiz.FullName "*") -Destination $Repo -Recurse -Force
-    Remove-Item $temporal -Recurse -Force
     Ok "proyecto en $Repo"
+} catch {
+    if (Test-Path (Join-Path $Repo "agente\pyproject.toml")) {
+        Write-Host "  aviso: no se pudo bajar la última versión desde GitHub ($($_.Exception.Message))."
+        Write-Host "  Se sigue con la copia que ya está en $Repo."
+    } else {
+        Mal "no se pudo bajar el proyecto desde GitHub, y en $Repo no hay una copia. ¿Hay internet?"
+        exit 1
+    }
+} finally {
+    Remove-Item $temporal -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------------------
@@ -260,6 +332,15 @@ AGENTE_DEVICE_ID=$DEVICE_ID
 AGENTE_MACHINE_ID=$MACHINE_ID
 AGENTE_TOKEN=$TOKEN
 "@
+# Lo que alguien puso a mano en el .env y el instalador no conoce (otro
+# navegador de envío, otro repositorio) se conserva: antes se perdía en cada
+# reinstalación, y la PC volvía en silencio a la configuración de fábrica.
+$conocidas = @("AGENTE_BACKEND_URL", "CLAUDE_BIN", "CHROME_PERFIL_DIR", "AGENTE_DEVICE_ID", "AGENTE_MACHINE_ID", "AGENTE_TOKEN")
+$ajenas = @($viejo.Keys | Where-Object { $conocidas -notcontains $_ } | ForEach-Object { "$_=$($viejo[$_])" })
+if ($ajenas.Count -gt 0) {
+    $contenidoEnv += "`n# Conservado de la instalación anterior:`n" + ($ajenas -join "`n") + "`n"
+    Ok ("conservadas del .env anterior: " + (($viejo.Keys | Where-Object { $conocidas -notcontains $_ }) -join ", "))
+}
 # Sin BOM, a propósito: `Out-File -Encoding utf8` en PowerShell 5 lo pone, y
 # con BOM la primera clave del .env se lee como "﻿AGENTE_BACKEND_URL" —
 # el agente arranca contra localhost sin decir por qué.
@@ -289,7 +370,7 @@ RegistrarTarea $TAREA_CHROME $chrome "--profile-directory=`"$PERFIL`"" $Repo (Ne
 $ajustesAgente = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
-$argAgente = "-WindowStyle Hidden -NoProfile -Command `"& '$PYTHON' -m agente.main *>> '$LOGS\agente.log'; exit `$LASTEXITCODE`""
+$argAgente = "-WindowStyle Hidden -NoProfile -Command `"$PREFACIO_UTF8& '$PYTHON' -m agente.main *>> '$LOGS\agente.log'; exit `$LASTEXITCODE`""
 RegistrarTarea $TAREA_AGENTE "powershell.exe" $argAgente (Join-Path $Repo "agente") (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) $ajustesAgente
 
 RegistrarActualizador $PYTHON
@@ -299,9 +380,9 @@ Titulo "[7/8] Arrancar ahora"
 
 Start-ScheduledTask -TaskName $TAREA_CHROME
 Ok "Chrome al iniciar sesión"
-Stop-ScheduledTask -TaskName $TAREA_AGENTE -ErrorAction SilentlyContinue
+DetenerAgente
 Start-ScheduledTask -TaskName $TAREA_AGENTE
-Ok "agente corriendo"
+Ok "agente arrancado (si quedó vivo se comprueba al final)"
 
 Write-Host "  poniéndose en la versión que fija el panel..."
 & $PYTHON (Join-Path $BIN "actualizar.py") --repo $Repo --sin-verificar
@@ -333,6 +414,39 @@ if ((Test-Path $carpetaVinculo) -and (Get-ChildItem $carpetaVinculo | Select-Obj
         & $PYTHON -m agente.main --vincular
         Pop-Location
     }
+}
+
+# ---------------------------------------------------------------------------
+Titulo "¿Quedó al día?"
+#
+# Lo que importa al final no es que cada paso haya dicho "ok" sino que la PC
+# haya quedado como tiene que quedar: las tres tareas registradas, una versión
+# escrita, y el agente DANDO SEÑAL DE VIDA. Se dice en una línea que se pueda
+# leer por teléfono: QUEDÓ AL DÍA o NO QUEDÓ AL DÍA.
+$falta = @()
+foreach ($tarea in @($TAREA_CHROME, $TAREA_AGENTE, $TAREA_ACTUALIZADOR)) {
+    if (-not (Get-ScheduledTask -TaskName $tarea -ErrorAction SilentlyContinue)) { $falta += "falta la tarea $tarea" }
+}
+$archivoVersion = Join-Path $Repo "agente\VERSION"
+$shaInstalado = ""
+if (Test-Path $archivoVersion) { $shaInstalado = ((Get-Content $archivoVersion -First 1) -split " ")[0] }
+if (-not $shaInstalado) { $falta += "no se escribió agente\VERSION" }
+Write-Host "  esperando la señal de vida del agente (hasta 90 segundos)..."
+if (EsperarSenalDeVida 90) {
+    Ok "el agente dio señal de vida"
+} else {
+    $falta += "el agente no dio señal de vida en 90 s (mirá $LOGS\agente.log)"
+}
+
+if ($falta.Count -eq 0) {
+    Write-Host "  QUEDÓ AL DÍA: $shaInstalado"
+    Write-Host "  (el panel muestra ese commit en la tarjeta de esta máquina)"
+} else {
+    Mal ("NO QUEDÓ AL DÍA: " + ($falta -join "; "))
+    Write-Host "  Volvé a correr este instalador. Si vuelve a decir lo mismo, mandá esta"
+    Write-Host "  pantalla entera y los logs de $LOGS"
+    Titulo "INSTALACIÓN INCOMPLETA"
+    exit 1
 }
 
 # ---------------------------------------------------------------------------
