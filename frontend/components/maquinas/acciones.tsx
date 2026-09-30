@@ -37,6 +37,22 @@ function finDelDia(): string {
   return hasta.toISOString();
 }
 
+/**
+ * Quitar la pausa es mandar un `pausado_hasta` **en el pasado**, no `null`.
+ *
+ * El backend ignora los campos en `null` del PATCH y contesta 400 "no hay nada
+ * que cambiar": así "Quitar la pausa" nunca funcionó (30/09/2026). Como una
+ * máquina está pausada mientras `pausado_hasta` sea futuro, una fecha de hace
+ * un minuto la despausa con el mismo endpoint de siempre. Un minuto y no "ahora"
+ * por si el reloj de esta computadora va adelantado respecto del servidor.
+ *
+ * Lo que esto NO suelta es el freno del canario (D35): ése lo levanta reanudar
+ * o cancelar la corrida, y el aviso lo dice.
+ */
+function haceUnMinuto(): string {
+  return new Date(Date.now() - 60_000).toISOString();
+}
+
 export function useAccionesDeMaquina(
   maquina: Maquina,
   onToken?: (token: string, nombre: string) => void,
@@ -61,9 +77,10 @@ export function useAccionesDeMaquina(
   // "Pausar por hoy" es de otra persona que activar: activar lo decide el
   // dueño, pausar lo decide el vendedor sobre su propia máquina.
   const pausar = useMutation({
-    mutationFn: (hasta: string | null) => editarMaquina(maquina.maquina, { pausado_hasta: hasta }),
-    onSuccess: (_, hasta) =>
-      avisar(hasta ? textos.maquina.avisoPausada : textos.maquina.avisoDespausada),
+    mutationFn: ({ hasta }: { hasta: string; pausar: boolean }) =>
+      editarMaquina(maquina.maquina, { pausado_hasta: hasta }),
+    onSuccess: (_, { pausar }) =>
+      avisar(pausar ? textos.maquina.avisoPausada : textos.maquina.avisoDespausada),
     onError: fallo,
     onSettled: refrescar,
   });
@@ -181,7 +198,10 @@ export function useAccionesDeMaquina(
     baja,
     consentir,
     pausadaPorHoy,
-    pausarPorHoy: () => pausar.mutate(pausadaPorHoy ? null : finDelDia()),
+    pausarPorHoy: () =>
+      pausar.mutate(
+        pausadaPorHoy ? { hasta: haceUnMinuto(), pausar: false } : { hasta: finDelDia(), pausar: true },
+      ),
     pedirBaja: () => setDandoDeBaja(true),
     pedirConsentimiento: () => setConsintiendo(true),
     pedirReinicio: (cual: "barrido" | "ventana") => setReiniciando(cual),

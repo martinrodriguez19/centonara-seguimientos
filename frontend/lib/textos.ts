@@ -167,7 +167,8 @@ export const textos = {
     avisoActivada: "Máquina activada.",
     avisoDesactivada: "Máquina desactivada. Deja de recibir trabajo.",
     avisoPausada: "Pausada hasta mañana.",
-    avisoDespausada: "Pausa quitada.",
+    avisoDespausada:
+      "Pausa quitada. Si sigue pausada, la frenó el sistema (fallaron sus primeros envíos): se suelta reanudando o cancelando la corrida.",
     avisoTope: "Tope diario actualizado.",
     avisoConsentimiento: "Consentimiento registrado.",
     avisoBaja: (nombre: string) =>
