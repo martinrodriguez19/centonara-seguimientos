@@ -9,11 +9,13 @@ import {
   esPaseUnico,
   Fila,
   HORA,
+  Numero,
   Tarjeta,
   TODOS,
   useGuardarConfiguracion,
 } from "@/components/config/base";
 import { Button } from "@/components/ui/button";
+import { Aviso } from "@/components/ui/estado";
 import { Confirmacion } from "@/components/ui/dialogo";
 import { Interruptor } from "@/components/ui/interruptor";
 import type { Configuracion } from "@/lib/panel";
@@ -35,6 +37,9 @@ export function SeccionEnvio({ config }: { config: Configuracion }) {
             cambia (otro guardado, "Deshacer"), sin pisar lo que se está
             escribiendo en cada refresco. */}
         <CorridaProgramada key={JSON.stringify(config.programacion)} config={config} />
+        <Repesca key={JSON.stringify(config.repesca)} config={config} />
+        <PausaPorCuota config={config} />
+        <Descanso key={JSON.stringify(config.descanso)} config={config} />
       </Tarjeta>
       <Tarjeta titulo="Horario de envío" bajada="Se evalúa en hora argentina.">
         <VentanaDeEnvio key={JSON.stringify(config.ventana)} config={config} />
@@ -176,6 +181,198 @@ function CorridaProgramada({ config }: { config: Configuracion }) {
         )}
       </div>
     </Fila>
+  );
+}
+
+/**
+ * La repesca (D61): a esta hora revisa qué hizo cada máquina hoy y completa lo
+ * que le faltó. Misma forma que la corrida automática.
+ *
+ * Envía si el envío automático está prendido, **dentro del horario de envío**:
+ * si la hora cae afuera, avisa acá mismo que sólo va a dejar borradores. No
+ * amplía el horario sola: eso lo decide quien maneja el panel.
+ */
+function Repesca({ config }: { config: Configuracion }) {
+  const { guardar, guardando } = useGuardarConfiguracion();
+  const repesca = config.repesca;
+  const [hora, setHora] = useState(repesca.hora);
+  const [dias, setDias] = useState<number[]>([...repesca.dias].sort((a, b) => a - b));
+
+  const valido = HORA.test(hora) && dias.length > 0;
+  const cambiado = hora !== repesca.hora || dias.join() !== [...repesca.dias].sort((a, b) => a - b).join();
+  const fuera = fueraDelHorarioDeEnvio(hora, dias, config.ventana);
+
+  return (
+    <Fila
+      titulo={textos.repesca.titulo}
+      ayuda={
+        repesca.activa
+          ? textos.repesca.prendida(repesca.hora, diasDeLaVentana(repesca.dias))
+          : textos.repesca.apagada
+      }
+      queHace={textos.repesca.queHace}
+      control={
+        <Interruptor
+          prendido={repesca.activa}
+          etiqueta={textos.repesca.titulo}
+          deshabilitado={guardando || (!repesca.activa && !valido)}
+          onCambiar={(activa) => guardar({ repesca: { activa, hora, dias } })}
+        />
+      }
+    >
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <CampoHora valor={hora} onCambiar={setHora} etiqueta="Hora de la repesca (HH:MM)" placeholder="21:00" />
+          <DiasDeLaSemana dias={dias} onCambiar={setDias} />
+          {cambiado && (
+            <Button
+              size="sm"
+              disabled={guardando || !valido}
+              onClick={() => guardar({ repesca: { activa: repesca.activa, hora, dias } })}
+            >
+              Guardar horario
+            </Button>
+          )}
+        </div>
+        {config.envio_automatico && valido && fuera && (
+          <Aviso nivel="atencion" titulo={textos.repesca.soloBorradoresTitulo(hora)}>
+            {textos.repesca.soloBorradores(config.ventana.inicio, config.ventana.fin)}
+          </Aviso>
+        )}
+      </div>
+    </Fila>
+  );
+}
+
+/** ¿La repesca cae, algún día, fuera del horario de envío? Ahí no envía (D61). */
+function fueraDelHorarioDeEnvio(
+  hora: string,
+  dias: number[],
+  ventana: Configuracion["ventana"],
+): boolean {
+  const minutos = (hhmm: string) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const enHora = minutos(hora) >= minutos(ventana.inicio) && minutos(hora) < minutos(ventana.fin);
+  return !enHora || dias.some((d) => !ventana.dias.includes(d));
+}
+
+/**
+ * El descanso (D64): las noches marcadas de «desde» a «hasta», y los días libres
+ * enteros, nada trabaja; con «Suspender», las computadoras además se duermen y
+ * se despiertan solas. Se guarda junto, con un botón, como los horarios.
+ */
+function Descanso({ config }: { config: Configuracion }) {
+  const { guardar, guardando } = useGuardarConfiguracion();
+  const actual = config.descanso;
+  const [desde, setDesde] = useState(actual.desde);
+  const [hasta, setHasta] = useState(actual.hasta);
+  const [noches, setNoches] = useState<number[]>([...actual.dias]);
+  const [libres, setLibres] = useState<number[]>([...actual.dia_libre]);
+  const [suspender, setSuspender] = useState(actual.suspender);
+
+  const nuevo = { activa: actual.activa, desde, hasta, dias: noches, dia_libre: libres, suspender };
+  const valido = HORA.test(desde) && HORA.test(hasta) && desde !== hasta && libres.length < 7;
+  const cambiado = JSON.stringify(nuevo) !== JSON.stringify({ ...actual, dias: [...actual.dias], dia_libre: [...actual.dia_libre] });
+
+  const choques = [
+    config.programacion.activa && caeEnDescanso(config.programacion.hora, config.programacion.dias, nuevo)
+      ? "corrida automática"
+      : null,
+    config.repesca.activa && caeEnDescanso(config.repesca.hora, config.repesca.dias, nuevo) ? "repesca" : null,
+  ].filter((c): c is string => c !== null);
+
+  return (
+    <Fila
+      titulo={textos.descanso.titulo}
+      ayuda={
+        actual.activa
+          ? textos.descanso.prendido(
+              actual.desde,
+              actual.hasta,
+              diasDeLaVentana(actual.dias),
+              actual.dia_libre.length ? diasDeLaVentana(actual.dia_libre) : "",
+            )
+          : textos.descanso.apagado
+      }
+      queHace={textos.descanso.queHace}
+      control={
+        <Interruptor
+          prendido={actual.activa}
+          etiqueta={textos.descanso.titulo}
+          deshabilitado={guardando || (!actual.activa && !valido)}
+          onCambiar={(activa) => guardar({ descanso: { ...nuevo, activa } })}
+        />
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <CampoHora valor={desde} onCambiar={setDesde} etiqueta="Desde (HH:MM)" placeholder="00:00" />
+          <CampoHora valor={hasta} onCambiar={setHasta} etiqueta="Hasta (HH:MM)" placeholder="08:00" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">{textos.descanso.noches}</p>
+          <DiasDeLaSemana dias={noches} onCambiar={setNoches} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground">{textos.descanso.diaLibre}</p>
+          <DiasDeLaSemana dias={libres} onCambiar={setLibres} />
+        </div>
+        <div className="flex items-center gap-3">
+          <Interruptor prendido={suspender} etiqueta={textos.descanso.suspender} onCambiar={setSuspender} />
+          <span className="text-sm">{textos.descanso.suspender}</span>
+        </div>
+        {cambiado && (
+          <Button size="sm" disabled={guardando || !valido} onClick={() => guardar({ descanso: nuevo })}>
+            {textos.descanso.guardar}
+          </Button>
+        )}
+        {nuevo.activa &&
+          choques.map((que) => (
+            <Aviso key={que} nivel="atencion" titulo={textos.descanso.choca(que)} />
+          ))}
+      </div>
+    </Fila>
+  );
+}
+
+/** ¿Alguno de esos días, a esa hora, cae dentro del descanso? Lo mismo que el backend (D64). */
+function caeEnDescanso(hora: string, dias: number[], descanso: Configuracion["descanso"]): boolean {
+  const minutos = (hhmm: string) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const m = minutos(hora);
+  const desde = minutos(descanso.desde);
+  const hasta = minutos(descanso.hasta);
+  return dias.some((dia) => {
+    if (descanso.dia_libre.includes(dia)) return true;
+    if (desde < hasta) return descanso.dias.includes(dia) && m >= desde && m < hasta;
+    const anterior = ((dia + 5) % 7) + 1;
+    return (descanso.dias.includes(dia) && m >= desde) || (descanso.dias.includes(anterior) && m < hasta);
+  });
+}
+
+/** D60: cuánto se pausa una máquina sin cuota cuando Claude no dice cuándo vuelve. */
+function PausaPorCuota({ config }: { config: Configuracion }) {
+  const { guardar, guardando } = useGuardarConfiguracion();
+  return (
+    <Fila
+      titulo={textos.repesca.pausaCuotaTitulo}
+      ayuda={textos.repesca.pausaCuotaAyuda}
+      queHace={textos.repesca.pausaCuotaQueHace}
+      control={
+        <Numero
+          etiqueta={textos.repesca.pausaCuotaTitulo}
+          max={24}
+          sufijo="horas"
+          valor={config.horas_pausa_cuota}
+          guardando={guardando}
+          onGuardar={(horas_pausa_cuota) => guardar({ horas_pausa_cuota })}
+        />
+      }
+    />
   );
 }
 

@@ -8,6 +8,7 @@ import { TokenReciente } from "@/components/alta-maquina";
 import { BotonCorrida } from "@/components/boton-corrida";
 import { ErrorDeCarga } from "@/components/error-de-carga";
 import { GrillaDeMaquinas } from "@/components/maquinas/grilla";
+import { RevisionDelDiaTarjeta } from "@/components/revision-del-dia";
 import { Pagina, Seccion } from "@/components/navegacion/pagina";
 import { Indicador } from "@/components/ui/indicador";
 import { EsqueletoDelPanel } from "@/components/ui/esqueleto";
@@ -54,7 +55,9 @@ export default function Inicio() {
   }
 
   const datos = estado.data;
-  const maquinasUtiles = datos.maquinas.filter((m) => m.activo && !m.pausada);
+  // Las que entrarían a una corrida: activas, sin pausa y con señal de vida
+  // (D59). Una apagada ya no recibe trabajo, así que no cuenta.
+  const maquinasUtiles = datos.maquinas.filter((m) => m.activo && !m.pausada && m.online);
   const conectadas = datos.maquinas.filter((m) => m.activo && m.online).length;
   const activas = datos.maquinas.filter((m) => m.activo).length;
 
@@ -105,6 +108,10 @@ export default function Inicio() {
         ultima={datos.ultima_corrida}
         envioAutomatico={datos.envio_automatico}
       />
+
+      {datos.revision_del_dia && (
+        <RevisionDelDiaTarjeta revision={datos.revision_del_dia} proxima={datos.proxima_repesca} />
+      )}
 
       {tokenNuevo && (
         <TokenReciente token={tokenNuevo.token} maquina={tokenNuevo.maquina} onCerrar={() => setTokenNuevo(null)} />

@@ -28,8 +28,10 @@ from agente import __version__, diagnostico, perfiles, reinicio, sonda, vigia_se
 from agente.bucle import Bucle, Estado, latir
 from agente.cliente import Cliente
 from agente.config import CARPETA_AGENTE, Configuracion, Modo, obtener_configuracion
+from agente.descanso import Descanso
 from agente.jobs import ejecutor
 from agente.logging import configurar_logs, obtener_logger
+from agente.tareas import Reprogramador
 
 log = obtener_logger(__name__)
 
@@ -632,6 +634,18 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
     # persistente, no abrir dos.
     abrir_pagina = None if modo == "simulado" else _abrir_pagina(config)
 
+    # D63: los horarios del panel, copiados a la tarea del actualizador. En
+    # simulado no se toca la máquina.
+    reprogramador = None if modo == "simulado" else Reprogramador()
+    # D64: el descanso. En simulado tampoco se suspende ninguna computadora.
+    descanso = None if modo == "simulado" else Descanso()
+
+    def recibir_horarios(horarios: dict) -> None:
+        if reprogramador is not None:
+            reprogramador.recibir(horarios)
+        if descanso is not None:
+            descanso.recibir(horarios)
+
     trabajo = Bucle(
         cliente,
         version=__version__,
@@ -639,6 +653,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
         diagnosticar=diagnosticar,
         debe_reiniciar=lambda: reinicio.cambio_la_version(CARPETA_AGENTE, __version__),
         al_registrar=marcar_vivo,
+        al_horarios=recibir_horarios,
         ejecutor=ejecutor.construir(
             claude_bin=config.claude_bin,
             device_id=device_id,
@@ -674,8 +689,18 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
 
     tareas = [
         bucle_hasta_el_fin(),
-        latir(cliente, trabajo.estado, parar=fin, al_latir=marcar_vivo),
+        latir(
+            cliente,
+            trabajo.estado,
+            parar=fin,
+            al_latir=marcar_vivo,
+            al_responder=lambda respuesta: recibir_horarios(respuesta.get("horarios")),
+            horario=lambda: reprogramador.estado if reprogramador else None,
+            descanso=lambda: descanso.estado if descanso else None,
+        ),
     ]
+    if descanso is not None:
+        tareas.append(descanso.vigilar(lambda: trabajo.estado.ocupado, parar=fin))
     if abrir_pagina is not None:
         # La vigía de la sesión dedicada (D24): revisa al arrancar y cada unas
         # horas, y el latido lleva el resultado al panel. En simulado no hay

@@ -45,6 +45,22 @@ export function SeccionSeguridad({ config }: { config: Configuracion }) {
           }
         />
         <Fila
+          titulo="Límite de horas de una corrida"
+          ayuda="Pasado este tiempo, lo que quede pendiente se cierra y la corrida termina."
+          queHace="Una corrida normal tarda bastante menos. Esto evita que una corrida trabada quede abierta y no deje largar la siguiente."
+          control={
+            <Numero
+              etiqueta="Límite de horas de una corrida"
+              min={2}
+              max={24}
+              sufijo="horas"
+              valor={config.horas_max_corrida}
+              guardando={guardando}
+              onGuardar={(horas_max_corrida) => guardar({ horas_max_corrida })}
+            />
+          }
+        />
+        <Fila
           titulo="Días sin repetirle a un contacto"
           ayuda="A quien ya recibió un mensaje no se le vuelve a escribir antes."
           control={

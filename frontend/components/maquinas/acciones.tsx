@@ -136,7 +136,16 @@ export function useAccionesDeMaquina(
     onSettled: refrescar,
   });
 
-  const pausadaPorHoy = maquina.activo && maquina.pausada;
+  // D60: la pausa por cuota la puso el sistema y tiene su propio botón;
+  // "Reanudar hoy" no la toca.
+  const quitarCuota = useMutation({
+    mutationFn: () => editarMaquina(maquina.maquina, { quitar_pausa_cuota: true }),
+    onSuccess: () => avisar(textos.maquina.avisoCuotaQuitada),
+    onError: fallo,
+    onSettled: refrescar,
+  });
+
+  const pausadaPorHoy = maquina.activo && maquina.pausada && !maquina.sin_cuota_hasta;
 
   const dialogos = (
     <>
@@ -197,6 +206,7 @@ export function useAccionesDeMaquina(
     reiniciar,
     baja,
     consentir,
+    quitarCuota,
     pausadaPorHoy,
     pausarPorHoy: () =>
       pausar.mutate(
@@ -233,6 +243,16 @@ export function MenuDeAcciones({
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={6} className={CAJA}>
+          {maquina.sin_cuota_hasta && (
+            <DropdownMenu.Item
+              className={ITEM}
+              disabled={acciones.quitarCuota.isPending}
+              onSelect={() => acciones.quitarCuota.mutate()}
+            >
+              <Play className="size-4 text-muted-foreground" aria-hidden />
+              {textos.maquina.quitarPausaCuota}
+            </DropdownMenu.Item>
+          )}
           {maquina.activo && (
             <DropdownMenu.Item
               className={ITEM}

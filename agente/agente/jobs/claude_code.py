@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agente.jobs import cuota
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -186,6 +187,10 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         # vacío. Sin mostrarlo, "código distinto de cero" es un callejón sin
         # salida: pasó, instalando la primera Mac.
         dijo = (salida.stderr.strip() or crudo)[-300:] or "sin salida"
+        # D60: sin cuota no es un error a reintentar —no se arregla en treinta
+        # segundos— sino una pausa hasta que vuelva.
+        if cuota.agotada(crudo) or cuota.agotada(salida.stderr):
+            return _sin_cuota(crudo + "\n" + salida.stderr, salida)
         # El fallo con nombre propio: el token OAuth de Claude Code vence cada
         # tanto, y un 401 crudo no le dice a nadie qué hacer. Pasó en la
         # primera Mac, con todo lo demás en verde.
@@ -215,6 +220,12 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
 
     interior, costo = _desenvolver(crudo)
 
+    # D60: con código 0 el aviso de cuota también puede venir adentro de un
+    # sobre marcado como error. Sólo se mira ahí: una respuesta sana puede
+    # hablar de "límites" por cualquier otra razón.
+    if _sobre_con_error(crudo) and cuota.agotada(interior):
+        return _sin_cuota(interior, salida)
+
     try:
         datos = json.loads(_sin_backticks(interior))
     except json.JSONDecodeError as error:
@@ -241,6 +252,26 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         )
 
     return Invocacion(True, datos=datos, raw=crudo, stderr=salida.stderr, costo_usd=costo)
+
+
+def _sin_cuota(texto: str, salida: Salida) -> Invocacion:
+    """El job, reportado como cuota agotada, con la hora a la que vuelve si se sabe."""
+    vuelve = cuota.reinicio(texto)
+    detalle: dict[str, Any] = {"motivo": "Claude Code se quedó sin cuota en esta máquina"}
+    if vuelve is not None:
+        detalle["reinicia_en"] = vuelve.isoformat()
+    log.warning("claude_sin_cuota", reinicia_en=detalle.get("reinicia_en"))
+    return Invocacion(
+        False, codigo="LIMITE_USO", detalle=detalle, raw=salida.stdout, stderr=salida.stderr
+    )
+
+
+def _sobre_con_error(crudo: str) -> bool:
+    try:
+        sobre = json.loads(crudo)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(sobre, dict) and bool(sobre.get("is_error"))
 
 
 def _desenvolver(crudo: str) -> tuple[str, float]:

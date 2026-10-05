@@ -30,6 +30,7 @@ from app import db
 from app.api import panel
 from app.api.panel import AltaMaquina, CambioMaquina, NuevaCorrida
 from app.config import Configuracion
+from app.core import vendedores
 from app.core.esquema import inicializar
 
 # Los ajustes del backend que piden los endpoints que resuelven la versión
@@ -144,6 +145,8 @@ async def test_corrida_y_revision_coinciden(base) -> None:
     """Dar de alta no alcanza: hay que activar. Es la regla de F5.8."""
     await panel.alta_maquina(AltaMaquina(maquina="pc-1", nombre="Prueba"), None)
     await panel.editar_maquina("pc-1", CambioMaquina(activo=True, acepto_condiciones=True), None)
+    #  Y que esté prendida: sin latido reciente no entra a la corrida (D59).
+    await vendedores.registrar_latido(db.obtener_base(), "pc-1")
 
     disparo = await panel.disparar_corrida(NuevaCorrida(tipo="diagnostico"), None)
     comparar("Corrida", await panel.ver_corrida(disparo["id"], None))

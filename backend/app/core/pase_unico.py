@@ -989,6 +989,11 @@ async def activar_respaldo(
     if job.get("codigo") == str(cola.Codigo.TEXTO_ENVIADO):
         log.warning("respaldo_frenado_por_texto_enviado", corrida=str(corrida_id), maquina=maquina)
         return None
+    # Sin cuota de Claude (D60) el circuito de siempre tampoco anda —también usa
+    # a Claude— y la máquina queda pausada: un LISTAR encolado sólo tendría la
+    # corrida abierta. Lo que faltó lo completa la repesca (D61).
+    if job.get("codigo") == str(cola.Codigo.LIMITE_USO):
+        return None
 
     config = await configuracion.obtener(base)
     if str(config.get("modo_borrador", "playwright")) != "extension_con_respaldo":

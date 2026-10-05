@@ -39,6 +39,17 @@ class Que(StrEnum):
     global, una corrida todavía en curso, o ninguna máquina activa. Queda el
     motivo, y el día se da por consumido — no se reintenta cada cinco minutos."""
     CORRIDA_CANCELADA = "corrida_cancelada"
+    MAQUINA_AUSENTE = "maquina_ausente"
+    """La máquina de una corrida en curso dejó de dar señales y sus trabajos
+    pendientes se cerraron, para que la corrida termine sin ella (D59)."""
+    CORRIDA_VENCIDA = "corrida_vencida"
+    """La corrida llegó a su techo de horas con trabajo vivo, y se cerró (D59)."""
+    CUOTA_AGOTADA = "cuota_agotada"
+    """Claude Code avisó que se quedó sin cuota en una máquina, y el sistema la
+    pausó hasta que vuelva (D60)."""
+    REPESCA_REVISADA = "repesca_revisada"
+    """La repesca revisó qué hizo cada máquina hoy, y a cuáles les largó una
+    corrida para completar (D61)."""
     CORRIDA_REANUDADA = "corrida_reanudada"
     """Alguien miró por qué el canario frenó la corrida y decidió continuar
     (D31). Suelta también el kill switch."""

@@ -159,6 +159,7 @@ def mundo(tmp_path: Path) -> Mundo:
 
 def test_al_dia_no_hace_nada(mundo: Mundo) -> None:
     mundo.instalar(SHA_NUEVO)
+    mundo.marcar_vivo(SHA_NUEVO)
     assert mundo.correr() == act.SALIDA_OK
     assert "al día" in mundo.log
     assert mundo.comandos == []
@@ -263,8 +264,9 @@ def test_si_el_agente_no_estaba_corriendo_no_espera_e_intenta_levantarlo(mundo: 
     mundo.marcar_vivo(SHA_VIEJO, hace_s=3600)  # una marca vieja: no está corriendo
     mundo.el_agente_vuelve = False
     assert mundo.correr() == act.SALIDA_OK
-    assert "no estaba corriendo" in mundo.log
-    assert any(c[0] == "launchctl" and "kickstart" in c for c in mundo.comandos)
+    #  Desde D62 lo arranca el guardián al empezar la vuelta, una sola vez.
+    assert "no daba señales" in mundo.log
+    assert sum(1 for c in mundo.comandos if c[0] == "launchctl" and "kickstart" in c) == 1
 
 
 def test_en_windows_se_levanta_con_la_tarea_programada(mundo: Mundo) -> None:
@@ -417,3 +419,88 @@ def test_en_windows_sin_tarea_programada_se_lanza_el_agente_directo(mundo: Mundo
     assert comando[1:] == ["-m", "agente.main"]
     assert cwd == mundo.repo / "agente"
     assert log.name == "agente.log"
+
+
+# ---------------------------------------------------------------------------
+# El guardián (D62): si el agente no da señales, se lo arranca
+# ---------------------------------------------------------------------------
+
+
+def test_con_el_agente_andando_no_arranca_nada(mundo: Mundo) -> None:
+    mundo.instalar(SHA_NUEVO)
+    mundo.marcar_vivo(SHA_NUEVO, hace_s=40)
+    assert mundo.correr() == act.SALIDA_OK
+    assert "el agente está andando" in mundo.log
+    assert not [c for c in mundo.comandos if "kickstart" in c or "schtasks" in c]
+
+
+def test_sin_senales_lo_arranca_aunque_este_al_dia(mundo: Mundo) -> None:
+    mundo.instalar(SHA_NUEVO)
+    mundo.marcar_vivo(SHA_NUEVO, hace_s=act.SEGUNDOS_VIVO + 60)
+    assert mundo.correr() == act.SALIDA_OK
+    assert "no daba señales" in mundo.log
+    assert [c for c in mundo.comandos if "kickstart" in c]
+
+
+def test_en_windows_lo_arranca_por_la_tarea(mundo: Mundo) -> None:
+    """Si la tarea ya está corriendo, Windows ignora el pedido: nunca duplica."""
+    mundo.instalar(SHA_NUEVO)
+    mundo.entorno.plataforma = "win32"
+    assert mundo.correr() == act.SALIDA_OK
+    assert ["schtasks", "/Run", "/TN", "Centonara Agente"] in mundo.comandos
+
+
+def test_fuera_de_horario_igual_revisa_que_ande(mundo: Mundo) -> None:
+    """La vuelta de las 16:45 es justamente fuera del horario de actualizar (D63)."""
+    mundo.instalar(SHA_VIEJO)
+    mundo.esperada = {"sha": "", "origen": "fuera_de_horario"}
+    assert mundo.correr() == act.SALIDA_OK
+    assert "no daba señales" in mundo.log
+    assert "no se toca nada" in mundo.log
+    assert (mundo.repo / "agente" / "agente" / "main.py").read_text() == "viejo\n"
+
+
+def test_la_corrida_del_instalador_no_arranca_nada(mundo: Mundo) -> None:
+    """`--sin-verificar` es el instalador: todavía no arrancó los servicios a propósito."""
+    mundo.instalar(SHA_NUEVO)
+    assert mundo.correr(verificar=False) == act.SALIDA_OK
+    assert "no daba señales" not in mundo.log
+    assert not [c for c in mundo.comandos if "kickstart" in c]
+
+
+def test_durante_el_descanso_no_lo_revive(mundo: Mundo) -> None:
+    mundo.instalar(SHA_NUEVO)
+    carpeta = mundo.casa / ".centonara" / "estado"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / "descanso.json").write_text(
+        json.dumps({"hasta": (mundo.reloj + timedelta(hours=6)).isoformat()}), "utf-8"
+    )
+    assert mundo.correr() == act.SALIDA_OK
+    assert "descansando" in mundo.log
+    assert not [c for c in mundo.comandos if "kickstart" in c]
+
+
+def test_un_descanso_vencido_no_frena_al_guardian(mundo: Mundo) -> None:
+    mundo.instalar(SHA_NUEVO)
+    carpeta = mundo.casa / ".centonara" / "estado"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / "descanso.json").write_text(
+        json.dumps({"hasta": (mundo.reloj - timedelta(minutes=1)).isoformat()}), "utf-8"
+    )
+    assert mundo.correr() == act.SALIDA_OK
+    assert "no daba señales" in mundo.log
+
+
+def test_si_lo_arranco_el_guardian_no_lo_arranca_otra_vez_al_actualizar(mundo: Mundo) -> None:
+    """En una PC sin tarea, dos arranques serían dos agentes."""
+    mundo.instalar(SHA_VIEJO)
+    mundo.entorno.plataforma = "win32"
+    mundo.el_agente_vuelve = False
+    mundo.fallan.add("schtasks")
+    lanzados: list[tuple] = []
+    mundo.entorno.lanzar = lambda comando, cwd, log: lanzados.append((comando, cwd, log))
+
+    assert mundo.correr() == act.SALIDA_OK
+
+    assert len(lanzados) == 1
+    assert "se reinicia solo con la versión nueva" in mundo.log

@@ -16,17 +16,31 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
 from bson import ObjectId
 
 from app.core import auditoria, cola, configuracion
-from app.core.vendedores import esta_pausada
+from app.core.vendedores import esta_pausada, sin_cuota_hasta
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
+
+# D59. Para entrar a una corrida, la máquina tiene que haber dado señales hace
+# menos que esto. Es el mismo número que la alerta `maquina_caida`: que una PC
+# parpadee no la deja afuera; que lleve diez minutos callada, sí.
+MINUTOS_SIN_LATIDO = 10
+
+# D59. Una máquina de una corrida en curso que lleva esto sin latido se da por
+# ausente y sus jobs vivos se cierran. Más que `MINUTOS_SIN_LATIDO` a propósito:
+# a mitad de corrida cortar cuesta trabajo hecho, y un reinicio del agente por
+# versión nueva tarda un par de minutos. Un agente ocupado no cuenta como
+# ausente: el latido corre en paralelo cada 30 s, también durante una tanda.
+MINUTOS_AUSENTE = 20
+
+_VIVOS = ["pendiente", "tomado"]
 
 
 class TipoCorrida(StrEnum):
@@ -48,6 +62,14 @@ class EstadoCorrida(StrEnum):
     sistema frenándose solo (canario, kill switch)."""
 
 
+class CorridaEnCurso(Exception):
+    """Ya hay una corrida con trabajo pendiente (D59).
+
+    El botón del panel ya no ofrecía disparar en ese caso; con la corrida
+    programada y la repesca disparando solas, la guarda tiene que estar acá.
+    """
+
+
 class NoHayMaquinas(Exception):
     """Ninguna máquina activa y sin pausar. Apretar el botón no haría nada.
 
@@ -63,16 +85,56 @@ class Disparo:
     jobs: int
 
 
-async def maquinas_disponibles(base, *, ahora: datetime | None = None) -> list[dict[str, Any]]:
-    """Las máquinas a las que tiene sentido darles trabajo.
+def motivo_de_exclusion(vendedor: dict[str, Any], *, ahora: datetime) -> str | None:
+    """Por qué esta máquina no entra a una corrida, o `None` si entra.
 
-    Excluye las inactivas y las que el vendedor pausó desde su barra de menú.
-    No excluye las que están sin conexión: si la Mac se prende más tarde, toma
-    el job encolado — eso es media razón por la que el agente consulta en vez de
-    recibir.
+    `inactiva` no se anota en la corrida (nunca estuvo en juego); el resto sí,
+    para que el panel diga quién quedó afuera y por qué.
     """
-    todas = await base["vendedores"].find({}).to_list(None)
-    return [v for v in todas if not esta_pausada(v, ahora=ahora)]
+    if not vendedor.get("activo"):
+        return "inactiva"
+    if vendedor.get("frenado_por_canario_en") is not None:
+        return "frenada"
+    if sin_cuota_hasta(vendedor, ahora=ahora) is not None:
+        return "sin_cuota"
+    if esta_pausada(vendedor, ahora=ahora):
+        return "pausada"
+    latido = vendedor.get("ultimo_latido")
+    if latido is None or _utc(latido) < ahora - timedelta(minutes=MINUTOS_SIN_LATIDO):
+        return "sin_latido"
+    return None
+
+
+def _utc(momento: datetime) -> datetime:
+    """Mongo devuelve fechas sin zona; todo el sistema las piensa en UTC."""
+    return momento if momento.tzinfo else momento.replace(tzinfo=UTC)
+
+
+async def clasificar_maquinas(
+    base, *, ahora: datetime | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Las máquinas que entran a una corrida, y las que quedan afuera con su motivo.
+
+    Hasta D59 entraban también las que estaban sin conexión ("si la Mac se
+    prende más tarde, toma el job"), y una sola PC apagada dejaba la corrida
+    abierta para siempre. Ahora entra quien dio señales hace poco.
+    """
+    momento = ahora or datetime.now(UTC)
+    disponibles: list[dict[str, Any]] = []
+    excluidas: list[dict[str, str]] = []
+    for vendedor in await base["vendedores"].find({}).to_list(None):
+        motivo = motivo_de_exclusion(vendedor, ahora=momento)
+        if motivo is None:
+            disponibles.append(vendedor)
+        elif motivo != "inactiva":
+            excluidas.append({"maquina": vendedor["maquina"], "motivo": motivo})
+    return disponibles, excluidas
+
+
+async def maquinas_disponibles(base, *, ahora: datetime | None = None) -> list[dict[str, Any]]:
+    """Las máquinas a las que tiene sentido darles trabajo (ver `clasificar_maquinas`)."""
+    disponibles, _ = await clasificar_maquinas(base, ahora=ahora)
+    return disponibles
 
 
 async def disparar(
@@ -82,20 +144,30 @@ async def disparar(
     tipo: TipoCorrida = TipoCorrida.DIAGNOSTICO,
     modo: str = "prueba",
     n_chats: int | None = None,
+    solo: list[str] | None = None,
+    extra: dict[str, Any] | None = None,
     ahora: datetime | None = None,
 ) -> Disparo:
     """El botón. Crea la corrida y encola un job por máquina.
 
     Devuelve al instante: encolar es rápido, ejecutar no. El panel muestra el
     progreso preguntando por la corrida, no esperando esta llamada.
+
+    `solo` limita la corrida a esas máquinas (la repesca, D61), con las mismas
+    reglas de quién entra. `extra` son campos que se guardan en la corrida.
     """
     if await configuracion.esta_pausado(base):
         raise Pausado("el sistema está pausado: soltá el kill switch primero")
+    if await en_curso(base) is not None:
+        raise CorridaEnCurso("ya hay una corrida en curso: esperá a que termine o cancelala")
 
     momento = ahora or datetime.now(UTC)
-    disponibles = await maquinas_disponibles(base, ahora=momento)
+    disponibles, excluidas = await clasificar_maquinas(base, ahora=momento)
+    if solo is not None:
+        disponibles = [v for v in disponibles if v["maquina"] in solo]
+        excluidas = [e for e in excluidas if e["maquina"] in solo]
     if not disponibles:
-        raise NoHayMaquinas("no hay ninguna máquina activa y sin pausar")
+        raise NoHayMaquinas("no hay ninguna máquina activa, sin pausar y con señal de vida")
 
     config = await configuracion.obtener(base)
     chats = n_chats or config["n_chats_por_defecto"]
@@ -109,9 +181,12 @@ async def disparar(
             "estado": str(EstadoCorrida.GENERANDO),
             "n_chats": chats,
             "maquinas": maquinas,
+            "maquinas_excluidas": excluidas,
+            "maquinas_ausentes": [],
             "costo_usd": 0.0,
             "creada_en": momento,
             "terminada_en": None,
+            **(extra or {}),
         }
     )
     corrida_id = resultado.inserted_id
@@ -163,7 +238,12 @@ async def disparar(
         que=auditoria.Que.CORRIDA_DISPARADA,
         quien=quien,
         corrida_id=corrida_id,
-        detalle={"tipo": str(tipo), "modo": modo, "maquinas": maquinas},
+        detalle={
+            "tipo": str(tipo),
+            "modo": modo,
+            "maquinas": maquinas,
+            "excluidas": excluidas,
+        },
         ahora=momento,
     )
     log.info("corrida_disparada", corrida=str(corrida_id), tipo=str(tipo), maquinas=len(maquinas))
@@ -220,6 +300,13 @@ async def progreso(base, corrida_id: ObjectId) -> dict[str, Any] | None:
         "modo": corrida["modo"],
         "estado": corrida["estado"],
         "maquinas": corrida["maquinas"],
+        # D59: quién quedó afuera al largar, y a quién se le cortó el trabajo
+        # por quedarse sin latido a mitad de corrida.
+        "maquinas_excluidas": list(corrida.get("maquinas_excluidas") or []),
+        "maquinas_ausentes": list(corrida.get("maquinas_ausentes") or []),
+        # D61: `repesca` en la corrida que largó la repesca, con lo que revisó.
+        "motivo": corrida.get("motivo"),
+        "revision_del_dia": corrida.get("revision_del_dia"),
         "creada_en": corrida["creada_en"],
         "jobs": {"total": len(jobs), "pendientes": pendientes, **por_estado},
         "terminada": pendientes == 0 and len(jobs) > 0,
@@ -820,3 +907,228 @@ async def _frenar_corrida_si_nadie_avanza(base, corrida_id: ObjectId) -> None:
         {"_id": corrida_id}, {"$set": {"estado": str(EstadoCorrida.FRENADA)}}
     )
     log.warning("corrida_frenada_por_canario", corrida=str(corrida_id))
+
+
+# ---------------------------------------------------------------------------
+# Que una corrida termine siempre (D59)
+# ---------------------------------------------------------------------------
+
+
+async def cerrar_ausentes(base, *, ahora: datetime | None = None) -> int:
+    """Cierra los jobs vivos de las máquinas que se quedaron sin latido.
+
+    Corre en cada vuelta del mantenimiento. Mira sólo corridas con trabajo
+    vivo, y dentro de ellas sólo las máquinas que tienen jobs vivos: una PC
+    apagada que ya terminó lo suyo no molesta a nadie. Devuelve cuántos jobs
+    cerró.
+    """
+    from app.core.cola import Codigo
+
+    momento = ahora or datetime.now(UTC)
+    corte = momento - timedelta(minutes=MINUTOS_AUSENTE)
+
+    vivos = (
+        await base["jobs"]
+        .find({"estado": {"$in": _VIVOS}}, {"corrida_id": 1, "maquina": 1})
+        .to_list(None)
+    )
+    por_corrida: dict[Any, set[str]] = {}
+    for job in vivos:
+        if job.get("corrida_id") is not None:
+            por_corrida.setdefault(job["corrida_id"], set()).add(job["maquina"])
+    if not por_corrida:
+        return 0
+
+    nombres = {m for maquinas in por_corrida.values() for m in maquinas}
+    latidos = {
+        v["maquina"]: v.get("ultimo_latido")
+        for v in await base["vendedores"].find({"maquina": {"$in": sorted(nombres)}}).to_list(None)
+    }
+    #  Una máquina dada de baja a mitad de corrida no tiene documento: tampoco
+    #  va a volver a dar señales, y cuenta como callada.
+    callados = {m for m in nombres if latidos.get(m) is None or _utc(latidos[m]) < corte}
+
+    cerrados = 0
+    for corrida_id, maquinas in por_corrida.items():
+        ausentes = sorted(maquinas & callados)
+        if not ausentes:
+            continue
+        corrida = await base["corridas"].find_one({"_id": corrida_id})
+        if corrida is None:
+            continue
+        cortados = await _cortar(
+            base,
+            corrida,
+            maquinas=ausentes,
+            codigo=Codigo.MAQUINA_AUSENTE,
+            motivo="la máquina dejó de dar señales a mitad de corrida",
+            ahora=momento,
+        )
+        await base["corridas"].update_one(
+            {"_id": corrida_id},
+            {
+                "$push": {
+                    "maquinas_ausentes": {
+                        "$each": [{"maquina": m, "en": momento} for m in ausentes]
+                    }
+                }
+            },
+        )
+        for maquina in ausentes:
+            await auditoria.registrar(
+                base,
+                que=auditoria.Que.MAQUINA_AUSENTE,
+                quien=auditoria.SISTEMA,
+                corrida_id=corrida_id,
+                detalle={"maquina": maquina, "minutos_sin_latido": MINUTOS_AUSENTE},
+                ahora=momento,
+            )
+        await _terminar_si_quedo_vacia(base, corrida, momento)
+        log.warning("maquinas_ausentes", corrida=str(corrida_id), maquinas=ausentes, jobs=cortados)
+        cerrados += cortados
+    return cerrados
+
+
+async def vencer_largas(base, *, ahora: datetime | None = None) -> int:
+    """El techo: una corrida con trabajo vivo a las `horas_max_corrida` se cierra.
+
+    Cubre lo que `cerrar_ausentes` no ve: un agente vivo con un job trabado, o
+    una corrida frenada que nadie decidió. Devuelve cuántas corridas cerró.
+    """
+    from app.core.cola import Codigo
+
+    momento = ahora or datetime.now(UTC)
+    config = await configuracion.obtener(base)
+    horas = int(config.get("horas_max_corrida") or 5)
+    corte = momento - timedelta(hours=horas)
+
+    vencidas = 0
+    for corrida in await base["corridas"].find({"creada_en": {"$lt": corte}}).to_list(None):
+        if not await base["jobs"].count_documents(
+            {"corrida_id": corrida["_id"], "estado": {"$in": _VIVOS}}, limit=1
+        ):
+            continue
+        cortados = await _cortar(
+            base,
+            corrida,
+            maquinas=None,
+            codigo=Codigo.VENCIDO,
+            motivo=f"la corrida pasó su techo de {horas} horas",
+            ahora=momento,
+        )
+        if corrida.get("estado") == str(EstadoCorrida.FRENADA):
+            #  Como al cancelar: el freno esperaba una decisión, y el techo la
+            #  tomó. Sin esto la máquina quedaría frenada para siempre.
+            from app.core import vendedores
+
+            await vendedores.soltar_freno_de_canario(base, list(corrida.get("maquinas", [])))
+        await _terminar_si_quedo_vacia(base, corrida, momento, tambien_frenada=True)
+        await auditoria.registrar(
+            base,
+            que=auditoria.Que.CORRIDA_VENCIDA,
+            quien=auditoria.SISTEMA,
+            corrida_id=corrida["_id"],
+            detalle={"horas": horas, "jobs_cortados": cortados},
+            ahora=momento,
+        )
+        log.warning("corrida_vencida", corrida=str(corrida["_id"]), horas=horas, jobs=cortados)
+        vencidas += 1
+    return vencidas
+
+
+async def cortar_maquina(
+    base,
+    corrida: dict[str, Any],
+    *,
+    maquina: str,
+    codigo,
+    motivo: str,
+    ahora: datetime,
+) -> int:
+    """Cierra los jobs vivos de una máquina en una corrida, y la termina si quedó vacía.
+
+    Para quien corta por su cuenta y no por el reloj: la cuota agotada (D60).
+    """
+    cortados = await _cortar(
+        base, corrida, maquinas=[maquina], codigo=codigo, motivo=motivo, ahora=ahora
+    )
+    await _terminar_si_quedo_vacia(base, corrida, ahora)
+    return cortados
+
+
+async def _cortar(
+    base,
+    corrida: dict[str, Any],
+    *,
+    maquinas: list[str] | None,
+    codigo,
+    motivo: str,
+    ahora: datetime,
+) -> int:
+    """Cierra los jobs vivos de una corrida —de todas sus máquinas o de algunas—
+    y resuelve los mensajes de los envíos que quedaron colgando.
+
+    Con los mensajes hace lo mismo que `cancelar` (D31): un `ENVIANDO` cuyo job
+    se cortó quedaría así para siempre, y un `EN_ESPERA` de una corrida que ya
+    estaba enviando esperaría un envío que no va a llegar.
+    """
+    from app.core import mensajes as mensajes_mod
+    from app.core.estados import Estado, Motivo, TransicionInvalida
+
+    filtro: dict[str, Any] = {"corrida_id": corrida["_id"], "estado": {"$in": _VIVOS}}
+    if maquinas is not None:
+        filtro["maquina"] = {"$in": maquinas}
+    resultado = await base["jobs"].update_many(
+        filtro,
+        {
+            "$set": {
+                "estado": "fallido",
+                "codigo": str(codigo),
+                "detalle": {"motivo": motivo},
+                "terminado_en": ahora,
+            }
+        },
+    )
+
+    a_cortar = {Estado.ENVIANDO}
+    if corrida.get("estado") == str(EstadoCorrida.ENVIANDO):
+        a_cortar.add(Estado.EN_ESPERA)
+    motivo_mensaje = Motivo.VENCIDO if maquinas is None else Motivo.FALLIDO
+    for mensaje in await mensajes_mod.de_la_corrida(base, corrida["_id"]):
+        if Estado(mensaje["estado"]) not in a_cortar:
+            continue
+        if maquinas is not None and mensaje.get("maquina") not in maquinas:
+            continue
+        try:
+            await mensajes_mod.mover(
+                base,
+                mensaje["_id"],
+                Estado.DESCARTADO,
+                motivo=motivo_mensaje,
+                quien=auditoria.SISTEMA,
+                ahora=ahora,
+            )
+        except (TransicionInvalida, mensajes_mod.CarreraDeEstados):
+            continue
+    return resultado.modified_count
+
+
+async def _terminar_si_quedo_vacia(
+    base, corrida: dict[str, Any], momento: datetime, *, tambien_frenada: bool = False
+) -> None:
+    """Si a la corrida no le queda trabajo vivo, se da por terminada.
+
+    Una `frenada` sólo la cierra el techo: mientras tanto espera que una
+    persona decida (D31), y cerrarla por una máquina ausente se lo saltearía.
+    """
+    estados = [str(EstadoCorrida.GENERANDO), str(EstadoCorrida.ENVIANDO)]
+    if tambien_frenada:
+        estados.append(str(EstadoCorrida.FRENADA))
+    if await base["jobs"].count_documents(
+        {"corrida_id": corrida["_id"], "estado": {"$in": _VIVOS}}, limit=1
+    ):
+        return
+    await base["corridas"].update_one(
+        {"_id": corrida["_id"], "estado": {"$in": estados}},
+        {"$set": {"estado": str(EstadoCorrida.TERMINADA), "terminada_en": momento}},
+    )

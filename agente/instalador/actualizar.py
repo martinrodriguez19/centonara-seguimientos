@@ -6,6 +6,11 @@ Un solo archivo, sólo biblioteca estándar, para que ande con cualquier Python
 iniciar sesión y cada hora (`com.centonara.actualizador` en Mac, la tarea
 programada en Windows), y también una persona con `actualizar.sh` / `.ps1`.
 
+Antes de los seis pasos, el guardián (D62): si el agente no da señales, se lo
+arranca. Desde D63 el sistema lo corre a horario —a la hora de actualizar y 15
+minutos antes de la corrida y de la repesca— si el panel lo pide; si no, al
+iniciar sesión y cada hora, como siempre.
+
 Seis pasos, cada uno con su salida temprana:
 
   1. Preguntar al backend qué commit toca (`GET /api/agente/version-esperada`).
@@ -448,6 +453,43 @@ def arrancar_agente(entorno: Entorno, repo: Path) -> None:
             entorno.log(f"  no se pudo lanzar el agente: {error}")
 
 
+def en_descanso(entorno: Entorno) -> bool:
+    """¿El agente dejó dicho que la máquina está descansando? (D64)
+
+    Lo escribe el agente en `~/.centonara/estado/descanso.json` antes de
+    suspender. Durante el descanso nadie lo revive: está quieto a propósito.
+    """
+    try:
+        datos = json.loads(
+            (entorno.casa / ".centonara" / "estado" / "descanso.json").read_text(encoding="utf-8")
+        )
+        hasta = datetime.fromisoformat(str(datos.get("hasta")))
+    except (OSError, ValueError, TypeError):
+        return False
+    if hasta.tzinfo is None:
+        hasta = hasta.replace(tzinfo=UTC)
+    return entorno.ahora() < hasta
+
+
+def revisar_que_ande(entorno: Entorno, repo: Path) -> bool:
+    """El guardián (D62): si el agente no da señales, se lo arranca. Sin red.
+
+    Decide por `vivo.json`, que el agente refresca en cada latido aunque no
+    haya internet: viejo es "no está corriendo", no "está ocupado". En Windows
+    arranca la tarea —si ya está corriendo, Windows ignora el pedido— y en Mac
+    `launchctl kickstart`. Devuelve si tuvo que arrancarlo.
+    """
+    if agente_vivo(entorno):
+        entorno.log("  el agente está andando")
+        return False
+    if en_descanso(entorno):
+        entorno.log("  la máquina está descansando: no se arranca el agente")
+        return False
+    entorno.log("  el agente no daba señales: se lo arranca")
+    arrancar_agente(entorno, repo)
+    return True
+
+
 def autocopiarse(entorno: Entorno, repo: Path) -> None:
     """La copia que corre el sistema se renueva con la del commit recién instalado."""
     origen = repo / "agente" / "instalador" / "actualizar.py"
@@ -484,6 +526,11 @@ def actualizar(
     repo_github = env.get("AGENTE_REPO_GITHUB", "martinrodriguez19/centonara-seguimientos")
     instalado = sha_instalado(repo)
     log(f"  instalado: {instalado or 'sin VERSION'}")
+
+    # 0. Que el agente esté andando (D62). Es lo que importa de la vuelta de
+    #    15 minutos antes de la corrida. No en la corrida del instalador
+    #    (`--sin-verificar`): ahí todavía no arrancó nada a propósito.
+    arrancado = verificar and not sha_forzado and revisar_que_ande(entorno, repo)
 
     # 1. Qué toca
     if sha_forzado:
@@ -556,6 +603,11 @@ def actualizar(
             if not esperar_vuelta(entorno, sha):
                 return deshacer("el agente no volvió con la versión nueva")
             log("  el agente volvió con la versión nueva")
+        elif arrancado:
+            #  Lo arrancó el guardián hace un momento, con el código anterior:
+            #  ve la VERSION nueva y se reinicia solo (D46). Arrancarlo otra vez
+            #  acá, en una PC sin tarea, dejaría dos agentes.
+            log("  el agente recién arrancado se reinicia solo con la versión nueva")
         else:
             log("  el agente no estaba corriendo: se intenta levantarlo")
             arrancar_agente(entorno, repo)

@@ -3,11 +3,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Fila, Tarjeta, useGuardarConfiguracion } from "@/components/config/base";
+import { CampoHora, Fila, HORA, Tarjeta, useGuardarConfiguracion } from "@/components/config/base";
+import { useAvisos } from "@/components/ui/avisos-flotantes";
 import { Button } from "@/components/ui/button";
 import { Campo } from "@/components/ui/campo";
 import { Interruptor } from "@/components/ui/interruptor";
-import { empezarDeCero, type Configuracion } from "@/lib/panel";
+import { actualizarAhora, empezarDeCero, type Configuracion } from "@/lib/panel";
+import { textos } from "@/lib/textos";
 
 /**
  * Sistema: la versión del agente y, al final y aparte, empezar de cero.
@@ -17,6 +19,8 @@ export function SeccionSistema({ config }: { config: Configuracion }) {
     <>
       <Tarjeta titulo="Versión del agente">
         <VersionDelAgente key={config.version_agente_esperada ?? ""} valor={config.version_agente_esperada ?? ""} />
+        <ActualizacionProgramada key={JSON.stringify(config.actualizacion)} config={config} />
+        <ActualizarAhora />
       </Tarjeta>
       {/* Última de la pantalla, y a propósito: es la que borra. */}
       <EmpezarDeCero />
@@ -46,7 +50,7 @@ function VersionDelAgente({ valor }: { valor: string }) {
           muestra en su detalle qué commit corre y si está al día.
         </>
       }
-      queHace="Las computadoras de los vendedores se actualizan solas, al iniciar sesión y cada hora, a la versión que se fije acá. Vacío es «lo último que se publicó». Con un commit, todas van a ése: es la forma de volver atrás sin tocar ninguna computadora."
+      queHace="Las computadoras de los vendedores se actualizan solas a la versión que se fije acá: al iniciar sesión y cada hora, o a la hora de abajo si la actualización programada está prendida. Vacío es «lo último que se publicó». Con un commit, todas van a ése: es la forma de volver atrás sin tocar ninguna computadora."
     >
       <div className="flex flex-wrap items-end gap-2">
         <Campo
@@ -69,6 +73,69 @@ function VersionDelAgente({ valor }: { valor: string }) {
         )}
       </div>
     </Fila>
+  );
+}
+
+/**
+ * La actualización programada (D63): una vez por día a esta hora, en vez de
+ * cada hora. Las computadoras toman el horario solas en su próximo latido.
+ */
+function ActualizacionProgramada({ config }: { config: Configuracion }) {
+  const { guardar, guardando } = useGuardarConfiguracion();
+  const actual = config.actualizacion;
+  const [hora, setHora] = useState(actual.hora);
+  const valido = HORA.test(hora);
+
+  return (
+    <Fila
+      titulo={textos.actualizacion.titulo}
+      ayuda={actual.activa ? textos.actualizacion.prendida(actual.hora) : textos.actualizacion.apagada}
+      queHace={textos.actualizacion.queHace}
+      control={
+        <Interruptor
+          prendido={actual.activa}
+          etiqueta={textos.actualizacion.titulo}
+          deshabilitado={guardando || (!actual.activa && !valido)}
+          onCambiar={(activa) => guardar({ actualizacion: { activa, hora } })}
+        />
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <CampoHora valor={hora} onCambiar={setHora} etiqueta="Hora de actualizar (HH:MM)" placeholder="15:00" />
+        {hora !== actual.hora && (
+          <Button
+            size="sm"
+            disabled={guardando || !valido}
+            onClick={() => guardar({ actualizacion: { activa: actual.activa, hora } })}
+          >
+            Guardar horario
+          </Button>
+        )}
+      </div>
+    </Fila>
+  );
+}
+
+/** "Actualizar ahora" (D63): para un arreglo urgente, sin esperar la hora. */
+function ActualizarAhora() {
+  const clienteQuery = useQueryClient();
+  const { avisar } = useAvisos();
+  const actualizar = useMutation({
+    mutationFn: actualizarAhora,
+    onSuccess: () => avisar(textos.actualizacion.avisoAhora),
+    onError: () => avisar(textos.actualizacion.avisoFallo, "critico"),
+    onSettled: () => clienteQuery.invalidateQueries({ queryKey: ["configuracion"] }),
+  });
+  return (
+    <Fila
+      titulo={textos.actualizacion.ahoraTitulo}
+      ayuda={textos.actualizacion.ahoraAyuda}
+      control={
+        <Button size="sm" variant="outline" disabled={actualizar.isPending} onClick={() => actualizar.mutate()}>
+          {textos.actualizacion.ahoraBoton}
+        </Button>
+      }
+    />
   );
 }
 

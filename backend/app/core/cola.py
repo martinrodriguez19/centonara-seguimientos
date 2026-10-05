@@ -113,6 +113,17 @@ class Codigo(StrEnum):
     """No lo reporta ningún agente: lo escribe `corridas.cancelar` cuando una
     persona corta la corrida. Está en el enum para que `Codigo("CANCELADO")`
     exista — antes era un string suelto escrito directo en Mongo (D31)."""
+    LIMITE_USO = "LIMITE_USO"
+    """Claude Code se quedó sin cuota en esa máquina (D60). No se reintenta:
+    no se arregla en treinta segundos. La máquina se pausa sola hasta que la
+    cuota vuelva, y lo que faltó lo completa la repesca (D61)."""
+    MAQUINA_AUSENTE = "MAQUINA_AUSENTE"
+    """Tampoco lo reporta un agente: lo escribe el mantenimiento cuando la
+    máquina de una corrida en curso lleva demasiado sin latido (D59). Sus jobs
+    se cierran para que la corrida termine sin ella."""
+    VENCIDO = "VENCIDO"
+    """El techo de la corrida (D59): pasaron `horas_max_corrida` desde que se
+    largó y el job seguía vivo. Lo escribe el mantenimiento."""
 
     @property
     def reintenta(self) -> bool:
@@ -150,6 +161,9 @@ _NO_SE_REINTENTAN = frozenset(
         Codigo.SELECTOR_ROTO,
         Codigo.TEXTO_ENVIADO,
         Codigo.CANCELADO,
+        Codigo.LIMITE_USO,
+        Codigo.MAQUINA_AUSENTE,
+        Codigo.VENCIDO,
     }
 )
 

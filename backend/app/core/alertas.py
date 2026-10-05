@@ -23,6 +23,7 @@ from enum import StrEnum
 
 from app.core import cola, vendedores, versiones
 from app.core.estados import Estado, Motivo
+from app.core.huso import HUSO_COMERCIAL
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -47,6 +48,12 @@ HORAS_PARA_ACTUALIZARSE = 2
 # sin token (60 por hora por IP), así que a esta altura ya no es un hipo: las
 # máquinas van a seguir con lo que tienen y un push no llega a ninguna.
 HORAS_SIN_RESOLVER_VERSION = 1
+
+
+# Códigos que cierran un job sin que la máquina haya fallado en lo que hizo.
+_NO_SON_FALLAS = frozenset(
+    {str(cola.Codigo.CANCELADO), str(cola.Codigo.MAQUINA_AUSENTE), str(cola.Codigo.VENCIDO)}
+)
 
 
 class Nivel(StrEnum):
@@ -107,6 +114,9 @@ async def revisar(
     alertas += await _enviado_a_no_contactar(base, momento)
     alertas += await _canario(base)
     alertas += await _maquinas(base, momento)
+    alertas += await _no_volvieron_del_descanso(base, momento)
+    alertas += await _fuera_de_corrida(base, momento)
+    alertas += await _repesca_incompleta(base, momento)
     alertas += await _maquinas_que_fallan_siempre(base)
     alertas += await _maquinas_desactualizadas(base, momento, version_esperada)
     alertas += _version_esperada_desconocida(version_esperada, reloj or time.monotonic)
@@ -265,6 +275,25 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
             )
             continue
 
+        # Sin cuota (D60): también antes del filtro de pausadas, por lo mismo.
+        # Aviso y no urgente: vuelve sola, y no hay nada que hacer.
+        sin_cuota = vendedores.sin_cuota_hasta(vendedor, ahora=ahora)
+        if sin_cuota is not None and vendedor.get("activo"):
+            vuelve = sin_cuota.astimezone(HUSO_COMERCIAL).strftime("%H:%M")
+            alertas.append(
+                Alerta(
+                    Nivel.AVISO,
+                    "maquina_sin_cuota",
+                    f"{vendedor.get('nombre') or maquina} se quedó sin cuota de Claude",
+                    f"Se pausó sola para no gastar de más. Vuelve a las {vuelve}; lo que le "
+                    "faltó lo completa la repesca.",
+                    "No hace falta hacer nada. Si se cambió la cuenta de Claude de esa "
+                    "computadora, se puede quitar la pausa desde su tarjeta.",
+                    maquina=maquina,
+                )
+            )
+            continue
+
         if vendedores.esta_pausada(vendedor, ahora=ahora):
             continue
 
@@ -327,6 +356,156 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
     return alertas
 
 
+# Cuánto antes de la corrida programada se avisa que una máquina sigue dormida
+# desde el descanso (D64). La despierta el vendedor cuando llega; antes de esto,
+# que esté dormida es lo esperado.
+MINUTOS_ANTES_DE_LA_CORRIDA = 60
+
+
+async def _no_volvieron_del_descanso(base, ahora: datetime) -> list[Alerta]:
+    """Falta una hora para la corrida y una máquina sigue dormida desde el descanso (D64).
+
+    Urgente: si nadie la despierta, queda afuera de la corrida (D59). Sólo en
+    la hora previa a una corrida programada de hoy: antes, que esté dormida es
+    lo esperado —la despierta el vendedor cuando llega al negocio—.
+    """
+    from app.core import configuracion, horarios
+    from app.core.programacion import minutos_desde_la_hora
+
+    config = await configuracion.obtener(base)
+    programa = config.get("programacion") or {}
+    if not programa.get("activa"):
+        return []
+    if ahora.astimezone(HUSO_COMERCIAL).isoweekday() not in (programa.get("dias") or []):
+        return []
+    if not -MINUTOS_ANTES_DE_LA_CORRIDA <= minutos_desde_la_hora(programa, ahora) < 0:
+        return []
+
+    alertas: list[Alerta] = []
+    for vendedor in await base["vendedores"].find({"activo": True}).to_list(None):
+        if not horarios.dormida_desde_el_descanso(config, vendedor.get("ultimo_latido"), ahora):
+            continue
+        maquina = vendedor["maquina"]
+        alertas.append(
+            Alerta(
+                Nivel.URGENTE,
+                "maquina_dormida_antes_de_la_corrida",
+                f"{vendedor.get('nombre') or maquina} sigue dormida",
+                f"La corrida es a las {programa.get('hora')} y la computadora sigue suspendida "
+                "desde el descanso. Si nadie la despierta, queda afuera.",
+                "Que el vendedor la despierte: con mover el mouse o tocar una tecla alcanza.",
+                maquina=maquina,
+            )
+        )
+    return alertas
+
+
+async def _fuera_de_corrida(base, ahora: datetime) -> list[Alerta]:
+    """La última corrida dejó afuera a una máquina por falta de señales (D59).
+
+    Sólo mientras la máquina siga callada: cuando vuelve, entra en la próxima
+    corrida y la alerta ya no pide nada. El registro de quién quedó afuera
+    sigue en el detalle de la corrida.
+    """
+    from app.core import configuracion, horarios
+
+    if horarios.en_descanso(await configuracion.obtener(base), ahora):
+        return []  # D64: de noche todas están calladas a propósito
+    corrida = await base["corridas"].find_one(sort=[("creada_en", -1)])
+    if corrida is None or corrida["creada_en"] < ahora - timedelta(hours=24):
+        return []
+    afuera = [
+        (e["maquina"], "no daba señales cuando se largó")
+        for e in corrida.get("maquinas_excluidas") or []
+        if e.get("motivo") == "sin_latido"
+    ] + [
+        (a["maquina"], "dejó de dar señales a mitad de la corrida")
+        for a in corrida.get("maquinas_ausentes") or []
+    ]
+    if not afuera:
+        return []
+
+    corte = ahora - timedelta(minutes=MINUTOS_CAIDA)
+    alertas: list[Alerta] = []
+    vistos: set[str] = set()
+    for maquina, por_que in afuera:
+        if maquina in vistos:
+            continue
+        vistos.add(maquina)
+        vendedor = await base["vendedores"].find_one({"maquina": maquina})
+        if vendedor is None or not vendedor.get("activo"):
+            continue
+        latido = vendedor.get("ultimo_latido")
+        if latido is not None and latido >= corte:
+            continue
+        alertas.append(
+            Alerta(
+                Nivel.AVISO,
+                "maquina_fuera_de_corrida",
+                f"{vendedor.get('nombre') or maquina} quedó afuera de la corrida",
+                f"La computadora {por_que}. La corrida siguió y terminó con las demás.",
+                "Fijate si está prendida y con sesión iniciada. Cuando vuelva, entra sola "
+                "en la próxima corrida.",
+                corrida_id=str(corrida["_id"]),
+                maquina=maquina,
+            )
+        )
+    return alertas
+
+
+async def _repesca_incompleta(base, ahora: datetime) -> list[Alerta]:
+    """La repesca de hoy terminó y una máquina sigue corta sin que se sepa por qué (D61).
+
+    "Por qué" es la última tanda de esa máquina en la repesca: si terminó en
+    "no quedaban chats", hizo todo lo que había; si se quedó sin cuota, ya
+    tiene su propio aviso. Lo que queda es lo que alguien tiene que mirar.
+    """
+    from app.core import mensajes, repesca
+
+    revision = await repesca.ultima_revision(base, ahora=ahora)
+    if revision is None or not revision.get("corrida_id"):
+        return []
+    from bson import ObjectId
+
+    corrida_id = ObjectId(revision["corrida_id"])
+    if await base["jobs"].count_documents(
+        {"corrida_id": corrida_id, "estado": {"$in": ["pendiente", "tomado"]}}, limit=1
+    ):
+        return []
+    corrida = await base["corridas"].find_one({"_id": corrida_id}) or {}
+    finales = {
+        t["maquina"]: t.get("fin")
+        for t in corrida.get("tandas") or []
+        if isinstance(t, dict) and t.get("maquina")
+    }
+
+    alertas: list[Alerta] = []
+    for item in revision["maquinas"]:
+        if item.get("resultado") != "repescada":
+            continue
+        maquina = item["maquina"]
+        if finales.get(maquina) in repesca.SIN_CHATS:
+            continue
+        vendedor = await base["vendedores"].find_one({"maquina": maquina}) or {}
+        if vendedores.sin_cuota_hasta(vendedor, ahora=ahora) is not None:
+            continue
+        dejados = await mensajes.borradores_dejados_hoy(base, maquina, ahora=ahora)
+        if dejados >= int(item.get("tope") or 0):
+            continue
+        alertas.append(
+            Alerta(
+                Nivel.AVISO,
+                "repesca_incompleta",
+                f"{item.get('nombre') or maquina} no completó el día",
+                f"Dejó {dejados} de {item.get('tope')} borradores, también después de la repesca.",
+                "Mirá en la corrida cómo terminó su última tanda.",
+                corrida_id=str(corrida_id),
+                maquina=maquina,
+            )
+        )
+    return alertas
+
+
 async def _maquinas_que_fallan_siempre(base) -> list[Alerta]:
     """Una máquina cuyos últimos jobs fallaron todos, con el motivo del último.
 
@@ -355,8 +534,10 @@ async def _maquinas_que_fallan_siempre(base) -> list[Alerta]:
             continue
         if any(j.get("estado") != str(cola.EstadoJob.FALLIDO) for j in ultimos):
             continue
-        #  Cancelados a mano no cuentan: eso lo decidió una persona.
-        if all(j.get("codigo") == str(cola.Codigo.CANCELADO) for j in ultimos):
+        #  Cancelados a mano no cuentan: eso lo decidió una persona. Tampoco los
+        #  que cerró el mantenimiento por ausencia o por el techo (D59): no son
+        #  fallas de lo que la máquina hizo, y la ausencia tiene su alerta.
+        if all(j.get("codigo") in _NO_SON_FALLAS for j in ultimos):
             continue
 
         ultimo = ultimos[0]
@@ -389,6 +570,17 @@ async def _maquinas_desactualizadas(base, ahora: datetime, version_esperada: str
     """
     if not version_esperada:
         return []
+    from app.core import configuracion, horarios
+
+    #  D63: con la actualización programada, la máquina se pone al día en la
+    #  ventana del día. Sólo está atrasada si esa versión ya se conocía cuando
+    #  empezó la última ventana y la ventana ya terminó.
+    config = await configuracion.obtener(base)
+    if horarios.programada(config) and not horarios.actualizar_ya(config, ahora):
+        inicio, fin = horarios.ultima_ventana(config, ahora)
+        vista = versiones.vista_desde(version_esperada)
+        if ahora < fin or vista is None or vista > inicio:
+            return []
     alertas: list[Alerta] = []
     corte = ahora - timedelta(hours=HORAS_PARA_ACTUALIZARSE)
     for vendedor in await base["vendedores"].find({}).to_list(None):

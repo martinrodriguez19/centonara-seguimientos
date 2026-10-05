@@ -160,6 +160,8 @@ async def registrar_latido(
     diagnostico: dict[str, str] | None = None,
     version_agente: str | None = None,
     modo_agente: str | None = None,
+    horario_actualizador: str | None = None,
+    descanso: str | None = None,
     ahora: datetime | None = None,
 ) -> None:
     """Anota que la máquina está viva y con qué diagnóstico.
@@ -179,6 +181,10 @@ async def registrar_latido(
         cambios["version_registrada_en"] = cambios["ultimo_latido"]
     if modo_agente is not None:
         cambios["modo_agente"] = modo_agente
+    if horario_actualizador is not None:
+        cambios["horario_actualizador"] = horario_actualizador
+    if descanso is not None:
+        cambios["descanso_estado"] = descanso
 
     await base["vendedores"].update_one({"maquina": maquina}, {"$set": cambios})
 
@@ -265,19 +271,44 @@ async def registrar_ventana(
 def esta_pausada(vendedor: dict[str, Any], *, ahora: datetime | None = None) -> bool:
     """¿Esta máquina está pausada ahora mismo?
 
-    Tres formas de estarlo, de tres actores distintos: `activo: False` (el
+    Cuatro formas de estarlo, de actores distintos: `activo: False` (el
     dueño, desde el panel), `pausado_hasta` en el futuro (el vendedor, desde su
     barra de menú), y `frenado_por_canario_en` (el sistema: los tres primeros
     envíos de esta Mac en una corrida fallaron — D35). El freno del canario no
     vence solo: lo suelta reanudar o cancelar la corrida, porque lo que hace
-    falta es que alguien mire, no que pase el tiempo.
+    falta es que alguien mire, no que pase el tiempo. La cuarta es la cuota de
+    Claude agotada (D60), ver `sin_cuota_hasta`.
     """
     if not vendedor.get("activo"):
         return True
     if vendedor.get("frenado_por_canario_en") is not None:
         return True
+    if sin_cuota_hasta(vendedor, ahora=ahora) is not None:
+        return True
     hasta = vendedor.get("pausado_hasta")
     return hasta is not None and hasta > (ahora or datetime.now(UTC))
+
+
+def sin_cuota_hasta(vendedor: dict[str, Any], *, ahora: datetime | None = None) -> datetime | None:
+    """Hasta cuándo esta máquina está pausada por falta de cuota de Claude (D60).
+
+    Un cuarto actor, aparte de los tres de `esta_pausada`: el sistema, cuando
+    Claude Code avisa que se quedó sin cuota. Campo propio para no pisar la
+    pausa que puso una persona. `None` si no está pausada por eso.
+    """
+    hasta = vendedor.get("pausa_cuota_hasta")
+    if hasta is None:
+        return None
+    if hasta.tzinfo is None:
+        hasta = hasta.replace(tzinfo=UTC)
+    return hasta if hasta > (ahora or datetime.now(UTC)) else None
+
+
+async def pausar_por_cuota(base, maquina: str, *, hasta: datetime | None) -> None:
+    """Pausa (o despausa, con `None`) esta máquina por falta de cuota (D60)."""
+    await base["vendedores"].update_one(
+        {"maquina": maquina}, {"$set": {"pausa_cuota_hasta": hasta}}
+    )
 
 
 async def frenar_por_canario(base, maquina: str, *, ahora: datetime | None = None) -> None:

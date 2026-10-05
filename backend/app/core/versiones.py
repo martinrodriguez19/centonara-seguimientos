@@ -22,6 +22,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -68,6 +69,9 @@ _cache: dict[str, tuple[str, float]] = {}
 # GitHub sin contestar, las máquinas siguen con lo que tienen —que es lo
 # correcto— pero un push no llega a ninguna, y nadie se entera.
 _sin_resolver_desde: float | None = None
+
+# Desde cuándo se conoce cada sha como esperado (D63). Ver `vista_desde`.
+_visto: dict[str, datetime] = {}
 
 
 def normalizar(sha: Any) -> str:
@@ -138,6 +142,7 @@ async def esperada(
 
     fijada = normalizar(config.get("version_agente_esperada"))
     if fijada:
+        _anotar_visto(fijada)
         return Esperada(fijada, "panel")
 
     momento = ahora if ahora is not None else time.monotonic()
@@ -164,6 +169,7 @@ async def esperada(
     if sha:
         _cache[clave] = (sha, momento)
         _sin_resolver_desde = None
+        _anotar_visto(sha)
         return Esperada(sha, "rama")
     #  Se anota la PRIMERA vez que falla, no cada vez: lo que interesa es
     #  cuánto lleva así, y eso se mide desde el primer tropiezo.
@@ -196,8 +202,24 @@ def coincide(reportada: str | None, sha_esperado: str) -> bool | None:
     return primero[:largo] == sha_esperado[:largo]
 
 
+def vista_desde(sha: str) -> datetime | None:
+    """Desde cuándo (UTC) este backend conoce `sha` como la versión esperada (D63).
+
+    Vive en memoria: después de un reinicio del backend, todo sha es "nuevo" y
+    la alerta de atrasada espera a la próxima ventana. Errar para el lado del
+    silencio es lo correcto acá.
+    """
+    return _visto.get(sha)
+
+
+def _anotar_visto(sha: str) -> None:
+    if sha and sha not in _visto:
+        _visto[sha] = datetime.now(UTC)
+
+
 def olvidar_cache() -> None:
     """Para los tests, y para nada más."""
     global _sin_resolver_desde
     _cache.clear()
+    _visto.clear()
     _sin_resolver_desde = None

@@ -115,10 +115,90 @@ export const textos = {
     revisarBorradores: "Revisar borradores",
   },
 
+  // D64, en Ajustes → Automático y en cada máquina.
+  descanso: {
+    titulo: "Descanso",
+    prendido: (desde: string, hasta: string, noches: string, libres: string) =>
+      `Las máquinas descansan de ${desde} a ${hasta}, ${noches}${libres ? `, y ${libres} todo el día` : ""}.`,
+    apagado: "Apagado: las máquinas quedan prendidas y trabajando las 24 horas.",
+    queHace:
+      "Durante el descanso nada trabaja ni gasta tokens. Con «Suspender», cada computadora además se duerme; a la mañana la despierta el vendedor cuando llega (con mover el mouse o tocar una tecla). Si a una hora de la corrida sigue dormida, el panel avisa.",
+    noches: "Noches",
+    diaLibre: "Día libre (todo el día)",
+    suspender: "Suspender las computadoras",
+    guardar: "Guardar descanso",
+    choca: (que: string) => `La ${que} cae dentro del descanso: ese día no va a salir.`,
+    descansandoHasta: (hora: string) => `Descansando hasta ${hora}`,
+    dormida: "Dormida: la despierta el vendedor",
+    estadoEnMaquina: {
+      suspende: "Se duerme en el descanso; la despierta el vendedor",
+      descansa_sin_suspender: "Descansa sin dormirse (la suspensión está apagada)",
+    } as Record<string, string>,
+  },
+
+  // D63, en Ajustes → Sistema → Versión del agente.
+  actualizacion: {
+    titulo: "Actualización programada",
+    prendida: (hora: string) =>
+      `Las computadoras se actualizan una vez por día, a las ${hora}. Además revisan que el agente esté andando 15 minutos antes de la corrida y de la repesca.`,
+    apagada: "Apagada: las computadoras buscan versión nueva al iniciar sesión y cada hora.",
+    queHace:
+      "Cada computadora toma este horario sola, en menos de un minuto: no hay que tocar ninguna. Si alguna no puede cambiar su horario, sigue buscando cada hora y lo dice en su detalle.",
+    ahoraTitulo: "Actualizar ahora",
+    ahoraAyuda: "Para un arreglo urgente: las computadoras prendidas se actualizan en el próximo minuto, sin esperar su hora.",
+    ahoraBoton: "Actualizar ahora",
+    avisoAhora: "Listo: las computadoras prendidas se actualizan en el próximo minuto.",
+    avisoFallo: "No se pudo pedir la actualización. Probá de nuevo.",
+    estadoEnMaquina: {
+      ok: "Se actualiza a horario",
+      cada_hora: "Busca versión nueva cada hora",
+    } as Record<string, string>,
+    estadoFalla: "No pudo cambiar su horario: sigue buscando cada hora",
+  },
+
+  // D61 y D60, en Ajustes → Automático.
+  repesca: {
+    titulo: "Repesca",
+    prendida: (hora: string, dias: string) =>
+      `A las ${hora}, ${dias}, revisa qué hizo cada máquina hoy y completa lo que faltó.`,
+    apagada: "Apagada: nadie revisa si cada máquina llegó a sus borradores del día.",
+    queHace:
+      "Mira cuántos borradores dejó cada máquina contra el tope del día. A la que le faltó y está prendida le larga una corrida sólo a ella, por lo que le falta. Las que pararon porque no quedaban chats, las que siguen sin cuota de Claude y las apagadas quedan anotadas, sin corrida.",
+    soloBorradoresTitulo: (hora: string) => `A las ${hora} la repesca sólo deja borradores`,
+    soloBorradores: (inicio: string, fin: string) =>
+      `El envío automático sólo envía dentro del horario de envío (${inicio} a ${fin}, en los días marcados). Para que la repesca también envíe, adelantala o extendé el horario de envío más abajo.`,
+    pausaCuotaTitulo: "Pausa sin cuota de Claude",
+    pausaCuotaAyuda:
+      "Si Claude se queda sin cuota en una máquina, esa máquina se pausa sola. Si el aviso dice a qué hora vuelve, se usa esa hora.",
+    pausaCuotaQueHace:
+      "Esto es lo que dura la pausa cuando el aviso no dice la hora. Mientras tanto la máquina no gasta nada, y lo que le faltó lo completa la repesca.",
+    hoyTitulo: "Cómo terminó el día",
+    hoyResultado: {
+      completa: "completa",
+      sin_chats: "no quedaban chats",
+      sin_cuota: "sin cuota de Claude",
+      pausada: "pausada",
+      ausente: "apagada",
+      repescada: "repescada",
+    } as Record<string, string>,
+    hoySinDisparo: {
+      completo: "Todas completaron: no hizo falta repescar.",
+      pausa_global: "El sistema estaba frenado: revisó pero no largó nada.",
+      circuito_viejo: "Con el circuito de siempre no se repesca: revisó pero no largó nada.",
+      sin_maquinas: "Ninguna de las que faltaban estaba disponible.",
+    } as Record<string, string>,
+    hoyCorrida: "Ver la corrida de la repesca",
+    proxima: (cuando: string) => `Próxima repesca: ${cuando}`,
+  },
+
   maquina: {
     online: "Conectada",
     offline: "Sin conexión",
     pausada: "Pausada",
+    // D60: Claude se quedó sin cuota en esa máquina y se pausó sola.
+    sinCuota: (hora: string) => `Sin cuota hasta ${hora}`,
+    quitarPausaCuota: "Quitar la pausa por cuota",
+    avisoCuotaQuitada: "Listo: la máquina vuelve a tomar trabajo.",
     degradada: "Degradada",
     inactiva: "Inactiva",
     sinConsentimiento: "Sin consentimiento registrado",
@@ -375,6 +455,17 @@ export const textos = {
     // veía "casi terminada" y nadie entendía por qué no avanzaba.
     frenada: "Frenada por el sistema",
     cancelada: "Cancelada",
+    // D59: quién no entró o se cortó, para que "faltó una máquina" tenga motivo.
+    afueraTitulo: (n: number) =>
+      n === 1 ? "Una máquina no trabajó en esta corrida" : `${n} máquinas no trabajaron en esta corrida`,
+    afueraMotivo: {
+      sin_latido: "no daba señales cuando se largó la corrida",
+      pausada: "estaba pausada",
+      frenada: "estaba frenada por el canario",
+    } as Record<string, string>,
+    afueraAusente: (hora: string) => `dejó de dar señales a mitad de la corrida (${hora}) y se le cortó el trabajo`,
+    afueraAccion:
+      "La corrida siguió con las demás. Cuando la computadora vuelva a estar prendida, entra sola en la próxima.",
     verTodas: "Ver todas",
     resumen: "Resumen de la corrida",
     avance: "Avance",
@@ -509,6 +600,11 @@ export const textos = {
     sin_confirmar: "Se apretó enviar y no se pudo confirmar.",
     cancelado: "Se canceló la corrida antes de que saliera.",
     CANCELADO: "Se canceló la corrida antes de que saliera.",
+    LIMITE_USO:
+      "Claude se quedó sin cuota en esa máquina. Se pausó sola hasta que vuelva, y la repesca completa lo que faltó.",
+    MAQUINA_AUSENTE:
+      "La computadora dejó de dar señales a mitad de la corrida y su trabajo se cortó para que la corrida termine.",
+    VENCIDO: "La corrida pasó su límite de horas y se cerró lo que quedaba.",
   } as Record<string, string>,
 
   // Los nombres técnicos no se le muestran a nadie.

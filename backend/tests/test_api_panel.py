@@ -72,7 +72,14 @@ async def maquina_lista(base):
     alta = await vendedores.dar_de_alta(base, maquina="mac-rocio", nombre="Rocío")
     await base["vendedores"].update_one(
         {"maquina": "mac-rocio"},
-        {"$set": {"activo": True, "acepto_condiciones_en": datetime.now(UTC)}},
+        {
+            "$set": {
+                "activo": True,
+                "acepto_condiciones_en": datetime.now(UTC),
+                #  Prendida: sin latido reciente no entra a una corrida (D59).
+                "ultimo_latido": datetime.now(UTC),
+            }
+        },
     )
     return alta
 
@@ -136,7 +143,8 @@ async def test_el_estado_de_una_base_vacia_no_rompe(adentro) -> None:
 
 
 @sin_mongo
-async def test_una_maquina_sin_latido_se_ve_caida(adentro, maquina_lista) -> None:
+async def test_una_maquina_sin_latido_se_ve_caida(adentro, base, maquina_lista) -> None:
+    await base["vendedores"].update_one({"maquina": "mac-rocio"}, {"$set": {"ultimo_latido": None}})
     maquina = (await adentro.get("/api/estado")).json()["maquinas"][0]
     assert maquina["online"] is False
 
@@ -349,6 +357,8 @@ async def test_listar_corridas_trae_las_mas_nuevas_primero(adentro, base, maquin
     no tenía respuesta en ningún lado.
     """
     primera = (await adentro.post("/api/corridas", json={})).json()["id"]
+    #  Con la primera en curso no se larga otra (D59): se cancela antes.
+    await adentro.post(f"/api/corridas/{primera}/cancelar")
     segunda = (await adentro.post("/api/corridas", json={})).json()["id"]
 
     cuerpo = (await adentro.get("/api/corridas")).json()

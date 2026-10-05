@@ -57,7 +57,14 @@ async def maquina_activa(base, nombre: str = "mac-rocio"):
     alta = await vendedores.dar_de_alta(base, maquina=nombre, nombre="Rocío")
     await base["vendedores"].update_one(
         {"maquina": nombre},
-        {"$set": {"activo": True, "acepto_condiciones_en": datetime.now(UTC)}},
+        {
+            "$set": {
+                "activo": True,
+                "acepto_condiciones_en": datetime.now(UTC),
+                #  Prendida: sin latido reciente no entra a una corrida (D59).
+                "ultimo_latido": datetime.now(UTC),
+            }
+        },
     )
     return alta
 

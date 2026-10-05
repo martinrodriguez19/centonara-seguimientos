@@ -13,6 +13,8 @@ export type Maquina = {
   nombre: string;
   activo: boolean;
   pausada: boolean;
+  /** D60: pausada sola porque Claude se quedó sin cuota, hasta esta hora. `null` si no. */
+  sin_cuota_hasta: string | null;
   online: boolean;
   ultimo_latido: string | null;
   puede_enviar: boolean;
@@ -29,6 +31,14 @@ export type Maquina = {
    * simulado todos los envíos fallan con CHAT_NO_ABRE: verlo acá evita
    * diagnosticarlo entrando a la Mac. */
   modo_agente: string | null;
+  /** D63: cómo quedó la tarea del actualizador en esa máquina: "ok", "cada_hora" o "falla: …". */
+  horario_actualizador: string | null;
+  /** D64: hasta cuándo descansan las máquinas, si es la hora del descanso. `null` si no. */
+  descansando_hasta: string | null;
+  /** D64: se durmió en el descanso y todavía no la despertó el vendedor. Se ve "dormida", no "sin conexión". */
+  dormida: boolean;
+  /** D64: cómo le fue al agente con el descanso: "suspende" o "descansa_sin_suspender". */
+  descanso_estado: string | null;
   tope_diario: number;
   /** El avance del barrido histórico (D27), si esta máquina lo arrancó.
    * En una línea a propósito: el test de contrato lee estos tipos plano. */
@@ -45,6 +55,14 @@ export type Corrida = {
   modo: string;
   estado: string;
   maquinas: string[];
+  /** D59: las que no entraron al largar (sin señal de vida, pausadas o frenadas). Sólo en el detalle. */
+  maquinas_excluidas?: { maquina: string; motivo: "sin_latido" | "pausada" | "frenada" }[];
+  /** D59: las que dejaron de dar señales a mitad de corrida y se les cortó el trabajo. Sólo en el detalle. */
+  maquinas_ausentes?: { maquina: string; en: string }[];
+  /** D61: "repesca" en la corrida que largó la repesca. Sólo en el detalle. */
+  motivo?: string | null;
+  /** D61: lo que revisó la repesca antes de largar esta corrida. Sólo en el detalle. */
+  revision_del_dia?: RevisionDelDia["maquinas"] | null;
   creada_en: string;
   jobs: { total: number; pendientes: number } & Record<string, number>;
   terminada: boolean;
@@ -62,6 +80,10 @@ export type Estado = {
   ultima_corrida: Corrida | null;
   /** Cuándo arranca sola la próxima corrida (D51), o `null` si está apagada. */
   proxima_corrida: string | null;
+  /** Cuándo es la próxima repesca (D61), o `null` si está apagada. */
+  proxima_repesca: string | null;
+  /** Lo que encontró la repesca de hoy (D61), o `null` si hoy no corrió. */
+  revision_del_dia: RevisionDelDia | null;
   /** Si el pase único además aprieta enviar (D52). La banda lo grita. */
   envio_automatico: boolean;
   pausa_global: boolean;
@@ -75,6 +97,19 @@ export type Estado = {
    */
   destinos_abiertos: boolean;
   destinos_permitidos: number;
+};
+
+/** Cómo terminó el día cada máquina, según la repesca (D61). */
+export type ResultadoDelDia = "completa" | "sin_chats" | "sin_cuota" | "pausada" | "ausente" | "repescada";
+
+export type RevisionDelDia = {
+  cuando: string;
+  /** La corrida que largó para completar, si largó una. */
+  corrida_id: string | null;
+  /** Por qué no largó nada, cuando no largó: "completo", "pausa_global", "circuito_viejo", … */
+  sin_disparo: string | null;
+  // prettier-ignore
+  maquinas: { maquina: string; nombre: string; dejados: number; tope: number; resultado: ResultadoDelDia }[];
 };
 
 export type EtiquetaContacto = {
@@ -144,6 +179,19 @@ export type Configuracion = {
   etiquetas_contacto: EtiquetaContacto[];
   /** La corrida programada (D51): apagada de fábrica, en hora argentina. */
   programacion: { activa: boolean; hora: string; dias: number[] };
+  /** El techo de una corrida en horas (D59): lo que siga vivo después se cierra y la corrida termina. */
+  horas_max_corrida: number;
+  /** Cuánto se pausa una máquina sin cuota de Claude cuando el aviso no dice cuándo vuelve (D60). */
+  horas_pausa_cuota: number;
+  /** La repesca (D61): a esta hora revisa el día y completa lo que faltó. */
+  repesca: { activa: boolean; hora: string; dias: number[] };
+  /** La actualización programada (D63): las máquinas se actualizan sólo a esta hora. */
+  actualizacion: { activa: boolean; hora: string };
+  /** Hasta cuándo vale el "Actualizar ahora" (D63). */
+  actualizar_ya_hasta: string | null;
+  /** El descanso (D64): las noches de `dias` de `desde` a `hasta`, y los días libres enteros. */
+  // prettier-ignore
+  descanso: { activa: boolean; desde: string; hasta: string; dias: number[]; dia_libre: number[]; suspender: boolean };
   /**
    * El envío automático del pase único (D52): con el switch prendido, y sólo
    * dentro de la ventana horaria, la tanda además aprieta enviar.
@@ -415,6 +463,7 @@ export const editarMaquina = (
     reiniciar_barrido?: boolean;
     /** Borra el cursor de la ventana (D43): la próxima corrida vuelve al extremo viejo. */
     reiniciar_ventana?: boolean;
+    quitar_pausa_cuota?: boolean;
   },
 ) =>
   pedir<{ ok: boolean }>(`/vendedores/${maquina}`, conCuerpo("PATCH", cambios));
@@ -533,6 +582,10 @@ export const traerMetricas = (dias = 30) =>
 
 export const pausarSistema = (pausado: boolean) =>
   pedir<{ pausado: boolean }>("/sistema/pausa", conCuerpo("POST", { pausado }));
+
+/** D63: que todas las máquinas se actualicen ya, sin esperar su hora. */
+export const actualizarAhora = () =>
+  pedir<{ hasta: string }>("/sistema/actualizar-ahora", conCuerpo("POST", {}));
 
 // --- Configuración e historial ---------------------------------------------
 

@@ -65,7 +65,14 @@ async def maquina(base):
     alta = await vendedores.dar_de_alta(base, maquina="pc-1", nombre="Prueba")
     await base["vendedores"].update_one(
         {"maquina": "pc-1"},
-        {"$set": {"activo": True, "acepto_condiciones_en": datetime.now(UTC)}},
+        {
+            "$set": {
+                "activo": True,
+                "acepto_condiciones_en": datetime.now(UTC),
+                #  Prendida: sin latido reciente no entra a una corrida (D59).
+                "ultimo_latido": datetime.now(UTC),
+            }
+        },
     )
     await configuracion.actualizar(base, {"destinos_permitidos": [PERMITIDO, OTRO_PERMITIDO]})
     return alta
@@ -407,7 +414,7 @@ async def test_el_barrido_avanza_su_cursor_por_maquina(http, base, maquina) -> N
     siguiente lo lleva en el payload junto con los nombres para no repetir, y
     una tanda corta marca el barrido como completado."""
     await configuracion.actualizar(base, {"modo_lectura": "barrido"})
-    await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=2)
+    primera = await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=2)
 
     job = await tomar(http, maquina.token)
     assert job["tipo"] == "LISTAR"
@@ -444,7 +451,9 @@ async def test_el_barrido_avanza_su_cursor_por_maquina(http, base, maquina) -> N
     assert vendedor["barrido"]["ultima_tanda"] == ["El Mas Viejo", "El Siguiente"]
     assert vendedor["barrido"]["completado_en"] is None
 
-    # La corrida siguiente arranca donde terminó la anterior.
+    # La corrida siguiente arranca donde terminó la anterior. Las redacciones
+    # de la primera se cortan: con una corrida en curso no se larga otra (D59).
+    await corridas.cancelar(base, primera.corrida_id, quien="dueño")
     await corridas.disparar(base, quien="dueño", tipo="generacion", n_chats=2)
     listar2 = await base["jobs"].find_one({"tipo": "LISTAR", "estado": "pendiente"})
     assert listar2["payload"]["barrido_hasta_dias"] == 380

@@ -40,14 +40,18 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
     ahí» del 28/08. Un loop de asyncio dentro del proceso alcanza y no agrega
     dependencia.
 
+    Desde D59 cierra lo que dejan las máquinas sin latido y las corridas que
+    pasaron su techo, así una corrida termina siempre.
+
     Desde D51 también es el reloj de la corrida programada: cada vuelta
     pregunta si es la hora (`programacion.revisar`), y dispara a lo sumo una
-    vez por día. Cinco minutos de granularidad alcanzan para "a las 17".
+    vez por día. Cinco minutos de granularidad alcanzan para "a las 17". La
+    repesca de D61 usa el mismo reloj, con su propia marca diaria.
 
     Cada vuelta se protege sola: un hipo de Mongo se loguea y se vuelve a
     intentar en la próxima — el watchdog no puede ser otra cosa que se muere.
     """
-    from app.core import cola, mensajes, programacion
+    from app.core import cola, corridas, mensajes, programacion, repesca
 
     while True:
         await asyncio.sleep(intervalo_s)
@@ -55,13 +59,21 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
             base = db.obtener_base()
             recuperados = await cola.recuperar_colgados(base)
             vencidos = await mensajes.vencer_viejos(base)
+            # D59: antes de preguntar si toca la programada, que ninguna corrida
+            # quede abierta por una máquina apagada o por pasarse de su techo.
+            ausentes = await corridas.cerrar_ausentes(base)
+            largas = await corridas.vencer_largas(base)
             programada = await programacion.revisar(base)
-            if recuperados or vencidos or programada:
+            repescada = await repesca.revisar(base)
+            if recuperados or vencidos or ausentes or largas or programada or repescada:
                 log.info(
                     "mantenimiento_corrido",
                     recuperados=recuperados,
                     vencidos=vencidos,
+                    ausentes=ausentes,
+                    largas=largas,
                     programada=programada,
+                    repesca=repescada,
                 )
         except Exception as error:
             log.warning("mantenimiento_fallo", error=str(error), tipo=type(error).__name__)

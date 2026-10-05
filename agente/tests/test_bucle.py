@@ -29,6 +29,7 @@ class ClienteFalso:
         self._registro = registro or {"maquina": "mac-prueba", "pausada": False}
         self.reportes: list[dict] = []
         self.latidos = 0
+        self.horarios_mandados: list = []
         self.consultas = 0
         self.registros = 0
 
@@ -49,9 +50,10 @@ class ClienteFalso:
         self.reportes.append({"job_id": job_id, **datos})
         return {"estado": "listo"}
 
-    async def latido(self, diagnostico=None) -> dict:
+    async def latido(self, diagnostico=None, *, horario=None, descanso=None) -> dict:
         self.latidos += 1
-        return {"ok": True}
+        self.horarios_mandados.append(horario)
+        return {"ok": True, "horarios": {"disparadores": [], "actualizar_ya": False}}
 
 
 def sin_dormir():
@@ -359,7 +361,7 @@ async def test_un_latido_que_falla_no_rompe_nada_y_el_bucle_termina() -> None:
     """
 
     class LatidoRoto(ClienteFalso):
-        async def latido(self, diagnostico=None) -> dict:
+        async def latido(self, diagnostico=None, *, horario=None, descanso=None) -> dict:
             raise httpx.ConnectError("sin red")
 
     dormir, _ = sin_dormir()
@@ -455,7 +457,7 @@ async def test_el_latido_deja_la_marca_de_vida_aunque_no_llegue() -> None:
     marcas: list[int] = []
 
     class ClienteSinRed(ClienteFalso):
-        async def latido(self, diagnostico=None) -> dict:
+        async def latido(self, diagnostico=None, *, horario=None, descanso=None) -> dict:
             raise httpx.ConnectError("sin red")
 
     mandados = await latir(
@@ -467,3 +469,63 @@ async def test_el_latido_deja_la_marca_de_vida_aunque_no_llegue() -> None:
     )
     assert mandados == 0
     assert marcas == [1, 1, 1]
+
+
+# ---------------------------------------------------------------------------
+# Los horarios del panel (D63)
+# ---------------------------------------------------------------------------
+
+
+async def test_el_latido_entrega_la_respuesta_y_manda_como_quedo_el_horario() -> None:
+    cliente = ClienteFalso([])
+    recibidas: list[dict] = []
+
+    await latir(
+        cliente,
+        Estado(),
+        vueltas=2,
+        dormir=sin_dormir()[0],
+        al_responder=recibidas.append,
+        horario=lambda: "ok",
+    )
+
+    assert cliente.horarios_mandados == ["ok", "ok"]
+    assert recibidas[0]["horarios"] == {"disparadores": [], "actualizar_ya": False}
+
+
+async def test_sin_horario_no_manda_el_campo() -> None:
+    cliente = ClienteFalso([])
+    await latir(cliente, Estado(), vueltas=1, dormir=sin_dormir()[0])
+    assert cliente.horarios_mandados == [None]
+
+
+async def test_el_registro_entrega_los_horarios() -> None:
+    horarios = {"disparadores": [{"hora": "15:00", "dias": [1], "para": "actualizar"}]}
+    cliente = ClienteFalso(
+        [SinTrabajo()], registro={"maquina": "mac-prueba", "pausada": False, "horarios": horarios}
+    )
+    recibidos: list[dict] = []
+    bucle = Bucle(
+        cliente,
+        version="t",
+        diagnosticar=Diagnostico,
+        dormir=sin_dormir()[0],
+        al_horarios=recibidos.append,
+    )
+
+    await bucle.arrancar(vueltas=1)
+
+    assert recibidos == [horarios]
+
+
+async def test_un_backend_viejo_no_manda_horarios_y_no_pasa_nada() -> None:
+    recibidos: list[dict] = []
+    bucle = Bucle(
+        ClienteFalso([SinTrabajo()]),
+        version="t",
+        diagnosticar=Diagnostico,
+        dormir=sin_dormir()[0],
+        al_horarios=recibidos.append,
+    )
+    await bucle.arrancar(vueltas=1)
+    assert recibidos == []

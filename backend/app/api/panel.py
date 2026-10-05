@@ -27,10 +27,12 @@ from app.core import (
     configuracion,
     contactos,
     corridas,
+    horarios,
     mantenimiento,
     mensajes,
     metricas,
     programacion,
+    repesca,
     sesion,
     validacion,
     vendedores,
@@ -112,7 +114,12 @@ async def salir(respuesta: Response) -> dict[str, Any]:
 
 
 def _resumir_maquina(
-    vendedor: dict[str, Any], ahora: datetime, *, version_esperada: str = ""
+    vendedor: dict[str, Any],
+    ahora: datetime,
+    *,
+    version_esperada: str = "",
+    descanso_hasta: datetime | None = None,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Una máquina, como la necesita la pantalla.
 
@@ -134,6 +141,9 @@ def _resumir_maquina(
         "nombre": vendedor.get("nombre", ""),
         "activo": bool(vendedor.get("activo")),
         "pausada": vendedores.esta_pausada(vendedor, ahora=ahora),
+        # D60: pausada por el sistema porque Claude se quedó sin cuota. Va
+        # aparte de `pausada` para que el panel diga "sin cuota hasta las 21".
+        "sin_cuota_hasta": vendedores.sin_cuota_hasta(vendedor, ahora=ahora),
         "online": online,
         "ultimo_latido": latido,
         "puede_enviar": vendedores.puede_enviar(vendedor),
@@ -149,6 +159,18 @@ def _resumir_maquina(
         # `simulado` falla todos los envíos con CHAT_NO_ABRE: verlo acá evita
         # diagnosticarlo por ssh, como pasó el 26/08.
         "modo_agente": vendedor.get("modo_agente"),
+        # Cómo quedó la tarea del actualizador en esa máquina (D63): "ok",
+        # "cada_hora" o "falla: …". `None` en un agente viejo.
+        "horario_actualizador": vendedor.get("horario_actualizador"),
+        # D64: hasta cuándo descansa (las máquinas se duermen a la hora del
+        # descanso; sin esto el panel las mostraría "sin conexión"), si sigue
+        # dormida desde el descanso esperando al vendedor, y cómo le fue al
+        # agente: "suspende" o "descansa_sin_suspender".
+        "descansando_hasta": descanso_hasta,
+        "dormida": not online
+        and descanso_hasta is None
+        and horarios.dormida_desde_el_descanso(config or {}, latido, ahora),
+        "descanso_estado": vendedor.get("descanso_estado"),
         "tope_diario": vendedor.get("tope_diario", 20),
         # El avance del barrido histórico de esta máquina (D27), si arrancó.
         "barrido": vendedor.get("barrido"),
@@ -173,7 +195,13 @@ async def estado(
         config, repo=ajustes.repo_github, rama=ajustes.rama_agente, token=ajustes.github_token
     )
     maquinas = [
-        _resumir_maquina(v, ahora, version_esperada=esperada.sha)
+        _resumir_maquina(
+            v,
+            ahora,
+            version_esperada=esperada.sha,
+            descanso_hasta=horarios.descanso_hasta(config, ahora),
+            config=config,
+        )
         for v in await base["vendedores"].find({}).sort("maquina", 1).to_list(None)
     ]
 
@@ -191,6 +219,9 @@ async def estado(
         "corrida_en_curso": await corridas.en_curso(base),
         # La corrida programada (D51), si está prendida: la pantalla dice cuándo.
         "proxima_corrida": proxima,
+        # La repesca (D61): cuándo es la próxima, y qué encontró la de hoy.
+        "proxima_repesca": programacion.proxima(config.get("repesca") or {}, ahora=ahora),
+        "revision_del_dia": await repesca.ultima_revision(base, ahora=ahora),
         # El envío automático (D52): la banda de arriba lo tiene que gritar.
         "envio_automatico": bool(config.get("envio_automatico")),
         # También la terminada: cuando la generación acaba, la pantalla tiene
@@ -231,6 +262,9 @@ class CambioMaquina(Estricto):
     # Lo mismo para el cursor de la ventana (D43): la próxima corrida del más
     # viejo hacia hoy vuelve al extremo viejo de la ventana.
     reiniciar_ventana: bool | None = None
+    # D60: suelta la pausa por cuota antes de tiempo (por ejemplo, porque se
+    # cambió la cuenta de Claude de esa máquina).
+    quitar_pausa_cuota: bool | None = None
 
 
 @router.post("/vendedores", status_code=status.HTTP_201_CREATED)
@@ -282,6 +316,9 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
         cambios["tope_diario"] = cuerpo.tope_diario
     if cuerpo.pausado_hasta is not None:
         cambios["pausado_hasta"] = cuerpo.pausado_hasta
+    if cuerpo.quitar_pausa_cuota:
+        cambios["pausa_cuota_hasta"] = None
+
     if cuerpo.acepto_condiciones is not None:
         # Se registra cuándo, no un booleano: el día que alguien pregunte "¿desde
         # cuándo sabe?", la respuesta tiene que ser una fecha.
@@ -354,7 +391,7 @@ async def disparar_corrida(cuerpo: NuevaCorrida, _: Autenticado) -> dict[str, An
         disparo = await corridas.disparar(
             base, quien="panel", tipo=cuerpo.tipo, n_chats=cuerpo.n_chats
         )
-    except corridas.NoHayMaquinas as error:
+    except (corridas.NoHayMaquinas, corridas.CorridaEnCurso) as error:
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     except corridas.Pausado as error:
         raise HTTPException(status.HTTP_423_LOCKED, str(error)) from error
@@ -626,6 +663,25 @@ async def kill_switch(cuerpo: Pausa, _: Autenticado) -> dict[str, Any]:
     return {"pausado": cuerpo.pausado}
 
 
+@router.post("/sistema/actualizar-ahora")
+async def actualizar_ahora(_: Autenticado) -> dict[str, Any]:
+    """Que todas las máquinas se actualicen ya, sin esperar su hora (D63).
+
+    Abre la entrega de la versión nueva por un rato y cada agente vivo se
+    entera en su próximo latido: dispara su actualizador en ese momento.
+    """
+    base = db.obtener_base()
+    hasta = datetime.now(UTC) + timedelta(minutes=horarios.MINUTOS_ACTUALIZAR_YA)
+    await configuracion.abrir_actualizacion(base, hasta=hasta)
+    await auditoria.registrar(
+        base,
+        que=auditoria.Que.CONFIGURACION_CAMBIADA,
+        quien="panel",
+        detalle={"actualizar_ya_hasta": hasta.isoformat()},
+    )
+    return {"hasta": hasta}
+
+
 # ---------------------------------------------------------------------------
 # Entregar el sistema: vaciarlo
 # ---------------------------------------------------------------------------
@@ -756,12 +812,53 @@ class ProgramacionCambio(Estricto):
         return sorted(set(dias))
 
 
+class ActualizacionCambio(Estricto):
+    """La actualización programada (D63): prendida o no, y a qué hora argentina."""
+
+    activa: bool
+    hora: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+
+
+class DescansoCambio(Estricto):
+    """El descanso (D64): las noches de `dias` de `desde` a `hasta`, y los días libres."""
+
+    activa: bool
+    desde: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+    hasta: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
+    dias: Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(max_length=7)]
+    dia_libre: Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(max_length=7)]
+    suspender: bool
+
+    @field_validator("dias", "dia_libre")
+    @classmethod
+    def _ordenados_y_sin_repetir(cls, dias: list[int]) -> list[int]:
+        return sorted(set(dias))
+
+    @model_validator(mode="after")
+    def _que_tenga_sentido(self) -> DescansoCambio:
+        if self.desde == self.hasta:
+            raise ValueError("el descanso tiene que empezar y terminar a horas distintas")
+        if len(self.dia_libre) >= 7:
+            raise ValueError("con los siete días libres las máquinas no trabajarían nunca")
+        return self
+
+
 class CambioConfiguracion(Estricto):
     n_chats_por_defecto: Annotated[int | None, Field(ge=1, le=50)] = None
     # Las etiquetas del nombre del contacto (D50). Se reemplaza la lista entera.
     etiquetas_contacto: Annotated[list[EtiquetaCambio] | None, Field(max_length=20)] = None
     # La corrida programada (D51).
     programacion: ProgramacionCambio | None = None
+    # El techo de una corrida (D59). Menos de dos horas cortaría corridas sanas.
+    horas_max_corrida: Annotated[int | None, Field(ge=2, le=24)] = None
+    # Cuánto se pausa una máquina sin cuota cuando Claude no dice cuándo vuelve (D60).
+    horas_pausa_cuota: Annotated[int | None, Field(ge=1, le=24)] = None
+    # La repesca (D61): misma forma que la corrida programada.
+    repesca: ProgramacionCambio | None = None
+    # La actualización programada (D63).
+    actualizacion: ActualizacionCambio | None = None
+    # El descanso (D64).
+    descanso: DescansoCambio | None = None
     # El envío automático del pase único (D52). Se audita con antes/después.
     envio_automatico: bool | None = None
     # El horario de envío. Era fijo en el código; lo maneja el responsable.

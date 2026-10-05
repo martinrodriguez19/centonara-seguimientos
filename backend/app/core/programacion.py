@@ -37,6 +37,8 @@ log = obtener_logger(__name__)
 # una caída del backend a la hora justa; no cubre "a la noche".
 HORAS_DE_GRACIA = 2
 
+# La marca diaria de la corrida programada. Se llama así desde D51; la repesca
+# (D61) tiene la suya, `"repesca"`, en la misma colección.
 ID = "unica"
 
 
@@ -78,31 +80,37 @@ def proxima(programa: dict[str, Any], *, ahora: datetime) -> datetime | None:
     return None
 
 
-async def _tomar_el_dia(base, dia: str) -> bool:
+def minutos_desde_la_hora(programa: dict[str, Any], ahora: datetime) -> int:
+    """Cuántos minutos pasaron desde la hora del programa, hoy. Puro."""
+    local = ahora.astimezone(HUSO_COMERCIAL)
+    return local.hour * 60 + local.minute - _minutos(programa.get("hora") or "17:00")
+
+
+async def _tomar_el_dia(base, dia: str, *, marca: str = ID) -> bool:
     """La marca de "hoy ya se disparó". `True` sólo para quien la toma primero."""
     tomada = await base["programacion"].find_one_and_update(
-        {"_id": ID, "ultimo_dia": {"$ne": dia}},
+        {"_id": marca, "ultimo_dia": {"$ne": dia}},
         {"$set": {"ultimo_dia": dia, "tomado_en": datetime.now(UTC)}},
     )
     if tomada is not None:
         return True
     # No matcheó: o ya es de hoy, o el documento no existe todavía.
     try:
-        await base["programacion"].insert_one({"_id": ID, "ultimo_dia": dia})
+        await base["programacion"].insert_one({"_id": marca, "ultimo_dia": dia})
     except Exception:  # DuplicateKeyError: otro llegó primero, o ya era de hoy
         return False
     return True
 
 
-async def _saltear(base, *, motivo: str, ahora: datetime) -> str:
+async def _saltear(base, *, motivo: str, ahora: datetime, quien: str = "programacion") -> str:
     await auditoria.registrar(
         base,
         que=auditoria.Que.CORRIDA_PROGRAMADA_SALTEADA,
-        quien="programacion",
+        quien=quien,
         detalle={"motivo": motivo},
         ahora=ahora,
     )
-    log.warning("corrida_programada_salteada", motivo=motivo)
+    log.warning("corrida_programada_salteada", motivo=motivo, quien=quien)
     return f"salteada:{motivo}"
 
 
@@ -119,6 +127,10 @@ async def revisar(base, *, ahora: datetime | None = None) -> str | None:
     programa = config.get("programacion") or {}
     if not _toca(programa, momento):
         return None
+    from app.core import horarios
+
+    if horarios.en_descanso(config, momento):
+        return None  # D64: una corrida a la hora del descanso no sale
 
     dia = momento.astimezone(HUSO_COMERCIAL).strftime("%Y-%m-%d")
     if not await _tomar_el_dia(base, dia):

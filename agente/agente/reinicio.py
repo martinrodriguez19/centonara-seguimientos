@@ -104,15 +104,87 @@ def carpeta_logs_windows() -> Path:
     return (Path(base) if base else Path.home()) / "Centonara" / "logs"
 
 
-def _relanzar_en_windows(argumentos: list[str]) -> int:
-    """Un proceso hijo desacoplado, con la salida en el log, y este proceso se va.
+TAREA_AGENTE_WINDOWS = "Centonara Agente"
 
-    Vale igual para una PC instalada a mano (el agente corriendo en una
-    consola) y para una con la tarea programada: no depende de quién lo
-    arrancó. Si el hijo no se puede crear, se sale con `SALIDA_REINICIO` para
-    que la tarea —si la hay— lo reintente.
+
+def _hay_tarea_windows() -> bool:
+    import subprocess
+
+    try:
+        hecho = subprocess.run(
+            ["schtasks", "/Query", "/TN", TAREA_AGENTE_WINDOWS],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return hecho.returncode == 0
+
+
+def guion_del_relevo(pid: int) -> str:
+    """El PowerShell que espera a que este proceso termine y arranca la tarea (D62).
+
+    Reintenta un rato: entre que el agente sale y que la tarea pasa a *Ready*
+    hay un instante en que sigue *Running* (el `powershell` que lo envolvía
+    todavía no cerró), y con `-MultipleInstances IgnoreNew` un arranque en ese
+    instante se ignoraría.
+    """
+    tarea = TAREA_AGENTE_WINDOWS
+    return (
+        f"Wait-Process -Id {pid} -Timeout 120 -ErrorAction SilentlyContinue; "
+        "for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 2; "
+        f"if ((Get-ScheduledTask -TaskName '{tarea}').State -ne 'Running') "
+        f"{{ Start-ScheduledTask -TaskName '{tarea}'; break }} }}"
+    )
+
+
+def _relevar_con_la_tarea() -> bool:
+    """Deja lanzado el relevo y devuelve `True`; `False` si no se pudo."""
+    import subprocess
+
+    banderas = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+    )
+    try:
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                guion_del_relevo(os.getpid()),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=banderas,
+            close_fds=True,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        log.warning("relevo_no_lanzado", error=str(error)[:200])
+        return False
+    log.info("agente_relevado_por_la_tarea", tarea=TAREA_AGENTE_WINDOWS)
+    return True
+
+
+def _relanzar_en_windows(argumentos: list[str]) -> int:
+    """Que vuelva el agente con el código nuevo, y este proceso se va.
+
+    Con la tarea programada (lo normal desde el instalador), por el relevo de
+    D62: la tarea vuelve a arrancarlo y queda *Running*, dueña del proceso.
+    Antes se lanzaba un hijo desacoplado y la tarea quedaba *Ready*: si ese
+    hijo moría, nadie lo levantaba hasta el próximo inicio de sesión.
+
+    Sin tarea —una PC instalada a mano, el agente en una consola—, o si el
+    relevo no se pudo lanzar, el hijo desacoplado de siempre. Si tampoco se
+    puede, se sale con `SALIDA_REINICIO`.
     """
     import subprocess
+
+    if _hay_tarea_windows() and _relevar_con_la_tarea():
+        return 0
 
     try:
         carpeta = carpeta_logs_windows()

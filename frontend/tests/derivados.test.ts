@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  situacion,
   actividadDe,
   deHoy,
   dejadosHoy,
@@ -134,6 +135,11 @@ describe("juntarProblemas", () => {
     nombre: "Rocío",
     activo: true,
     pausada: false,
+    sin_cuota_hasta: null,
+    horario_actualizador: null,
+    descansando_hasta: null,
+    dormida: false,
+    descanso_estado: null,
     online: true,
     ultimo_latido: AHORA.toISOString(),
     puede_enviar: true,
@@ -180,5 +186,51 @@ describe("juntarProblemas", () => {
     const [antes] = juntarProblemas([alerta({ detalle: "3 envíos fallaron" })], []);
     const [despues] = juntarProblemas([alerta({ detalle: "5 envíos fallaron" })], []);
     expect(antes.firma).not.toBe(despues.firma);
+  });
+});
+
+describe("situacion: los estados de D60 y D64", () => {
+  const base: Maquina = {
+    maquina: "mac-rocio",
+    nombre: "Rocío",
+    activo: true,
+    pausada: false,
+    sin_cuota_hasta: null,
+    horario_actualizador: null,
+    descansando_hasta: null,
+    dormida: false,
+    descanso_estado: null,
+    online: true,
+    ultimo_latido: AHORA.toISOString(),
+    puede_enviar: true,
+    chequeos_fallando: [],
+    diagnostico: {},
+    version_agente: null,
+    version_esperada: null,
+    actualizada: null,
+    modo_agente: "operativo",
+    tope_diario: 20,
+  };
+
+  it("sin cuota es atención, no pausada a secas", () => {
+    const estado = situacion({ ...base, pausada: true, sin_cuota_hasta: "2026-10-03T00:10:00Z" });
+    expect(estado.nivel).toBe("atencion");
+    expect(estado.texto).toMatch(/^Sin cuota hasta /);
+  });
+
+  it("descansando no se ve como sin conexión", () => {
+    const estado = situacion({ ...base, online: false, descansando_hasta: "2026-10-03T11:00:00Z" });
+    expect(estado.nivel).toBe("neutro");
+    expect(estado.texto).toMatch(/^Descansando hasta /);
+  });
+
+  it("fuera del descanso, apagada sigue siendo sin conexión", () => {
+    expect(situacion({ ...base, online: false }).nivel).toBe("critico");
+  });
+
+  it("dormida desde el descanso no es sin conexión", () => {
+    const estado = situacion({ ...base, online: false, dormida: true });
+    expect(estado.nivel).toBe("neutro");
+    expect(estado.texto).toMatch(/^Dormida/);
   });
 });

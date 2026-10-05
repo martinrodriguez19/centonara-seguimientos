@@ -98,6 +98,28 @@ export function Resumen({
             </span>
           )}
         </Dato>
+        {/* D64: cómo le fue con el descanso. */}
+        {maquina.descanso_estado && (
+          <Dato nombre={textos.descanso.titulo}>
+            {textos.descanso.estadoEnMaquina[maquina.descanso_estado] ?? maquina.descanso_estado}
+          </Dato>
+        )}
+        {/* D63: si la computadora pudo pasar su actualizador a horario. */}
+        {maquina.horario_actualizador && (
+          <Dato nombre={textos.actualizacion.titulo}>
+            {maquina.horario_actualizador.startsWith("falla") ? (
+              <span>
+                <Pildora nivel="atencion">{textos.actualizacion.estadoFalla}</Pildora>
+                <span className="block text-xs text-muted-foreground">{maquina.horario_actualizador}</span>
+              </span>
+            ) : (
+              <span>
+                {textos.actualizacion.estadoEnMaquina[maquina.horario_actualizador] ??
+                  maquina.horario_actualizador}
+              </span>
+            )}
+          </Dato>
+        )}
       </Bloque>
 
       <Bloque titulo={t.hoy}>

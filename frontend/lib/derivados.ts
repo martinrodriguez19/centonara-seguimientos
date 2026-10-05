@@ -35,6 +35,11 @@ export function haceCuanto(iso: string | null, ahora: number = Date.now()): stri
   return `hace ${dias} ${dias === 1 ? "día" : "días"}`;
 }
 
+/** "21:10", en la hora de la computadora que mira (en el parque, Argentina). */
+export function horaCorta(iso: string): string {
+  return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+}
+
 /**
  * Cómo está una máquina, en una palabra y un nivel.
  *
@@ -43,6 +48,16 @@ export function haceCuanto(iso: string | null, ahora: number = Date.now()): stri
  */
 export function situacion(maquina: Maquina): { texto: string; nivel: Nivel } {
   if (!maquina.activo) return { texto: textos.maquina.inactiva, nivel: "neutro" };
+  // D64: de noche se duermen a propósito. Sin esto se verían "sin conexión".
+  if (maquina.descansando_hasta) {
+    return { texto: textos.descanso.descansandoHasta(horaCorta(maquina.descansando_hasta)), nivel: "neutro" };
+  }
+  // D64: se durmió en el descanso y la despierta el vendedor cuando llega.
+  if (maquina.dormida) return { texto: textos.descanso.dormida, nivel: "neutro" };
+  // D60: se pausó sola por falta de cuota de Claude. Vuelve sola: no es crítico.
+  if (maquina.sin_cuota_hasta) {
+    return { texto: textos.maquina.sinCuota(horaCorta(maquina.sin_cuota_hasta)), nivel: "atencion" };
+  }
   if (maquina.pausada) return { texto: textos.maquina.pausada, nivel: "neutro" };
   if (!maquina.online) return { texto: textos.maquina.offline, nivel: "critico" };
   if (maquina.chequeos_fallando.length > 0) {

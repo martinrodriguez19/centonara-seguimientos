@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useAvisos } from "@/components/ui/avisos-flotantes";
 import { Confirmacion } from "@/components/ui/dialogo";
 import { EsqueletoDeLista } from "@/components/ui/esqueleto";
-import { Pildora, type Nivel } from "@/components/ui/estado";
+import { Aviso, Pildora, type Nivel } from "@/components/ui/estado";
 import {
   Cuerpo,
   Encabezado,
@@ -134,6 +134,9 @@ export default function DetalleDeCorrida({
         <>
           {/* ⚠️ El modo, siempre visible. Mirando una corrida vieja, saber si
               quedaron borradores o salieron mensajes de verdad es lo primero. */}
+          {datos.motivo === "repesca" && (
+            <Pildora nivel="neutro">{textos.repesca.titulo}</Pildora>
+          )}
           <Pildora nivel={datos.modo === "real" ? "critico" : "neutro"}>
             {datos.modo === "real"
               ? textos.corrida.modoReal
@@ -161,6 +164,11 @@ export default function DetalleDeCorrida({
         id={id}
         frenada={frenada}
         puedeCancelar={!cancelada && datos.jobs.pendientes > 0}
+      />
+
+      <MaquinasAfuera
+        excluidas={datos.maquinas_excluidas ?? []}
+        ausentes={datos.maquinas_ausentes ?? []}
       />
 
       <section
@@ -470,4 +478,48 @@ function describirSalteos(
         `${cuantos} ${textos.corrida.motivosDeSalteo[motivo] ?? motivo}`,
     );
   return partes.length > 0 ? partes.join(", ") : String(salteados);
+}
+
+/**
+ * Las máquinas que no trabajaron en esta corrida, y por qué (D59).
+ *
+ * Una PC apagada ya no deja la corrida abierta: queda afuera, o se le corta el
+ * trabajo si se apaga a mitad. Sin este bloque, "faltó una máquina" se notaría
+ * recién contando borradores.
+ */
+function MaquinasAfuera({
+  excluidas,
+  ausentes,
+}: {
+  excluidas: { maquina: string; motivo: string }[];
+  ausentes: { maquina: string; en: string }[];
+}) {
+  const filas = [
+    ...excluidas.map((e) => ({
+      maquina: e.maquina,
+      porQue: textos.corrida.afueraMotivo[e.motivo] ?? e.motivo,
+    })),
+    ...ausentes.map((a) => ({
+      maquina: a.maquina,
+      porQue: textos.corrida.afueraAusente(
+        new Date(a.en).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+      ),
+    })),
+  ];
+  if (filas.length === 0) return null;
+  return (
+    <Aviso
+      nivel="atencion"
+      titulo={textos.corrida.afueraTitulo(filas.length)}
+      accion={textos.corrida.afueraAccion}
+    >
+      <ul className="list-disc space-y-0.5 pl-5">
+        {filas.map((f) => (
+          <li key={`${f.maquina}-${f.porQue}`}>
+            <span className="font-medium">{f.maquina}</span>: {f.porQue}
+          </li>
+        ))}
+      </ul>
+    </Aviso>
+  );
 }

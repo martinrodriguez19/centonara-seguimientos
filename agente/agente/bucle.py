@@ -107,6 +107,7 @@ class Bucle:
         modo: str = "",
         debe_reiniciar: Callable[[], bool] | None = None,
         al_registrar: Callable[[], None] | None = None,
+        al_horarios: Callable[[dict], None] | None = None,
     ) -> None:
         self._cliente = cliente
         self._version = version
@@ -127,6 +128,8 @@ class Bucle:
         # Qué hacer apenas el backend acepta el registro: el agente deja su
         # marca de vida para que el actualizador sepa que volvió.
         self._al_registrar = al_registrar
+        # D63: los horarios que manda el backend, para la tarea del actualizador.
+        self._al_horarios = al_horarios
         self.estado = Estado()
         self._parar = asyncio.Event()
 
@@ -169,6 +172,8 @@ class Bucle:
             )
             if self._al_registrar is not None:
                 self._al_registrar()
+            if self._al_horarios is not None and "horarios" in respuesta:
+                self._al_horarios(respuesta["horarios"])
         except NoAutorizado:
             self._token_rechazado()
         except (httpx.HTTPError, OSError) as error:
@@ -284,11 +289,16 @@ async def latir(
     dormir: Callable[[float], Awaitable[None]] | None = None,
     vueltas: int | None = None,
     al_latir: Callable[[], None] | None = None,
+    al_responder: Callable[[dict], None] | None = None,
+    horario: Callable[[], str | None] | None = None,
+    descanso: Callable[[], str | None] | None = None,
 ) -> int:
     """Manda un latido cada `intervalo`, en paralelo al bucle.
 
     `al_latir` corre en cada intento, llegue o no el latido: es la marca de
-    vida local (D46), y el proceso está vivo aunque la red no.
+    vida local (D46), y el proceso está vivo aunque la red no. `al_responder`
+    recibe lo que contestó el backend, y `horario` dice cómo quedó la tarea
+    del actualizador (D63).
 
     Existe para el caso pausado: ahí el agente no pregunta por trabajo, así que
     no hay consulta que valga como latido, y sin esto el panel mostraría en rojo
@@ -311,8 +321,16 @@ async def latir(
         if al_latir is not None:
             al_latir()
         try:
-            await cliente.latido(estado.diagnostico.a_dict())
+            respuesta = await cliente.latido(
+                estado.diagnostico.a_dict(),
+                horario=horario() if horario else None,
+                descanso=descanso() if descanso else None,
+            )
             mandados += 1
+            #  D63: los horarios vuelven en cada latido; un cambio en el panel
+            #  llega a la máquina en treinta segundos.
+            if al_responder is not None and isinstance(respuesta, dict):
+                al_responder(respuesta)
         except (httpx.HTTPError, OSError, NoAutorizado, Pausado) as error:
             log.debug("latido_fallido", error=str(error)[:120])
 

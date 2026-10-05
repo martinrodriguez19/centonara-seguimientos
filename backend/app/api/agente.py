@@ -12,6 +12,7 @@ cada 10 segundos, un `GET` alcanza y no depende de nadie.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -23,7 +24,9 @@ from app.core import (
     cola,
     configuracion,
     corridas,
+    cuota,
     generacion,
+    horarios,
     mensajes,
     pase_unico,
     vendedores,
@@ -85,6 +88,11 @@ class Registro(Estricto):
 
 class Latido(Estricto):
     diagnostico: dict[str, str] = Field(default_factory=dict)
+    # Cómo quedó la tarea del actualizador en esa máquina (D63): "ok", "cada_hora"
+    # o "falla: <motivo>". Un agente viejo no lo manda.
+    horario_actualizador: Annotated[str | None, Field(max_length=200)] = None
+    # Cómo le fue con el descanso (D64): "suspende" o "descansa_sin_suspender".
+    descanso: Annotated[str | None, Field(max_length=200)] = None
 
 
 class JobEntregado(BaseModel):
@@ -136,6 +144,9 @@ class RespuestaRegistro(BaseModel):
     activo: bool
     pausada: bool
     puede_enviar: bool
+    # D63: los disparadores que tiene que tener el actualizador de esta máquina,
+    # y si hay un "Actualizar ahora" vigente. Un agente viejo los ignora.
+    horarios: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -163,11 +174,13 @@ async def registrar(cuerpo: Registro, maquina: Maquina) -> RespuestaRegistro:
         version=cuerpo.version,
         modo=cuerpo.modo,
     )
+    config = await configuracion.obtener(db.obtener_base())
     return RespuestaRegistro(
         maquina=maquina["maquina"],
         activo=bool(maquina.get("activo")),
         pausada=vendedores.esta_pausada(maquina),
         puede_enviar=vendedores.puede_enviar(maquina),
+        horarios=horarios.para_agente(config, datetime.now(UTC)),
     )
 
 
@@ -188,8 +201,12 @@ async def proximo_job(maquina: Maquina):
     """
     base = db.obtener_base()
 
-    if await configuracion.esta_pausado(base):
+    config = await configuracion.obtener(base)
+    if config.get("pausa_global"):
         raise HTTPException(status.HTTP_423_LOCKED, "pausa global")
+    if horarios.en_descanso(config, datetime.now(UTC)):
+        # D64: de noche no se trabaja. El latido le dice al agente hasta cuándo.
+        raise HTTPException(status.HTTP_423_LOCKED, "descanso")
 
     if vendedores.esta_pausada(maquina):
         raise HTTPException(status.HTTP_423_LOCKED, "máquina pausada")
@@ -339,6 +356,14 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
             except Exception as error:
                 log.error("encadenado_fallo", mensaje=str(mensaje_id), error=str(error)[:300])
 
+    if cuerpo.codigo == cola.Codigo.LIMITE_USO:
+        # D60: sin cuota de Claude. Va después de procesar la tanda —lo que se
+        # alcanzó a dejar queda registrado— y nunca rompe el reporte.
+        try:
+            await cuota.registrar(base, maquina=maquina["maquina"], detalle=cuerpo.detalle)
+        except Exception as error:
+            log.error("cuota_no_registrada", job=job_id, error=str(error)[:300])
+
     if reporte.frena_corrida:
         # El DOM de WhatsApp cambió: los envíos siguientes tienen exactamente el
         # mismo problema. Frenar todo es más barato que gastar intentos y
@@ -355,11 +380,25 @@ async def reportar_resultado(job_id: str, cuerpo: ResultadoJob, maquina: Maquina
 
 @router.post("/latido")
 async def latido(cuerpo: Latido, maquina: Maquina) -> dict[str, Any]:
-    """Cada 30 segundos, para que el panel sepa que sigue viva."""
+    """Cada 30 segundos, para que el panel sepa que sigue viva.
+
+    La respuesta lleva los horarios (D63): si alguien los cambia en el panel,
+    la máquina se entera en el próximo latido.
+    """
+    base = db.obtener_base()
     await vendedores.registrar_latido(
-        db.obtener_base(), maquina["maquina"], diagnostico=cuerpo.diagnostico
+        base,
+        maquina["maquina"],
+        diagnostico=cuerpo.diagnostico,
+        horario_actualizador=cuerpo.horario_actualizador,
+        descanso=cuerpo.descanso,
     )
-    return {"ok": True, "pausada": vendedores.esta_pausada(maquina)}
+    config = await configuracion.obtener(base)
+    return {
+        "ok": True,
+        "pausada": vendedores.esta_pausada(maquina),
+        "horarios": horarios.para_agente(config, datetime.now(UTC)),
+    }
 
 
 @router.get("/version-esperada")
@@ -374,6 +413,17 @@ async def version_esperada(
     respuesta es la misma para todas las máquinas; el token sólo autentica.
     """
     config = await configuracion.obtener(db.obtener_base())
+    # D63: fuera de la ventana del día, "no se sabe qué toca" — el actualizador
+    # instalado ya sale sin tocar nada con un sha vacío. De noche, tampoco (D64).
+    ahora = datetime.now(UTC)
+    if not horarios.toca_actualizar(config, ahora):
+        return {
+            "sha": "",
+            "origen": "descanso" if horarios.en_descanso(config, ahora) else "fuera_de_horario",
+            "repo": ajustes.repo_github,
+            "rama": ajustes.rama_agente,
+            "maquina": maquina["maquina"],
+        }
     esperada = await versiones.esperada(
         config, repo=ajustes.repo_github, rama=ajustes.rama_agente, token=ajustes.github_token
     )

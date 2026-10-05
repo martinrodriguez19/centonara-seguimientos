@@ -1340,6 +1340,218 @@ se suma a la consulta.
 
 ---
 
+### D59 — Una máquina que no da señales queda afuera, y una corrida siempre termina *(02/10/2026; revisa D51 en parte; es el 3.4 de PLAN-INSTALACION)*
+
+**Contexto.** `maquinas_disponibles` no miraba el latido: una PC apagada recibía su job "por si
+se prende más tarde". Un job `pendiente` no vence nunca, y "terminada" es "no queda nada
+pendiente": una sola máquina apagada dejaba la corrida en curso hasta que alguien apretara
+Cancelar, y la programada del día siguiente se salteaba por `corrida_en_curso`. La del 29/09
+estuvo 21 h así. El dueño pide que la máquina que no está quede afuera y que la corrida termine
+para poder largar otra. Además lo necesitan la repesca (D61) y la pausa por cuota (D60): las dos
+suponen que una corrida termina.
+
+**Opciones.** (a) Seguir esperando y avisar más fuerte: es lo de hoy, y la alerta no destraba
+nada. (b) Excluir sólo al largar: no cubre la PC que se apaga a mitad de corrida. (c) Tres capas
+—al largar, durante, y un techo—, que es lo elegido.
+
+**Decisión.**
+1. **Al largar**, entran sólo las máquinas con latido de los últimos `MINUTOS_SIN_LATIDO` (10,
+   el mismo número que la alerta `maquina_caida`). Las que quedan afuera se anotan en la corrida
+   (`maquinas_excluidas`, con motivo `sin_latido`, `pausada` o `frenada`); las inactivas no se
+   anotan, porque nunca estuvieron en juego.
+2. **Durante**, cada vuelta del mantenimiento mira las corridas con trabajo vivo: si una máquina
+   lleva `MINUTOS_AUSENTE` (20) sin latido, sus jobs `pendiente`/`tomado` pasan a
+   `fallido/MAQUINA_AUSENTE` y se anota en `maquinas_ausentes`. Un agente ocupado en una tanda
+   larga no cuenta: el latido corre en paralelo cada 30 s.
+3. **Techo**: a las `horas_max_corrida` (5, editable) de largada, lo que quede vivo pasa a
+   `fallido/VENCIDO`. Cubre lo que las otras dos no ven: un agente vivo con un job trabado.
+4. Los mensajes de los envíos cortados se resuelven como en `cancelar` (D31): `ENVIANDO` —y
+   `EN_ESPERA` si la corrida ya estaba enviando— pasan a `DESCARTADO`. Una corrida que se queda
+   sin trabajo vivo pasa a `terminada`; una `frenada` por el techo, también (y se suelta el freno
+   de sus máquinas, como al cancelar).
+5. `disparar` rechaza con `CorridaEnCurso` (409) si hay otra corrida en curso. Hasta hoy sólo lo
+   impedía el botón del panel; con dos disparadores automáticos (17 h y repesca) la guarda va en
+   el backend.
+6. Alerta `maquina_fuera_de_corrida` (aviso): la última corrida dejó afuera o cortó a una máquina
+   **y** sigue sin latido. Se apaga sola cuando la máquina vuelve.
+7. `MAQUINA_AUSENTE` y `VENCIDO` no cuentan para `maquina_falla_siempre`, igual que `CANCELADO`:
+   no son fallas de lo que la máquina hizo.
+
+**Consecuencias.** Se revisa la frase de D51 "un job para una Mac apagada la espera": ya no la
+espera. Una PC que vuelve después no retoma nada viejo; entra en la próxima corrida (o en la
+repesca de D61) con su presupuesto del día intacto.
+
+**Qué la revertiría.** Máquinas que trabajen sin latido (no existe hoy), o corridas legítimas de
+más de cinco horas — ahí se sube el techo desde el panel, no se saca.
+
+---
+
+### D60 — Sin tokens de Claude, la máquina se pausa sola hasta que vuelvan *(02/10/2026; rehace el D38 de la rama que se perdió)*
+
+**Contexto.** Con cinco máquinas, quedarse sin cuota de Claude Code es esperable. Hoy no se
+reconoce: sale como `ERROR_INESPERADO`, se reintenta tres veces en un minuto y medio y el job queda
+`fallido`, sin que nadie espere a que la cuota vuelva. El `LIMITE_USO` que se había escrito el
+29/08 vivía en la rama `trabajo-local-limite-uso`, que ya no existe. El dueño pide que el sistema
+se apague solo y vuelva a las 3–4 horas.
+
+**Decisión.**
+1. El agente reconoce la cuota agotada por texto —sólo en los caminos de falla: código de salida
+   distinto de cero, o el sobre JSON con `is_error`— y devuelve `LIMITE_USO`. Si el texto dice
+   cuándo vuelve (`…|<epoch>`, `resets 9pm`, `resets Oct 6, 9am`), lo convierte a una hora UTC y
+   la manda como `detalle.reinicia_en`. Si no lo dice, no inventa.
+2. `LIMITE_USO` no se reintenta. Al recibirlo, el backend pausa **esa máquina** con un campo
+   propio, `pausa_cuota_hasta` = el reinicio + 10 min, o `horas_pausa_cuota` (4, editable) si no
+   vino o vino absurdo (en el pasado o a más de 8 días). No pisa el `pausado_hasta` del dueño.
+3. Los otros jobs vivos de esa máquina se cierran también como `LIMITE_USO`, y no se activa el
+   respaldo del pase único: la máquina no va a tomar nada durante la pausa, y dejarlos vivos
+   tendría la corrida abierta hasta el techo de D59. **La corrida termina con las demás**; lo que
+   faltó lo completa la repesca (D61).
+4. Mientras dura la pausa, el agente recibe 423 y espera de a 60 s: no gasta un token. Al vencer
+   no arranca nada solo.
+5. Por máquina, no global: cada máquina tiene su sesión de Claude. Si dos comparten cuenta, la
+   segunda se entera en su próximo job, y eso cuesta una llamada fallida.
+6. Se ve en el panel: estado "Sin cuota hasta HH:MM" (distinto de "Pausada"), un botón para
+   quitar la pausa, y una alerta de nivel **aviso** —no urgente: el sistema se recupera solo, y
+   una urgente que no pide hacer nada enseña a ignorarlas.
+
+**Qué la revertiría.** Que la cuota sea de una cuenta compartida por todas: ahí conviene pausar
+el sistema entero al primer aviso.
+
+---
+
+### D61 — La repesca: una segunda vuelta que revisa el día y completa lo que faltó *(02/10/2026)*
+
+**Contexto.** Nada verifica que cada máquina haya hecho su trabajo: los topes son techos, no
+metas. Con D60 una máquina sin cuota deja su parte sin hacer a propósito, y con D59 una PC
+apagada queda afuera. El dueño pide una corrida extra, a la hora que elija, que revise si se hizo
+el trabajo completo y complete lo que falte, enviando si el cliente lo decidió.
+
+**Decisión.**
+1. `repesca: {activa, hora, dias}` en la configuración (apagada de fábrica, 21:00, lunes a
+   sábado). La dispara el mismo reloj de D51, con su propia marca diaria en `programacion`
+   (`_id: "repesca"`; la de la corrida conserva `"unica"`, sin migración).
+2. **Lo que tenía que hacer** cada máquina es `tope_diario_borradores` en el día argentino, contado
+   como siempre (`borradores_dejados_hoy`). Cada máquina queda en una de: `completa`,
+   `sin_chats` (su última tanda de hoy terminó en `fin_de_ventana` o `tanda_vacia`: hizo todo lo
+   que había), `sin_cuota`, `pausada`, `ausente` o `repescada`.
+3. Las `repescada` entran a una corrida de generación normal, **sólo ellas**. No hay número nuevo:
+   el presupuesto del pase único ya resta lo dejado hoy, así que una máquina que dejó 14 de 20
+   hace 6.
+4. **Envía si el cliente lo decidió**, con la misma regla que la corrida de las 17: envío
+   automático prendido y dentro de la ventana de envío. Fuera de la ventana deja borradores; el
+   panel lo avisa al guardar la hora.
+5. Si a la hora hay una corrida en curso, la repesca espera dentro de su gracia (2 h) sin tomar
+   el día; en los últimos 10 minutos de la gracia toma el día y queda salteada en la auditoría.
+6. El resumen queda en la auditoría (`repesca_revisada`) y en la corrida que lanzó
+   (`revision_del_dia`), y el inicio del panel lo muestra. Si después de la repesca una máquina
+   repescada sigue corta sin que su última tanda diga por qué, aviso.
+7. Sólo para el pase único: en el circuito viejo (`modo_borrador: playwright`) no hay presupuesto
+   por máquina y repetir la corrida duplicaría trabajo. Ahí la repesca revisa y lo dice, pero no
+   larga nada.
+
+**Qué la revertiría.** Que el volumen deje de medirse contra el tope diario (D39).
+
+---
+
+### D62 — Windows no queda "Ready": la tarea vuelve a ser dueña del agente, y el actualizador lo revive antes de la corrida *(02/10/2026; resuelve el 3.6 de PLAN-INSTALACION)*
+
+**Contexto.** En Windows, al ver una versión nueva el agente lanzaba un hijo desacoplado y salía
+con 0: la tarea "Centonara Agente" quedaba *Ready* y dejaba de ser dueña del proceso. Si ese hijo
+moría, nadie lo levantaba hasta el próximo inicio de sesión. Hay una PC en ese estado. El dueño
+pide que se active solo 15 minutos antes de la corrida, sin ir a la máquina ni abrir una terminal.
+
+**Opciones para la causa.** (a) Salir con 75 y confiar en el `-RestartCount` de la tarea: lo
+proponía el 3.6, pero el reintento de la tarea depende de que Windows cuente esa salida como
+falla, y si no lo hace el agente queda muerto. (b) **Un relevo**: antes de irse, el agente lanza
+un PowerShell oculto que espera a que este proceso termine y arranca la tarea. Elegida: no depende
+de cómo interprete Windows el código de salida, y la tarea queda *Running* con el agente adentro.
+
+**Decisión.**
+1. En Windows, con la tarea "Centonara Agente" presente, el agente se relanza por el relevo. Sin
+   tarea (una PC instalada a mano) sigue como hasta ahora, con un hijo desacoplado.
+2. El actualizador, en cada vuelta, empieza por mirar si el agente está vivo —`vivo.json` de
+   menos de 2 minutos; el agente lo refresca cada 30 s aunque no haya red— y si no lo está lo
+   arranca con la tarea (Windows) o `launchctl kickstart` (Mac). Decide por la señal de vida y no
+   por el estado de la tarea. No lo hace con `--sin-verificar` (la corrida del instalador, que
+   todavía no arrancó nada) ni durante el descanso (D64).
+3. Las vueltas que importan son las de 15 minutos antes de la corrida y de la repesca (D63). No
+   hay revisión cada 15 minutos.
+4. Llega solo: es código del agente y de `actualizar.py`, que se copia a sí mismo en cada
+   actualización.
+
+**Qué la revertiría.** Que el relevo no pueda arrancar la tarea en alguna PC (políticas de
+PowerShell). Ahí queda el hijo desacoplado y el actualizador como red.
+
+---
+
+### D63 — El actualizador corre a horario: una vez por día para actualizar, y antes de la corrida para revisar *(02/10/2026; revisa D45 y D46 en el "cada hora")*
+
+**Contexto.** El actualizador se despierta al iniciar sesión y cada hora, en las cinco máquinas.
+El dueño pide que actualice una vez por día a una hora fija (15:00) y que nada de esto requiera
+tocar las computadoras.
+
+**Decisión.**
+1. `actualizacion: {activa, hora, forzar_hasta}` en la configuración (apagada de fábrica, 15:00).
+   Con `activa`, `version-esperada` sólo entrega la versión nueva dentro de `[hora, hora + 2 h)`
+   o mientras `forzar_hasta` no venció; fuera de eso contesta `sha: ""` con
+   `origen: "fuera_de_horario"`, y el actualizador instalado —el de hoy, sin cambios— sale sin
+   tocar nada. **Esa parte funciona con el deploy del backend solo.**
+2. El backend manda los horarios en el registro y en cada latido. El agente los copia a su máquina:
+   reescribe los disparadores de la tarea del actualizador (Windows, `Set-ScheduledTask`, permiso
+   de usuario porque se registró con `-RunLevel Limited`) o el `StartCalendarInterval` de su plist
+   (Mac, `LaunchAgent` del usuario; se recarga ese servicio, no el del agente). Quedan cuatro
+   disparadores: al iniciar sesión, a la hora de actualizar, y 15 minutos antes de la corrida y
+   de la repesca, los días de cada una.
+3. Con la actualización programada apagada, el agente deja la tarea como la dejó el instalador
+   (cada hora). Si reprogramar falla, la deja como estaba y lo reporta en su latido
+   (`horario_actualizador`), visible en el detalle de la máquina.
+4. "Actualizar ahora" en el panel abre la entrega por 70 minutos y le avisa a cada agente vivo en
+   su latido (`actualizar_ya`); el agente dispara la tarea del actualizador en ese momento.
+5. La alerta de máquina desactualizada deja de esperar 2 h desde que cambió la versión: con la
+   actualización programada, espera al fin de la ventana del día.
+
+**Consecuencias.** Las horas del panel son argentinas; el agente las convierte a la hora de la
+máquina (Argentina no tiene horario de verano, así que es un corrimiento fijo).
+
+**Qué la revertiría.** Una máquina que no deje reprogramar su tarea: queda cada hora, que es lo de
+antes y anda.
+
+---
+
+### D64 — De noche y los domingos las máquinas descansan: el agente las suspende y las despierta el vendedor *(02/10/2026)*
+
+**Contexto.** Las máquinas están configuradas para no suspenderse nunca y quedan prendidas 24/7.
+El dueño pide que descansen de noche y los domingos, que lo haga el agente, y que nada pida ir a
+la máquina ni abrir una terminal. Sobre despertarlas: **no hace falta que se despierten solas, el
+vendedor lo hace cuando llega al negocio.**
+
+**Opciones.** (a) Apagar: el agente y el Chrome del vendedor arrancan al iniciar sesión, y apagada
+obliga a prenderla e iniciar sesión. (b) Descanso sin suspender: no trabaja, pero sigue prendida.
+(c) **Suspender**: conserva la sesión, el Chrome y WhatsApp; el vendedor la despierta con mover el
+mouse. Elegida (c), con (b) a un switch de distancia. Se descartó programar un despertar
+automático (tarea con `-WakeToRun` en Windows, `pmset repeat` con contraseña en Mac): el dueño no
+lo necesita, y en Mac pedía contraseña de administrador.
+
+**Decisión.**
+1. `descanso: {activa, desde, hasta, dias, dia_libre, suspender}` (apagado de fábrica; 00:00 a
+   08:00 las noches de lunes a sábado; domingo libre). Con los valores de fábrica la máquina
+   descansa del domingo 00:00 al lunes 08:00 seguido.
+2. Durante el descanso el backend contesta 423 a `/jobs/proximo`, `version-esperada` contesta
+   `sha: ""`, no disparan ni la corrida ni la repesca, y el latido manda `descanso_hasta`.
+3. El agente, sin job en curso, deja `~/.centonara/estado/descanso.json` (el guardián de D62 no lo
+   revive mientras tanto) y suspende: `rundll32 powrprof.dll,SetSuspendState` en Windows,
+   `pmset sleepnow` en Mac — ninguno pide administrador. Una vez por descanso: si alguien la
+   despierta a mano a la noche, no la vuelve a dormir.
+4. El panel muestra "Descansando hasta…" durante el descanso y "Dormida: la despierta el
+   vendedor" después, en vez de "Sin conexión", para la máquina que se calló durante el descanso.
+   **Una hora antes de la corrida programada**, si sigue dormida, alerta urgente: si nadie la
+   despierta, D59 la deja afuera.
+
+**Qué la revertiría.** Máquinas que no vuelvan de la suspensión con WhatsApp sano. Ahí queda el
+descanso sin suspender, apagando "Suspender" en el panel.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

@@ -28,6 +28,9 @@ const CONFIG = {
   destinos_permitidos: ["+5491144405036"],
   ventana: { inicio: "09:00", fin: "19:00", dias: [1, 2, 3, 4, 5] },
   programacion: { activa: false, hora: "17:00", dias: [1, 2, 3, 4, 5] },
+  repesca: { activa: false, hora: "21:00", dias: [1, 2, 3, 4, 5, 6] },
+  horas_pausa_cuota: 4,
+  descanso: { activa: false, desde: "00:00", hasta: "08:00", dias: [1, 2, 3, 4, 5, 6], dia_libre: [7], suspender: true },
   pausa_entre_envios_s: [45, 180],
 } as unknown as Configuracion;
 
@@ -91,5 +94,43 @@ describe("envío automático", () => {
     );
     await userEvent.click(await screen.findByRole("button", { name: /deshacer/i }));
     await waitFor(() => expect(guardar).toHaveBeenLastCalledWith({ programacion: CONFIG.programacion }));
+  });
+
+  it("con envío automático, una repesca fuera del horario avisa que sólo deja borradores", () => {
+    montar({ ...CONFIG, envio_automatico: true });
+    expect(screen.getByText(/a las 21:00 la repesca sólo deja borradores/i)).toBeInTheDocument();
+  });
+
+  it("una repesca dentro del horario de envío no avisa nada", () => {
+    montar({
+      ...CONFIG,
+      envio_automatico: true,
+      repesca: { activa: true, hora: "18:00", dias: [1, 2, 3, 4, 5] },
+    } as Configuracion);
+    expect(screen.queryByText(/sólo deja borradores/i)).not.toBeInTheDocument();
+  });
+
+  it("sin envío automático no hay nada que avisar", () => {
+    montar(CONFIG);
+    expect(screen.queryByText(/sólo deja borradores/i)).not.toBeInTheDocument();
+  });
+
+  it("avisa si la corrida automática cae dentro del descanso", () => {
+    montar({
+      ...CONFIG,
+      programacion: { activa: true, hora: "17:00", dias: [1, 2, 3, 4, 5, 6, 7] },
+      descanso: { ...CONFIG.descanso, activa: true },
+    } as Configuracion);
+    //  El domingo es día libre: la corrida de ese día no sale.
+    expect(screen.getByText(/la corrida automática cae dentro del descanso/i)).toBeInTheDocument();
+  });
+
+  it("una corrida de lunes a sábado a las 17 no choca con el descanso de fábrica", () => {
+    montar({
+      ...CONFIG,
+      programacion: { activa: true, hora: "17:00", dias: [1, 2, 3, 4, 5, 6] },
+      descanso: { ...CONFIG.descanso, activa: true },
+    } as Configuracion);
+    expect(screen.queryByText(/cae dentro del descanso/i)).not.toBeInTheDocument();
   });
 });

@@ -118,10 +118,22 @@ class Cliente:
         self._revisar(respuesta)
         return respuesta.json()
 
-    async def latido(self, diagnostico: dict[str, str] | None = None) -> dict[str, Any]:
-        respuesta = await self._http.post(
-            "/api/agente/latido", json={"diagnostico": diagnostico or {}}
-        )
+    async def latido(
+        self,
+        diagnostico: dict[str, str] | None = None,
+        *,
+        horario: str | None = None,
+        descanso: str | None = None,
+    ) -> dict[str, Any]:
+        cuerpo: dict[str, Any] = {"diagnostico": diagnostico or {}}
+        #  D63 y D64: sólo si hay algo que decir. Un backend anterior rechaza
+        #  campos que no conoce, y el agente sólo los llena después de que el
+        #  backend le mandó horarios — o sea, de que los conoce.
+        if horario is not None:
+            cuerpo["horario_actualizador"] = horario
+        if descanso is not None:
+            cuerpo["descanso"] = descanso
+        respuesta = await self._http.post("/api/agente/latido", json=cuerpo)
         self._revisar(respuesta)
         return respuesta.json()
 

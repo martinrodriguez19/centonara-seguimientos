@@ -44,7 +44,14 @@ async def base(monkeypatch):
     await vendedores.dar_de_alta(db_prueba, maquina="mac-rocio", nombre="Rocío")
     await db_prueba["vendedores"].update_one(
         {"maquina": "mac-rocio"},
-        {"$set": {"activo": True, "acepto_condiciones_en": datetime.now(UTC)}},
+        {
+            "$set": {
+                "activo": True,
+                "acepto_condiciones_en": datetime.now(UTC),
+                #  Prendida: sin latido reciente no entra a una corrida (D59).
+                "ultimo_latido": datetime.now(UTC),
+            }
+        },
     )
     await configuracion.actualizar(
         db_prueba,

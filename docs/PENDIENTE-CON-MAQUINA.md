@@ -579,3 +579,46 @@ alcanza.
       celular, pestaña Windows, y copiar el comando de instalar con el botón: tiene que pegarse
       entero, en una línea, en la PowerShell.
 
+
+---
+
+## H — Horarios, cuota, repesca y descanso (D59–D64) · **2 de octubre de 2026**
+
+Todo está implementado y probado sin máquinas (`PLAN-HORARIOS-CUOTA-Y-REPESCA.md`). **Nada de
+esto pide ir a una computadora ni abrir una terminal**: se mira en el panel. Orden de deploy, el de
+siempre: backend primero, panel después; los agentes llegan solos con el actualizador.
+
+Lo que se prende en el panel (todo nace apagado):
+
+- [ ] **H0 — Prender**, en este orden y de a uno, mirando un día entero entre cada paso:
+      (1) Ajustes → Sistema → **Actualización programada** a las 15:00;
+      (2) Ajustes → Automático → **Repesca** a las 21:00, lunes a sábado;
+      (3) la **corrida automática** sólo lunes a sábado (hoy dice los siete días; el panel avisa
+      que el domingo choca con el descanso);
+      (4) Ajustes → Automático → **Descanso**, primero con "Suspender" apagado una noche, y
+      después prendido.
+
+Lo que hay que ver después:
+
+- [ ] **H1 — Máquinas apagadas (D59).** Con una máquina apagada, largar una corrida: no entra, el
+      detalle de la corrida dice "no daba señales", y la corrida termina con las demás. El techo de
+      5 horas se ve en Ajustes → Seguridad.
+- [ ] **H2 — El texto real de "sin cuota" (D60).** La próxima vez que una máquina se quede sin
+      tokens, el job tiene que decir `LIMITE_USO` y la máquina "Sin cuota hasta HH:MM". **Si en
+      cambio sale `ERROR_INESPERADO`**, copiar el motivo desde Errores: es el texto que Claude
+      imprime en esa cuenta, y se agrega a `agente/agente/jobs/cuota.py` (`FRASES`).
+- [ ] **H3 — La repesca (D61).** A las 21:00, el inicio muestra "Cómo terminó el día" con cada
+      máquina; a una que quedó corta le larga una corrida sólo a ella, por lo que le faltaba.
+- [ ] **H4 — Windows "Ready" (D62).** Después de la primera actualización con el relevo, la tarea
+      "Centonara Agente" tiene que quedar *Running* (lo ve quien tenga la PC delante; en el panel,
+      la máquina sigue conectada). Y si el agente se cae, a las 16:45 la vuelve a levantar sola.
+- [ ] **H5 — Horario del actualizador (D63).** En el detalle de cada máquina, "Actualización
+      programada: Se actualiza a horario". Si alguna dice "No pudo cambiar su horario", el motivo
+      está ahí mismo; esa máquina sigue buscando cada hora (que anda igual).
+- [ ] **H6 — El descanso (D64).** La primera noche con "Suspender": a las 00:00 las máquinas se
+      duermen (en el panel, "Descansando hasta 08:00"); a la mañana se ven "Dormida: la despierta
+      el vendedor" hasta que el vendedor mueve el mouse. Si a las 16:00 alguna sigue dormida, el
+      panel lo avisa como urgente.
+- [ ] **H7 — WhatsApp después de dormir.** La primera mañana después de un descanso con
+      suspensión, la corrida de las 17 tiene que dejar borradores normalmente. Si WhatsApp Web
+      quedó desconectado después de dormir, se apaga "Suspender" en el panel (D64 lo prevé).

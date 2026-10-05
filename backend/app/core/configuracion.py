@@ -212,6 +212,35 @@ POR_DEFECTO: dict[str, Any] = {
     # La corrida programada (D51): apagada de fábrica, en hora argentina. El
     # deploy no dispara nada hasta que alguien la prenda desde el panel.
     "programacion": {"activa": False, "hora": "17:00", "dias": [1, 2, 3, 4, 5, 6, 7]},
+    # El techo de una corrida (D59): a estas horas de largada, lo que siga vivo
+    # se cierra como VENCIDO y la corrida termina. Holgado frente a una corrida
+    # sana (seis tandas de ~35 min); lo que corta es una corrida trabada.
+    "horas_max_corrida": 5,
+    # Cuánto se pausa una máquina sin cuota de Claude cuando el aviso no dice
+    # a qué hora vuelve (D60). Si lo dice, manda el aviso.
+    "horas_pausa_cuota": 4,
+    # La actualización programada (D63): con `activa`, las máquinas reciben la
+    # versión nueva sólo a esta hora (y su actualizador deja de despertarse cada
+    # hora). Apagada de fábrica: el deploy no cambia nada.
+    "actualizacion": {"activa": False, "hora": "15:00"},
+    # Hasta cuándo vale el "Actualizar ahora" del panel (D63). Lo escribe ese
+    # botón, no el PATCH de la configuración.
+    "actualizar_ya_hasta": None,
+    # El descanso (D64): las noches de `dias` de `desde` a `hasta`, y los días
+    # de `dia_libre` enteros, las máquinas no trabajan; con `suspender`, el
+    # agente además suspende la computadora y la despierta a la hora de fin.
+    # Apagado de fábrica.
+    "descanso": {
+        "activa": False,
+        "desde": "00:00",
+        "hasta": "08:00",
+        "dias": [1, 2, 3, 4, 5, 6],
+        "dia_libre": [7],
+        "suspender": True,
+    },
+    # La repesca (D61): a esta hora revisa qué hizo cada máquina hoy y le larga
+    # una corrida sólo a la que le faltó. Apagada de fábrica; domingo no.
+    "repesca": {"activa": False, "hora": "21:00", "dias": [1, 2, 3, 4, 5, 6]},
     # El envío automático del pase único (D52): con el switch prendido, y sólo
     # dentro de la ventana horaria, la tanda además aprieta enviar. Apagado de
     # fábrica; su cambio se audita con antes/después, como `destinos_permitidos`.
@@ -368,6 +397,15 @@ async def esta_pausado(base) -> bool:
     """El kill switch. Mientras esté puesto, no se entrega ningún job."""
     configuracion = await obtener(base)
     return bool(configuracion.get("pausa_global"))
+
+
+async def abrir_actualizacion(base, *, hasta: datetime) -> None:
+    """El "Actualizar ahora" del panel (D63): entrega la versión nueva hasta `hasta`."""
+    await base["configuracion"].update_one(
+        {"_id": ID},
+        {"$set": {"actualizar_ya_hasta": hasta, "actualizado_en": datetime.now(UTC)}},
+        upsert=True,
+    )
 
 
 async def pausar(base, *, pausado: bool, quien: str) -> None:
