@@ -14,7 +14,7 @@ job, a la vista en el panel, para sumarlo acá.
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # En minúsculas. Lo que Claude Code imprime al quedarse sin cuota en sus
@@ -113,15 +113,23 @@ def reinicio(texto: str, *, ahora: datetime | None = None) -> datetime | None:
     return candidato.astimezone(UTC)
 
 
-def _zona(nombre: str | None, momento: datetime) -> tzinfo:
-    """La zona que nombra el aviso, o la de la máquina.
+# Las zonas que se reconocen sin base de husos. En Windows `zoneinfo` no trae
+# `tzdata` y no sabe ninguna; éstas son las que pueden aparecer en el parque.
+# Argentina no tiene horario de verano: un corrimiento fijo es exacto.
+_ARGENTINA = timezone(timedelta(hours=-3))
+_CONOCIDAS: dict[str, tzinfo] = {"utc": UTC, "gmt": UTC, "etc/utc": UTC, "z": UTC}
 
-    En Windows `zoneinfo` puede no tener base de husos (falta `tzdata`): ahí se
-    usa la de la máquina, que en el parque es la misma Argentina.
-    """
+
+def _zona(nombre: str | None, momento: datetime) -> tzinfo:
+    """La zona que nombra el aviso, o la de la máquina si no se la conoce."""
     if nombre:
+        limpio = nombre.strip()
+        if limpio.lower() in _CONOCIDAS:
+            return _CONOCIDAS[limpio.lower()]
+        if limpio.startswith(("America/Argentina", "America/Buenos_Aires")):
+            return _ARGENTINA
         try:
-            return ZoneInfo(nombre.strip())
+            return ZoneInfo(limpio)
         except (ZoneInfoNotFoundError, ValueError):
             pass
     return momento.tzinfo or UTC

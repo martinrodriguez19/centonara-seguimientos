@@ -108,6 +108,27 @@ def test_con_la_zona_entre_parentesis() -> None:
     assert vuelve == datetime(2026, 10, 3, 21, 0, tzinfo=UTC)
 
 
+def test_la_zona_de_argentina_se_reconoce_sin_base_de_husos() -> None:
+    """En Windows no hay `tzdata`: Argentina y UTC tienen que andar igual."""
+    vuelve = cuota.reinicio(
+        "resets 9pm (America/Argentina/Buenos_Aires)", ahora=AHORA.astimezone(UTC)
+    )
+    assert vuelve == datetime(2026, 10, 2, 21, 0, tzinfo=ARGENTINA).astimezone(UTC)
+
+
+def test_sin_base_de_husos_una_zona_desconocida_usa_la_de_la_maquina(monkeypatch) -> None:
+    def sin_tzdata(nombre: str):
+        raise cuota.ZoneInfoNotFoundError(nombre)
+
+    monkeypatch.setattr(cuota, "ZoneInfo", sin_tzdata)
+    vuelve = cuota.reinicio("resets 9pm (Europe/Madrid)", ahora=AHORA)
+    assert vuelve == datetime(2026, 10, 2, 21, 0, tzinfo=ARGENTINA).astimezone(UTC)
+    #  Y UTC sigue siendo UTC.
+    assert cuota.reinicio("resets 9pm (UTC)", ahora=AHORA) == datetime(
+        2026, 10, 3, 21, 0, tzinfo=UTC
+    )
+
+
 def test_una_zona_que_no_existe_usa_la_de_la_maquina() -> None:
     vuelve = cuota.reinicio("resets 9pm (Marte/Olympus)", ahora=AHORA)
     assert vuelve == datetime(2026, 10, 2, 21, 0, tzinfo=ARGENTINA).astimezone(UTC)
