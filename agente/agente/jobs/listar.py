@@ -37,7 +37,7 @@ MAX_CHATS = 50
 # Qué significa cada motivo que el prompt puede devolver, en códigos de la cola.
 MOTIVOS = {
     "sesion_no_iniciada": "SESION_CAIDA",
-    "browser_no_disponible": "ERROR_INESPERADO",
+    "browser_no_disponible": "NAVEGADOR_AUSENTE",
 }
 
 # Y qué quiere decir para quien mira el panel. Un `browser_no_disponible` a

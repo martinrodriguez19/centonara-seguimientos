@@ -609,11 +609,13 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
     """
     cliente = Cliente(config.backend_url, config.token)
 
-    # El deviceId en caliente (D47): el .env, lo memorizado, o el perfil de
-    # Chrome ahora mismo. Se vuelve a preguntar en cada job y en cada
-    # diagnóstico, así una máquina instalada sin él se pone en verde sola.
+    # El deviceId en caliente (D47, D66): el perfil de Chrome ahora mismo, y si
+    # no lo tiene, el .env o lo memorizado. Se vuelve a preguntar en cada job y
+    # en cada diagnóstico, así una máquina cuyo Chrome cambió se corrige sola.
     def device_id() -> str:
-        return perfiles.resolver_device_id(config.device_id, perfil_dir=config.chrome_perfil_dir)
+        return perfiles.resolver_device_id(
+            config.device_id, perfil_dir=config.chrome_perfil_dir, fijo=config.device_id_fijo
+        )
 
     # La marca de vida (D46): al registrarse y en cada latido. Es lo que el
     # actualizador mira para saber si el agente estaba vivo y si volvió.

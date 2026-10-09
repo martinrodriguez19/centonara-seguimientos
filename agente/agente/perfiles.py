@@ -54,24 +54,40 @@ class Perfil:
         return self.tiene_extension and self.tiene_whatsapp
 
 
+def _numero(archivo: Path) -> int:
+    """El número de un archivo de LevelDB (`000012.ldb` → 12): más alto, más nuevo."""
+    return int(archivo.stem) if archivo.stem.isdigit() else -1
+
+
 def _device_id_de(carpeta: Path) -> str | None:
-    """El `bridgeDeviceId` que la extensión guardó en este perfil."""
+    """El `bridgeDeviceId` que la extensión guardó **último** en este perfil.
+
+    LevelDB no reescribe: agrega. Un id viejo sobrevive en los `.ldb` hasta que
+    se compacta, y si la extensión se reinstaló conviven los dos (D66). Por eso
+    se recorren los archivos del más viejo al más nuevo —el número los ordena,
+    sea `.ldb` o `.log`— y dentro de cada uno todas las apariciones, y gana la
+    última.
+    """
     almacen = carpeta / "Local Extension Settings" / EXTENSION
     if not almacen.is_dir():
         return None
-    for archivo in sorted(almacen.glob("*.log")) + sorted(almacen.glob("*.ldb")):
+    archivos = sorted(
+        [*almacen.glob("*.ldb"), *almacen.glob("*.log")], key=lambda a: (_numero(a), a.name)
+    )
+    ultimo = None
+    for archivo in archivos:
         try:
             datos = archivo.read_bytes()
         except OSError:
             continue
         marca = datos.find(b"bridgeDeviceId")
-        if marca == -1:
-            continue
-        # El valor va justo después de la clave. Se acota la ventana para no
-        # agarrar un UUID de otra cosa que esté más adelante en el archivo.
-        if encontrado := _UUID.search(datos[marca : marca + 120].decode("latin-1")):
-            return encontrado.group(0)
-    return None
+        while marca != -1:
+            # El valor va justo después de la clave. Se acota la ventana para no
+            # agarrar un UUID de otra cosa que esté más adelante en el archivo.
+            if encontrado := _UUID.search(datos[marca : marca + 120].decode("latin-1")):
+                ultimo = encontrado.group(0)
+            marca = datos.find(b"bridgeDeviceId", marca + 1)
+    return ultimo
 
 
 def _tiene_whatsapp(carpeta: Path) -> bool:
@@ -186,9 +202,15 @@ def recomendar(perfiles: list[Perfil] | None = None) -> Recomendacion:
 # por eso, con el dato ya escrito en el disco por la extensión.
 #
 # Ahora se resuelve cuando hace falta —al arrancar, y otra vez cuando llega un
-# job— con tres fuentes en orden: el `.env`, lo que se memorizó la última vez,
-# y el perfil de Chrome ahora mismo. Lo que se encuentra en el perfil se
-# memoriza fuera del repositorio, porque el `.env` lo reescribe el instalador.
+# job—. Lo que se encuentra en el perfil se memoriza fuera del repositorio,
+# porque el `.env` lo reescribe el instalador.
+#
+# D66 dio vuelta el orden. D47 ponía el `.env` y lo memorizado antes que el
+# disco, y una extensión reinstalada o un Chrome que cambió de perfil dejaba a
+# la máquina buscando para siempre un id que ya no existe: mac-sofia falló así
+# todas las corridas de octubre. Ahora manda el disco —sólo puede tener el id de
+# este Chrome, aunque la cuenta de Claude sea compartida— y el `.env` y lo
+# memorizado quedan para cuando el disco no dice nada.
 
 ARCHIVO_DEVICE_ID = "device_id"
 
@@ -199,29 +221,58 @@ def _memoria(casa: Path | None) -> Path:
     return carpeta_estado(casa) / ARCHIVO_DEVICE_ID
 
 
-def resolver_device_id(configurado: str, *, perfil_dir: str, casa: Path | None = None) -> str:
-    """El deviceId de esta máquina, o vacío si todavía no existe en ningún lado."""
-    if configurado.strip():
-        return configurado.strip()
+def _del_disco(perfil_dir: str) -> str | None:
+    """El id que la extensión tiene escrito, en el perfil que se va a usar."""
+    todos = listar()
+    propio = next((p for p in todos if p.nombre == perfil_dir), None)
+    #  El configurado, si es un perfil que sirve: es el que se abre.
+    if propio is not None and propio.sirve and propio.device_id:
+        return propio.device_id
+    #  Si no, el que recomienda `recomendar`, que es lo que hace el instalador:
+    #  el .env puede decir Default y la extensión vivir en Profile 3.
+    recomendado = recomendar(todos)
+    if recomendado.perfil is not None and recomendado.perfil.device_id:
+        return recomendado.perfil.device_id
+    #  Y si nada sirve entero, lo que tenga el configurado, aunque sea a medias.
+    return propio.device_id if propio is not None else None
+
+
+def resolver_device_id(
+    configurado: str, *, perfil_dir: str, casa: Path | None = None, fijo: bool = False
+) -> str:
+    """El deviceId de esta máquina, o vacío si todavía no existe en ningún lado.
+
+    `fijo` (`AGENTE_DEVICE_ID_FIJO`) devuelve al orden de D47: el `.env` primero.
+    """
+    configurado = configurado.strip()
+    if fijo and configurado:
+        return configurado
 
     memoria = _memoria(casa)
     try:
         memorizado = memoria.read_text(encoding="utf-8").strip()
     except OSError:
         memorizado = ""
-    if _UUID.fullmatch(memorizado):
-        return memorizado
+    if not _UUID.fullmatch(memorizado):
+        memorizado = ""
 
-    carpeta = carpeta_chrome() / perfil_dir
-    encontrado = _device_id_de(carpeta) if carpeta.is_dir() else None
+    encontrado = _del_disco(perfil_dir)
     if encontrado is None:
-        #  El perfil configurado puede no ser el que tiene la extensión: se mira
-        #  el que recomienda `recomendar`, que es lo que hace el instalador.
-        recomendado = recomendar()
-        encontrado = recomendado.perfil.device_id if recomendado.perfil else None
-    if encontrado is None:
-        return ""
-    #  Memorizar es cortesía: si no se puede escribir, igual se usa lo hallado.
-    with contextlib.suppress(OSError):
-        memoria.write_text(encontrado + "\n", encoding="utf-8")
+        return configurado or memorizado
+
+    if encontrado != memorizado:
+        #  Una vez por cambio, no en cada job: lo memorizado ya es el nuevo.
+        anterior = memorizado or configurado
+        if anterior and anterior != encontrado:
+            _avisar_cambio(anterior, encontrado)
+        #  Memorizar es cortesía: si no se puede escribir, igual se usa lo hallado.
+        with contextlib.suppress(OSError):
+            memoria.write_text(encontrado + "\n", encoding="utf-8")
     return encontrado
+
+
+def _avisar_cambio(anterior: str, nuevo: str) -> None:
+    """Queda en el log: es la explicación de "ayer no andaba y hoy sí"."""
+    from agente.logging import obtener_logger
+
+    obtener_logger(__name__).warning("device_id_cambiado", anterior=anterior, nuevo=nuevo)

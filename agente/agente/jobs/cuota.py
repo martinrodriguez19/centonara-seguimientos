@@ -20,19 +20,24 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 # En minúsculas. Lo que Claude Code imprime al quedarse sin cuota en sus
 # distintas versiones: "Claude AI usage limit reached|<epoch>", "5-hour limit
 # reached ∙ resets 9pm", "You've hit your limit · resets 3pm", "Weekly limit
-# reached", "Credit balance is too low".
+# reached", "Credit balance is too low", "You've hit your session limit ·
+# resets 10:30pm" (D65, mac-lautaro, 03/10).
 #
 # ⚠️ No está `rate_limit_error` suelto: un 429 de la API puede ser un límite por
 # minuto, que pasa solo, y pausar la máquina cuatro horas por eso sería peor
-# que reintentar.
+# que reintentar. Un 429 cuenta sólo si dice a qué hora vuelve (`_CON_429`).
 FRASES = (
     "usage limit",
     "limit reached",
     "hit your limit",
+    "hit your session limit",
+    "session limit reached",
     "reached your limit",
     "out of extra usage",
     "credit balance is too low",
 )
+
+_CON_429 = re.compile(r'"api_error_status"\s*:\s*429\b')
 
 _EPOCH = re.compile(r"\|(\d{10})\b")
 _RESETS = re.compile(
@@ -68,7 +73,11 @@ _MESES = {
 def agotada(texto: str) -> bool:
     """¿Este texto es el aviso de cuota agotada de Claude Code?"""
     bajo = texto.lower()
-    return any(frase in bajo for frase in FRASES)
+    if any(frase in bajo for frase in FRASES):
+        return True
+    # D65: el texto cambia antes que el sobre. Un 429 que trae la hora de
+    # reinicio es cuota aunque la frase sea nueva; uno por minuto no la trae.
+    return bool(_CON_429.search(texto)) and _RESETS.search(texto) is not None
 
 
 def reinicio(texto: str, *, ahora: datetime | None = None) -> datetime | None:

@@ -83,7 +83,7 @@ def construir(
                     log.error("chrome_del_vendedor_no_disponible", detalle=listo.detalle)
                     return {
                         "ok": False,
-                        "codigo": "ERROR_INESPERADO",
+                        "codigo": "NAVEGADOR_AUSENTE",
                         "detalle": {
                             "motivo": (
                                 "no se pudo abrir el Chrome de esta máquina, que es donde "
@@ -117,7 +117,7 @@ def construir(
                     log.error("chrome_del_vendedor_no_disponible", detalle=listo.detalle)
                     return {
                         "ok": False,
-                        "codigo": "ERROR_INESPERADO",
+                        "codigo": "NAVEGADOR_AUSENTE",
                         "detalle": {
                             "motivo": (
                                 "no se pudo abrir el Chrome de esta máquina, que es donde "

@@ -191,7 +191,16 @@ def test_todo_problema_trae_su_solucion(chrome) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_el_env_manda_sobre_todo(chrome, tmp_path) -> None:
+def test_el_disco_le_gana_al_env(chrome, tmp_path) -> None:
+    """D66: mac-sofia buscó en octubre un id del .env que su Chrome ya no tenía."""
+    uuid = "11111111-1111-1111-1111-111111111111"
+    armar(chrome, "Default", extension=True, whatsapp=True, device_id=uuid)
+    assert (
+        perfiles.resolver_device_id("  viejo-del-env ", perfil_dir="Default", casa=tmp_path) == uuid
+    )
+
+
+def test_con_device_id_fijo_vuelve_a_mandar_el_env(chrome, tmp_path) -> None:
     armar(
         chrome,
         "Default",
@@ -200,9 +209,60 @@ def test_el_env_manda_sobre_todo(chrome, tmp_path) -> None:
         device_id="11111111-1111-1111-1111-111111111111",
     )
     assert (
-        perfiles.resolver_device_id("  configurado-en-env ", perfil_dir="Default", casa=tmp_path)
+        perfiles.resolver_device_id(
+            "  configurado-en-env ", perfil_dir="Default", casa=tmp_path, fijo=True
+        )
         == "configurado-en-env"
     )
+
+
+def test_si_el_disco_no_dice_nada_vale_el_env(chrome, tmp_path) -> None:
+    armar(chrome, "Default", extension=True, whatsapp=True)
+    assert (
+        perfiles.resolver_device_id("configurado-en-env", perfil_dir="Default", casa=tmp_path)
+        == "configurado-en-env"
+    )
+
+
+def test_el_disco_le_gana_a_lo_memorizado_y_lo_reemplaza(chrome, tmp_path) -> None:
+    viejo = "33333333-3333-3333-3333-333333333333"
+    nuevo = "55555555-5555-5555-5555-555555555555"
+    memoria = tmp_path / ".centonara" / "estado"
+    memoria.mkdir(parents=True)
+    (memoria / "device_id").write_text(viejo + "\n", "utf-8")
+    armar(chrome, "Default", extension=True, whatsapp=True, device_id=nuevo)
+
+    assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == nuevo
+    assert (memoria / "device_id").read_text("utf-8").strip() == nuevo
+
+
+def test_el_cambio_se_avisa_una_sola_vez(chrome, tmp_path, monkeypatch) -> None:
+    avisos = []
+    monkeypatch.setattr(perfiles, "_avisar_cambio", lambda a, n: avisos.append((a, n)))
+    nuevo = "55555555-5555-5555-5555-555555555555"
+    armar(chrome, "Default", extension=True, whatsapp=True, device_id=nuevo)
+
+    for _ in range(3):
+        perfiles.resolver_device_id("viejo-del-env", perfil_dir="Default", casa=tmp_path)
+
+    assert avisos == [("viejo-del-env", nuevo)]
+
+
+def test_en_el_almacen_gana_la_ultima_escritura(chrome) -> None:
+    """LevelDB agrega: el id viejo sobrevive en un .ldb hasta compactar (D66)."""
+    carpeta = armar(chrome, "Default", extension=True, whatsapp=True)
+    almacen = carpeta / "Local Extension Settings" / EXTENSION
+    almacen.mkdir(parents=True)
+    viejo = b"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    medio = b"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    nuevo = b"cccccccc-cccc-cccc-cccc-cccccccccccc"
+    (almacen / "000005.ldb").write_bytes(b'bridgeDeviceId&"' + viejo + b'"\x00')
+    (almacen / "000009.log").write_bytes(
+        b'bridgeDeviceId&"' + medio + b'"\x00otra\x00bridgeDeviceId&"' + nuevo + b'"'
+    )
+    (almacen / "000007.ldb").write_bytes(b'bridgeDeviceId&"' + medio + b'"\x00')
+
+    assert perfiles.listar()[0].device_id == nuevo.decode()
 
 
 def test_sin_env_lo_busca_en_el_perfil_y_lo_memoriza(chrome, tmp_path) -> None:
@@ -214,7 +274,7 @@ def test_sin_env_lo_busca_en_el_perfil_y_lo_memoriza(chrome, tmp_path) -> None:
     assert memoria.read_text("utf-8").strip() == uuid
 
 
-def test_lo_memorizado_vale_aunque_el_perfil_ya_no_lo_tenga(chrome, tmp_path) -> None:
+def test_lo_memorizado_vale_si_el_perfil_ya_no_lo_tiene(chrome, tmp_path) -> None:
     uuid = "33333333-3333-3333-3333-333333333333"
     memoria = tmp_path / ".centonara" / "estado"
     memoria.mkdir(parents=True)

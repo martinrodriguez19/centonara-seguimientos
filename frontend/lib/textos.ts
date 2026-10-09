@@ -605,6 +605,8 @@ export const textos = {
     MAQUINA_AUSENTE:
       "La computadora dejó de dar señales a mitad de la corrida y su trabajo se cortó para que la corrida termine.",
     VENCIDO: "La corrida pasó su límite de horas y se cerró lo que quedaba.",
+    NAVEGADOR_AUSENTE:
+      "El Chrome de esa máquina no estaba conectado a Claude: cerrado, en otro perfil o sin la extensión. No se reintentó para no gastar de más.",
   } as Record<string, string>,
 
   // Los nombres técnicos no se le muestran a nadie.

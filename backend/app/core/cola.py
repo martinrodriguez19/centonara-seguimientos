@@ -124,6 +124,11 @@ class Codigo(StrEnum):
     VENCIDO = "VENCIDO"
     """El techo de la corrida (D59): pasaron `horas_max_corrida` desde que se
     largó y el job seguía vivo. Lo escribe el mantenimiento."""
+    NAVEGADOR_AUSENTE = "NAVEGADOR_AUSENTE"
+    """El Chrome con la extensión de Claude no estaba conectado (D66). No se
+    reintenta: el segundo y el tercer intento le pagaban al modelo para volver
+    a descubrir lo mismo. El agente ya buscó el perfil correcto antes de
+    reportarlo."""
 
     @property
     def reintenta(self) -> bool:
@@ -164,6 +169,7 @@ _NO_SE_REINTENTAN = frozenset(
         Codigo.LIMITE_USO,
         Codigo.MAQUINA_AUSENTE,
         Codigo.VENCIDO,
+        Codigo.NAVEGADOR_AUSENTE,
     }
 )
 

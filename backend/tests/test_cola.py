@@ -56,6 +56,8 @@ AHORA = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
         Codigo.SIN_CONFIRMAR,
         Codigo.SELECTOR_ROTO,
         Codigo.CANCELADO,
+        # D66: el segundo intento le pagaba al modelo para descubrir lo mismo.
+        Codigo.NAVEGADOR_AUSENTE,
     ],
 )
 def test_lo_que_nunca_se_reintenta(codigo: Codigo) -> None:

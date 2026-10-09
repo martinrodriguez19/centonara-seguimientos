@@ -55,7 +55,7 @@ MAX_NO_ESCRIBIR_EN_LISTA = 120
 
 MOTIVOS_DE_ERROR = {
     "sesion_no_iniciada": "SESION_CAIDA",
-    "browser_no_disponible": "ERROR_INESPERADO",
+    "browser_no_disponible": "NAVEGADOR_AUSENTE",
     #  ⚠️ El que no puede pasar desapercibido: un texto quedó ENVIADO en vez de
     #  como borrador. No se reintenta —reintentar sería arriesgar otro— y el
     #  código propio lo hace visible en el panel y en los logs.
@@ -329,7 +329,7 @@ async def dejar_borradores(
         # Problema #5 del MVP: con más de un Chrome conectado a la cuenta,
         # headless elige cualquiera — y puede ser el WhatsApp de otra persona.
         return Resultado(
-            False, "ERROR_INESPERADO", {"motivo": "sin deviceId: no se sabe a qué Chrome ir"}
+            False, "NAVEGADOR_AUSENTE", {"motivo": "sin deviceId: no se sabe a qué Chrome ir"}
         )
 
     minimo = max(0, int(antiguedad_min_dias))

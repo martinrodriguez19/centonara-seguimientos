@@ -238,6 +238,15 @@ async def test_la_sesion_caida_se_reporta_como_siempre() -> None:
     assert (await correr(invocador)).codigo == "SESION_CAIDA"
 
 
+async def test_sin_el_chrome_de_la_extension_es_navegador_ausente() -> None:
+    """D66: no se reintenta. Antes salía ERROR_INESPERADO y se pagaba tres veces."""
+    invocador = responde({"run_id": RUN, "status": "error", "motivo": "browser_no_disponible"})
+    resultado = await correr(invocador)
+
+    assert resultado.codigo == "NAVEGADOR_AUSENTE"
+    assert "Chrome" in resultado.detalle["motivo"]
+
+
 # ---------------------------------------------------------------------------
 # Lo que viaja en el prompt: las listas son datos (R3)
 # ---------------------------------------------------------------------------

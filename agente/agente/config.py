@@ -92,6 +92,9 @@ class Configuracion(BaseSettings):
     # Fijo por máquina. Sin esto, con más de un Chrome abierto headless no sabe
     # a cuál conectarse (problema #5 del MVP). Lo verifica el chequeo `device_id`.
     device_id: str = Field("", validation_alias="AGENTE_DEVICE_ID")
+    # D66: el que la extensión tiene escrito en el disco le gana al del .env. Con
+    # esto en 1 vuelve a mandar el .env, para el perfil raro donde el disco mienta.
+    device_id_fijo: bool = Field(False, validation_alias="AGENTE_DEVICE_ID_FIJO")
 
     # Ruta COMPLETA al ejecutable: `shutil.which("claude")` devolvía None
     # (problema #2 del MVP). Lo verifica el chequeo `claude_bin`.

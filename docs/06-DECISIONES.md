@@ -1552,6 +1552,88 @@ descanso sin suspender, apagando "Suspender" en el panel.
 
 ---
 
+### D65 — Una sola cuenta de Claude: la cuota se reconoce mejor, pausa a todas y, al volver, se reintenta *(09/10/2026; revisa D60.4, D60.5 y D61.2)*
+
+**Contexto.** Diagnóstico del 09/10: entre el 03 y el 09/10, 5 de 13 borradores fallidos fueron por
+cuota. mac-lautaro recibió "You've hit your session limit · resets 10:30pm" (`api_error_status`
+429), que ninguna frase de D60 reconoce: salió `ERROR_INESPERADO`, tres intentos y la máquina sin
+pausar. Cuando sí se reconoce (mac-thomas, "out of extra usage"), la pausa dura hasta las 22:40
+y la repesca de las 21:00 saltea a propósito a la máquina `sin_cuota`: el trabajo del día no se
+completa nunca. Y la cuenta de Claude **es una sola para todas las máquinas** —cada una ve los
+Chrome de las demás—; el dueño confirma que sigue así, con una cuenta enterprise. Es lo que D60
+dejó escrito como causa para revertir su punto 5.
+
+**Decisión.**
+1. *(sprint 1)* Se reconoce también "session limit", y un sobre con `"api_error_status": 429`
+   cuyo texto dice a qué hora vuelve (`resets …`). Un 429 por minuto no trae hora de reinicio, así
+   que la advertencia de D60 sobre `rate_limit_error` suelto sigue en pie.
+2. *(sprint 2)* Un `LIMITE_USO` pausa **todas** las máquinas activas con el mismo
+   `pausa_cuota_hasta` (revisa D60.5): comparten la cuota, y la segunda se enteraría pagando una
+   llamada fallida. Las alertas y el panel siguen siendo por máquina.
+3. *(sprint 2)* Cuando la pausa vence, el mantenimiento lanza una corrida de generación para las
+   máquinas que no llegaron a su tope del día (revisa D60.4: "al vencer no arranca nada solo"),
+   con la misma lógica de presupuesto, envío y ventana horaria que la repesca (D61.3, D61.4). Una
+   marca diaria en `programacion` (`_id: "cuota"`) evita lanzarla dos veces; no corre durante el
+   descanso (D64) ni con una corrida en curso o el sistema frenado. Si la cuota vuelve después
+   del comienzo del descanso, queda salteada en la auditoría.
+4. *(sprint 3)* Un `TIMEOUT` guarda los últimos 2 KB de lo que alcanzó a decir el proceso, para
+   distinguir un Chrome colgado de cualquier otra cosa.
+
+**Qué la revertiría.** Volver a una cuenta por máquina: ahí la pausa vuelve a ser por máquina.
+
+---
+
+### D66 — El Chrome correcto lo resuelve la máquina sola *(09/10/2026; revisa D47)*
+
+**Contexto.** Diagnóstico del 09/10: 6 de 13 borradores fallidos fueron `browser_no_disponible`.
+mac-sofia busca un `deviceId` (`ce0f3ac6…`) que no aparece conectado en ninguna corrida; windows-
+julian dejó de verse el 07/10; windows-ignacio tenía Chrome minimizado (0×0). D47 pone el `.env` y
+lo memorizado **antes** que el disco: si la extensión se reinstala o cambia de perfil, el
+`bridgeDeviceId` nuevo nunca reemplaza al viejo. `asegurar_abierto` da por bueno cualquier Chrome
+corriendo, en el perfil que sea. Y cada `browser_no_disponible` se reintenta tres veces, pagando
+al modelo para que descubra lo mismo. Regla del dueño: nada de esto puede pedir ir a la máquina.
+
+**Decisión.**
+1. *(sprint 1)* El `bridgeDeviceId` que la extensión tiene escrito en el disco del perfil
+   recomendado **gana** sobre el `.env` y lo memorizado. Si difieren, se memoriza el del disco y
+   se loguea `device_id_cambiado` con los dos. Dentro del LevelDB de la extensión se toma la
+   **última** escritura y no la primera (los valores viejos sobreviven hasta compactar). El disco
+   local sólo tiene el id de este Chrome, así que con la cuenta compartida no hay riesgo de tomar
+   el de otra máquina.
+2. *(sprint 1)* `browser_no_disponible` pasa a ser `NAVEGADOR_AUSENTE`: un solo intento en la cola.
+3. *(sprint 2)* Antes de LISTAR y BORRADORES el agente abre el perfil recomendado con
+   `--profile-directory` aunque Chrome ya esté corriendo (Chrome lo pasa a la instancia abierta y
+   no cierra nada), y en Windows restaura las ventanas de Chrome minimizadas.
+4. *(sprint 2)* El DIAGNOSTICO suma un chequeo `perfiles` —por perfil: extensión, WhatsApp,
+   `deviceId` en disco y en uso— y el panel muestra lo que `perfiles.recomendar()` ya sabe decir
+   cuando no se puede arreglar solo (extensión y WhatsApp en perfiles distintos, sesión cerrada).
+
+**Qué la revertiría.** Un perfil donde el disco tenga un id que la extensión no usa. Ahí queda
+`AGENTE_DEVICE_ID` en el `.env`, que se vuelve a respetar con `AGENTE_DEVICE_ID_FIJO=1`.
+
+---
+
+### D67 — Una tanda que falló no se repite enviando, y lo hecho antes de un TIMEOUT no se pierde *(09/10/2026; revisa D52 en parte)*
+
+**Contexto.** Con el envío automático, si un chat no sale queda como borrador: eso ya funciona.
+Lo que no está cubierto es la tanda que falla entera: el reintento vuelve a la cola con
+`enviar=true`, y si falló por `TIMEOUT` el reporte se pierde con todo lo que se escribió o se
+envió —esos chats no entran a `no_escribir` y la regla contra el doble envío queda sólo en el
+criterio del modelo—. El dueño pide: si el envío falla, que deje borradores.
+
+**Decisión.**
+1. *(sprint 3)* Un `BORRADORES` que vuelve a la cola por un fallo vuelve con `enviar=false`: un
+   reintento nunca envía, deja borradores. No aplica a `LIMITE_USO` ni a `NAVEGADOR_AUSENTE`
+   (no se reintentan) ni a `TEXTO_ENVIADO` (lo mira una persona).
+2. *(sprint 3)* El prompt pide registrar cada chat terminado en un archivo de la tanda; con
+   `TIMEOUT`, el agente lo lee y lo reporta como `detalle.chats`, y `procesar_reporte` lo registra
+   igual que en una tanda fallida. Sin `enviar`, el prompt sigue idéntico salvo ese registro.
+
+**Qué la revertiría.** Que los reintentos de tandas fallidas resulten ser las que más envían
+bien: ahí el reintento vuelve a enviar dentro de la ventana.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

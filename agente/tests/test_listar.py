@@ -181,6 +181,7 @@ async def test_un_navegador_no_disponible_se_reporta_en_castellano() -> None:
     resultado = await correr(invocador)
 
     assert not resultado.ok
+    assert resultado.codigo == "NAVEGADOR_AUSENTE"
     assert "Chrome" in resultado.detalle["motivo"]
     assert resultado.detalle["codigo_del_prompt"] == "browser_no_disponible"
 

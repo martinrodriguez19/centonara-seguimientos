@@ -994,6 +994,10 @@ async def activar_respaldo(
     # corrida abierta. Lo que faltó lo completa la repesca (D61).
     if job.get("codigo") == str(cola.Codigo.LIMITE_USO):
         return None
+    # Sin el Chrome de la extensión (D66) el circuito de siempre tampoco anda:
+    # su LISTAR lee los chats con la misma extensión.
+    if job.get("codigo") == str(cola.Codigo.NAVEGADOR_AUSENTE):
+        return None
 
     config = await configuracion.obtener(base)
     if str(config.get("modo_borrador", "playwright")) != "extension_con_respaldo":

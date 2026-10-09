@@ -560,6 +560,22 @@ async def test_tras_un_texto_enviado_no_hay_respaldo_automatico(base) -> None:
 
 
 @sin_mongo
+async def test_sin_el_chrome_de_la_extension_no_hay_respaldo(base) -> None:
+    """D66: el LISTAR del respaldo lee los chats con la misma extensión."""
+    await maquina_activa(base)
+    await configuracion.actualizar(
+        base, {"destinos_permitidos": ["*"], "modo_borrador": "extension_con_respaldo"}
+    )
+    job = job_borradores(ObjectId(), estado=cola.EstadoJob.FALLIDO)
+    job["codigo"] = str(cola.Codigo.NAVEGADOR_AUSENTE)
+
+    encolado = await pase_unico.activar_respaldo(base, job=job)
+
+    assert encolado is None
+    assert await base["jobs"].count_documents({"tipo": str(cola.Tipo.LISTAR)}) == 0
+
+
+@sin_mongo
 async def test_el_respaldo_encola_el_listar_una_sola_vez(base) -> None:
     await maquina_activa(base)
     await configuracion.actualizar(

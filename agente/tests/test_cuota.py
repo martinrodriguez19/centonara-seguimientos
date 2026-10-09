@@ -45,6 +45,11 @@ def correr_con(salida: Salida):
         "Weekly limit reached ∙ resets Oct 6, 9am",
         "You're out of extra usage · resets 11pm",
         "Credit balance is too low",
+        # D65: los dos que vio producción entre el 03 y el 07/10.
+        "You've hit your session limit · resets 10:30pm (America/Buenos_Aires)",
+        "You're out of extra usage · resets 10:30pm (America/Buenos_Aires)",
+        # D65: una frase que todavía no existe, pero en un 429 con hora de reinicio.
+        '{"api_error_status":429,"result":"Something new · resets 4pm"}',
     ],
 )
 def test_reconoce_los_avisos(texto: str) -> None:
@@ -58,6 +63,8 @@ def test_reconoce_los_avisos(texto: str) -> None:
         "OAuth access token has expired",
         '{"type":"error","error":{"type":"rate_limit_error"}}',
         "no se pudo conectar al navegador",
+        # Un 429 sin hora de reinicio es un límite por minuto: se reintenta.
+        '{"api_error_status":429,"result":"Rate limited, slow down"}',
     ],
 )
 def test_no_confunde_otros_errores(texto: str) -> None:
@@ -196,3 +203,22 @@ async def test_un_error_cualquiera_sigue_siendo_inesperado() -> None:
         "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=False, correr=correr_con(salida)
     )
     assert resultado.codigo == "ERROR_INESPERADO"
+
+
+async def test_el_session_limit_de_produccion_es_limite_uso_con_la_hora() -> None:
+    """El sobre exacto que mandó mac-lautaro el 03/10 y salió ERROR_INESPERADO (D65)."""
+    sobre = {
+        "is_error": True,
+        "num_turns": 1,
+        "subtype": "success",
+        "api_error_status": 429,
+        "result": "You've hit your session limit · resets 10:30pm (America/Buenos_Aires)",
+        "type": "result",
+    }
+    salida = Salida(1, json.dumps(sobre, separators=(",", ":"), ensure_ascii=False), "")
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=correr_con(salida)
+    )
+
+    assert resultado.codigo == "LIMITE_USO"
+    assert "reinicia_en" in resultado.detalle

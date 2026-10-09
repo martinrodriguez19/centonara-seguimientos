@@ -88,6 +88,7 @@ async def test_sin_el_chrome_del_vendedor_no_se_le_paga_a_ningun_modelo() -> Non
     )
 
     assert resultado["ok"] is False
+    assert resultado["codigo"] == "NAVEGADOR_AUSENTE"
     assert "Chrome" in resultado["detalle"]["motivo"]
     assert llamadas["veces"] == 1
     #  Y no se llegó a invocar al modelo: `claude_bin` está vacío, así que si
@@ -110,6 +111,7 @@ async def test_borradores_tiene_el_mismo_guard_de_chrome() -> None:
     )
 
     assert resultado["ok"] is False
+    assert resultado["codigo"] == "NAVEGADOR_AUSENTE"
     assert "Chrome" in resultado["detalle"]["motivo"]
 
 
