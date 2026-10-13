@@ -79,6 +79,12 @@ class Registro(Estricto):
     # fecha (`7912e13 2026-09-09`), o `0.1.0-dev` donde nadie instaló nada.
     version: Annotated[str, Field(max_length=64)]
     diagnostico: dict[str, str] = Field(default_factory=dict)
+    # D66.4: el detalle de los chequeos que fallan, `{nombre: texto}`. Es lo que
+    # el panel muestra cuando la máquina no lo puede arreglar sola (el perfil de
+    # Chrome, por ejemplo). Un agente viejo no lo manda.
+    detalles: dict[Annotated[str, Field(max_length=40)], Annotated[str, Field(max_length=600)]] = (
+        Field(default_factory=dict, max_length=20)
+    )
     # Cómo está corriendo el agente: "operativo", o "simulado" si alguien lo
     # arrancó con el flag de desarrollo `--simulado` (D32). Se muestra en el
     # panel: en simulado todos los envíos fallan con CHAT_NO_ABRE, y verlo de
@@ -88,6 +94,12 @@ class Registro(Estricto):
 
 class Latido(Estricto):
     diagnostico: dict[str, str] = Field(default_factory=dict)
+    # D66.4: el detalle de los chequeos que fallan, `{nombre: texto}`. Es lo que
+    # el panel muestra cuando la máquina no lo puede arreglar sola (el perfil de
+    # Chrome, por ejemplo). Un agente viejo no lo manda.
+    detalles: dict[Annotated[str, Field(max_length=40)], Annotated[str, Field(max_length=600)]] = (
+        Field(default_factory=dict, max_length=20)
+    )
     # Cómo quedó la tarea del actualizador en esa máquina (D63): "ok", "cada_hora"
     # o "falla: <motivo>". Un agente viejo no lo manda.
     horario_actualizador: Annotated[str | None, Field(max_length=200)] = None
@@ -165,6 +177,7 @@ async def registrar(cuerpo: Registro, maquina: Maquina) -> RespuestaRegistro:
         db.obtener_base(),
         maquina["maquina"],
         diagnostico=cuerpo.diagnostico,
+        detalles=cuerpo.detalles,
         version_agente=cuerpo.version,
         modo_agente=cuerpo.modo or None,
     )
@@ -390,6 +403,7 @@ async def latido(cuerpo: Latido, maquina: Maquina) -> dict[str, Any]:
         base,
         maquina["maquina"],
         diagnostico=cuerpo.diagnostico,
+        detalles=cuerpo.detalles,
         horario_actualizador=cuerpo.horario_actualizador,
         descanso=cuerpo.descanso,
     )

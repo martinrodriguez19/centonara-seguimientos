@@ -65,6 +65,16 @@ TIMEOUT_LISTAR = 25 * 60.0
 # pasa de ~45, primero se sube el del backend y recién después éste.
 TIMEOUT_BORRADORES = 35 * 60.0
 
+# D65.4: cuánto de lo último que dijo el proceso se guarda con un TIMEOUT. Es
+# para distinguir un Chrome colgado de cualquier otra cosa, no para releer la
+# tanda entera.
+COLA_DEL_TIMEOUT = 2048
+
+# D67.2: la marca con la que el prompt de BORRADORES anota cada chat terminado,
+# en una línea propia, mientras trabaja. Se lee de la salida en vivo si la
+# tanda se corta por tiempo, y se borra de la respuesta final si se coló ahí.
+MARCA_CHAT = "CHAT_TERMINADO"
+
 
 @dataclass(frozen=True)
 class Salida:
@@ -141,6 +151,7 @@ async def invocar(
     # mata, que es lo que hace falta.
     timeout: float = TIMEOUT,  # noqa: ASYNC109
     correr: Correr | None = None,
+    en_vivo: bool = False,
 ) -> Invocacion:
     """Le pasa el prompt a Claude Code y devuelve el JSON que contestó.
 
@@ -148,13 +159,23 @@ async def invocar(
     configuración: es donde está el ahorro del proyecto. `REDACTAR` es el job
     más frecuente —uno por chat— y sacarlo del circuito del navegador es lo que
     hace viable el costo por mensaje.
+
+    `en_vivo` (D67.2) pide la salida como `stream-json`: cada mensaje del modelo
+    sale apenas lo escribe, y no sólo el sobre del final. Con un TIMEOUT, lo
+    que el proceso alcanzó a decir queda en `raw` —es lo que lee BORRADORES para
+    no perder los chats ya hechos—. Con una respuesta normal, el sobre del final
+    es el mismo de `--output-format json` y se lee igual.
     """
     if not claude_bin:
         return Invocacion(
             False, codigo="ERROR_INESPERADO", detalle={"motivo": "CLAUDE_BIN sin configurar"}
         )
 
-    comando = [claude_bin, "-p", "--output-format", "json"]
+    if en_vivo:
+        #  `stream-json` con `-p` exige `--verbose`.
+        comando = [claude_bin, "-p", "--output-format", "stream-json", "--verbose"]
+    else:
+        comando = [claude_bin, "-p", "--output-format", "json"]
     if con_navegador:
         comando.insert(2, "--chrome")
 
@@ -163,9 +184,22 @@ async def invocar(
         # A un hilo: `subprocess.run` bloquea, y el bucle tiene que poder seguir
         # latiendo mientras un LISTAR tarda sus minutos.
         salida = await asyncio.to_thread(hacer, comando, prompt, timeout=timeout, cwd=carpeta)
-    except subprocess.TimeoutExpired:
-        log.error("claude_timeout", segundos=timeout, con_navegador=con_navegador)
-        return Invocacion(False, codigo="TIMEOUT", detalle={"segundos": timeout})
+    except subprocess.TimeoutExpired as error:
+        dijo = _como_texto(error.stdout)
+        errores = _como_texto(error.stderr)
+        log.error("claude_timeout", segundos=timeout, con_navegador=con_navegador, dijo=len(dijo))
+        return Invocacion(
+            False,
+            codigo="TIMEOUT",
+            detalle={
+                "segundos": timeout,
+                #  D65.4: el final de lo que alcanzó a decir. Vacío también dice
+                #  algo: el proceso no escribió nada en todo ese tiempo.
+                "salida": (dijo + ("\n" + errores if errores else ""))[-COLA_DEL_TIMEOUT:],
+            },
+            raw=dijo,
+            stderr=errores,
+        )
     except (OSError, ValueError) as error:
         # No se pudo lanzar el proceso: la ruta no existe, no es ejecutable.
         log.error("claude_no_arranca", error=str(error), bin=claude_bin)
@@ -175,7 +209,73 @@ async def invocar(
             detalle={"motivo": "no se pudo ejecutar", "error": str(error)[:300]},
         )
 
+    if en_vivo:
+        sobre = _sobre_final(salida.stdout)
+        if sobre is None and salida.returncode == 0:
+            #  Salió bien sin decir el resultado: no hay respuesta que leer, y un
+            #  evento suelto del medio no puede pasar por una.
+            log.error("claude_sin_sobre_final", con_navegador=con_navegador)
+            return Invocacion(
+                False,
+                codigo="ERROR_INESPERADO",
+                detalle={"motivo": "la salida en vivo terminó sin el resultado final"},
+                raw=salida.stdout,
+                stderr=salida.stderr,
+            )
+        salida = Salida(salida.returncode, sobre or salida.stdout, salida.stderr)
     return _leer(salida, con_navegador=con_navegador)
+
+
+def _como_texto(crudo: str | bytes | None) -> str:
+    """Lo que trae un `TimeoutExpired`: bytes en macOS y Linux, texto en Windows."""
+    if crudo is None:
+        return ""
+    if isinstance(crudo, bytes):
+        return crudo.decode("utf-8", errors="replace")
+    return crudo
+
+
+def _sobre_final(stdout: str) -> str | None:
+    """De una salida `stream-json`, la línea del sobre final (`"type": "result"`).
+
+    `None` si no está: el proceso murió antes de terminar, o salió por un
+    camino que no escribe el sobre. Con código distinto de cero `_leer` mira la
+    salida entera, que es donde puede estar el aviso de cuota.
+    """
+    for linea in reversed(stdout.splitlines()):
+        linea = linea.strip()
+        if not linea.startswith("{"):
+            continue
+        try:
+            evento = json.loads(linea)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(evento, dict) and evento.get("type") == "result":
+            return linea
+    return None
+
+
+def textos_del_modelo(stdout: str) -> list[str]:
+    """Los textos que escribió el modelo, en orden, de una salida `stream-json`.
+
+    Saltea lo que no parsea: con un TIMEOUT la última línea suele estar cortada.
+    """
+    textos: list[str] = []
+    for linea in stdout.splitlines():
+        linea = linea.strip()
+        if not linea.startswith("{"):
+            continue
+        try:
+            evento = json.loads(linea)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(evento, dict) or evento.get("type") != "assistant":
+            continue
+        contenido = (evento.get("message") or {}).get("content")
+        for bloque in contenido if isinstance(contenido, list) else []:
+            if isinstance(bloque, dict) and bloque.get("type") == "text":
+                textos.append(str(bloque.get("text") or ""))
+    return textos
 
 
 def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
@@ -227,7 +327,7 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         return _sin_cuota(interior, salida)
 
     try:
-        datos = json.loads(_sin_backticks(interior))
+        datos = json.loads(_sin_backticks(_sin_marcas(interior)))
     except json.JSONDecodeError as error:
         # El caso más probable cuando alguien toca el prompt. El crudo entero se
         # reporta: sin eso, "no devolvió JSON" es un callejón sin salida.
@@ -296,6 +396,19 @@ def _desenvolver(crudo: str) -> tuple[str, float]:
     except (TypeError, ValueError):
         costo = 0.0
     return interior if isinstance(interior, str) else crudo, costo
+
+
+def _sin_marcas(texto: str) -> str:
+    """Saca las líneas `CHAT_TERMINADO` que el modelo haya dejado en la respuesta final.
+
+    El prompt las pide entre chat y chat; si la del último chat cae en el mismo
+    mensaje que el JSON, no puede romper el reporte de una tanda que salió bien.
+    """
+    if MARCA_CHAT not in texto:
+        return texto
+    return "\n".join(
+        linea for linea in texto.splitlines() if not linea.lstrip().startswith(MARCA_CHAT)
+    )
 
 
 def _sin_backticks(texto: str) -> str:

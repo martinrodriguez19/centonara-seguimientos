@@ -25,13 +25,20 @@ con nombre propio, porque es lo primero que va a mirar una persona.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agente.jobs.claude_code import TIMEOUT_BORRADORES, Invocacion, invocar
+from agente.jobs.claude_code import (
+    MARCA_CHAT,
+    TIMEOUT_BORRADORES,
+    Invocacion,
+    invocar,
+    textos_del_modelo,
+)
 from agente.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -412,7 +419,11 @@ async def dejar_borradores(
         carpeta=carpeta,
         con_navegador=True,
         timeout=TIMEOUT_BORRADORES,
+        #  D67.2: la salida en vivo, para que un TIMEOUT no pierda lo hecho.
+        en_vivo=True,
     )
+    if not invocacion.ok and invocacion.codigo == "TIMEOUT":
+        return _desde_timeout(invocacion, enviar=envia)
     if not invocacion.ok:
         return _desde_invocacion(invocacion)
 
@@ -535,6 +546,61 @@ def _desde_invocacion(invocacion: Invocacion) -> Resultado:
         stderr=invocacion.stderr,
         costo_usd=invocacion.costo_usd,
     )
+
+
+def _desde_timeout(invocacion: Invocacion, *, enviar: bool) -> Resultado:
+    """Un TIMEOUT, con los chats que el modelo anotó como terminados (D67.2).
+
+    Esos chats ya tienen su borrador —o su mensaje enviado— en WhatsApp. Sin
+    esto se perdían con el reporte: no entraban a `no_escribir`, y el reintento
+    podía volver a pasar por ellos.
+    """
+    chats, descartados = _revisar_todos(chats_anotados(invocacion.raw))
+    if not enviar:
+        for chat in chats:
+            chat["enviado"] = False
+    if chats:
+        log.warning(
+            "borradores_timeout_con_chats",
+            chats=len(chats),
+            dejados=sum(1 for c in chats if c["borrador_dejado"]),
+        )
+    detalle = {**invocacion.detalle, "chats": chats}
+    if descartados:
+        detalle["descartados"] = descartados
+    return Resultado(
+        False,
+        "TIMEOUT",
+        detalle,
+        #  El crudo en vivo es largo y de poco valor una vez leído: lo que sirve
+        #  ya está en `detalle.chats` y la cola en `detalle.salida`.
+        raw=invocacion.raw[-20_000:],
+        stderr=invocacion.stderr,
+        costo_usd=invocacion.costo_usd,
+    )
+
+
+def chats_anotados(salida: str) -> list[dict[str, Any]]:
+    """Los chats que el modelo marcó con `CHAT_TERMINADO` mientras trabajaba, en orden.
+
+    Si el mismo chat aparece dos veces, queda la última anotación. Lo que no
+    parsea se saltea: es un registro de lo hecho, no una respuesta a validar.
+    """
+    por_nombre: dict[str, dict[str, Any]] = {}
+    for texto in textos_del_modelo(salida):
+        for linea in texto.splitlines():
+            linea = linea.strip()
+            if not linea.startswith(MARCA_CHAT):
+                continue
+            try:
+                chat = json.loads(linea[len(MARCA_CHAT) :].strip())
+            except json.JSONDecodeError:
+                continue
+            if isinstance(chat, dict) and chat.get("contacto_nombre"):
+                nombre = str(chat["contacto_nombre"])
+                por_nombre.pop(nombre, None)
+                por_nombre[nombre] = chat
+    return list(por_nombre.values())
 
 
 def _interpretar(invocacion: Invocacion, *, run_id: str, enviar: bool = False) -> Resultado:

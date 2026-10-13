@@ -844,3 +844,106 @@ async def test_lo_enviado_vuelve_contado() -> None:
     assert resultado.detalle["enviados"] == 1
     assert resultado.detalle["dejados"] == 2
     assert [c["enviado"] for c in resultado.detalle["chats"]] == [True, False, False]
+
+
+# ---------------------------------------------------------------------------
+# D67.2: lo hecho antes de un TIMEOUT no se pierde
+# ---------------------------------------------------------------------------
+
+
+def _stream(*textos: str, cortado: str = "") -> str:
+    import json
+
+    lineas = [
+        json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}})
+        for t in textos
+    ]
+    lineas.append(json.dumps({"type": "user", "message": {"content": [{"type": "tool_result"}]}}))
+    return "\n".join(lineas) + ("\n" + cortado if cortado else "")
+
+
+def se_corta(raw: str):
+    guardado = {}
+
+    async def invocador(prompt, **kwargs):
+        guardado["prompt"] = prompt
+        guardado.update(kwargs)
+        return Invocacion(
+            False, codigo="TIMEOUT", detalle={"segundos": 2100.0, "salida": "cola"}, raw=raw
+        )
+
+    invocador.visto = guardado
+    return invocador
+
+
+async def test_un_timeout_reporta_los_chats_ya_terminados() -> None:
+    import json
+
+    primero = json.dumps(visitado(contacto_nombre="Ana", enviado=True))
+    segundo = json.dumps(visitado(contacto_nombre="Beto", borrador_dejado=False,
+                                  texto_borrador=None, motivo="sin_tema"))  # fmt: skip
+    invocador = se_corta(
+        _stream(
+            f"Listo Ana.\nCHAT_TERMINADO {primero}",
+            f"CHAT_TERMINADO {segundo}",
+            "CHAT_TERMINADO {no es json",
+            cortado='{"type": "assistant", "message": {"content": [{"type": "te',
+        )
+    )
+
+    resultado = await correr(invocador)
+
+    assert invocador.visto["en_vivo"] is True
+    assert not resultado.ok
+    assert resultado.codigo == "TIMEOUT"
+    assert resultado.detalle["segundos"] == 2100.0
+    assert resultado.detalle["salida"] == "cola"
+    nombres = [c["contacto_nombre"] for c in resultado.detalle["chats"]]
+    assert nombres == ["Ana", "Beto"]
+    #  Sin `enviar`, nada pudo salir, diga lo que diga el modelo.
+    assert resultado.detalle["chats"][0]["enviado"] is False
+    assert resultado.detalle["chats"][0]["borrador_dejado"] is True
+
+
+async def test_con_enviar_el_timeout_conserva_lo_enviado() -> None:
+    import json
+
+    chat = json.dumps(visitado(contacto_nombre="Ana", enviado=True))
+    resultado = await correr(
+        se_corta(_stream(f"CHAT_TERMINADO {chat}")),
+        enviar=True,
+        enviar_hasta="2999-01-01T00:00:00+00:00",
+    )
+
+    assert resultado.detalle["chats"][0]["enviado"] is True
+
+
+async def test_un_chat_anotado_dos_veces_queda_con_la_ultima() -> None:
+    import json
+
+    antes = json.dumps(visitado(contacto_nombre="Ana", borrador_dejado=False,
+                                texto_borrador=None, motivo="campo_ocupado"))  # fmt: skip
+    despues = json.dumps(visitado(contacto_nombre="Ana"))
+    resultado = await correr(
+        se_corta(_stream(f"CHAT_TERMINADO {antes}", f"CHAT_TERMINADO {despues}"))
+    )
+
+    [chat] = resultado.detalle["chats"]
+    assert chat["borrador_dejado"] is True
+
+
+async def test_un_timeout_sin_anotaciones_reporta_la_lista_vacia() -> None:
+    resultado = await correr(se_corta(""))
+
+    assert resultado.codigo == "TIMEOUT"
+    assert resultado.detalle["chats"] == []
+
+
+async def test_el_prompt_pide_anotar_cada_chat_en_los_dos_modos() -> None:
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador)
+    assert "CHAT_TERMINADO" in invocador.visto["prompt"]
+
+    invocador = responde({"run_id": RUN, "status": "ok", "chats": []})
+    await correr(invocador, enviar=True, enviar_hasta="2999-01-01T00:00:00+00:00")
+    assert "CHAT_TERMINADO" in invocador.visto["prompt"]

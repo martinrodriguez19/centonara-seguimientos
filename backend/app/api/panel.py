@@ -149,6 +149,8 @@ def _resumir_maquina(
         "puede_enviar": vendedores.puede_enviar(vendedor),
         "chequeos_fallando": fallando,
         "diagnostico": diagnostico,
+        # D66.4: qué dice la máquina de cada chequeo que falla, cuando lo dice.
+        "diagnostico_detalle": vendedor.get("diagnostico_detalle") or {},
         "version_agente": vendedor.get("version_agente"),
         # El commit que debería correr, y si lo corre. `None` cuando no hay con
         # qué comparar: una máquina que nunca reportó un sha no está

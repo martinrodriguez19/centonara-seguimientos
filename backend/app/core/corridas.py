@@ -1036,21 +1036,22 @@ async def vencer_largas(base, *, ahora: datetime | None = None) -> int:
     return vencidas
 
 
-async def cortar_maquina(
+async def cortar_maquinas(
     base,
     corrida: dict[str, Any],
     *,
-    maquina: str,
+    maquinas: list[str],
     codigo,
     motivo: str,
     ahora: datetime,
 ) -> int:
-    """Cierra los jobs vivos de una máquina en una corrida, y la termina si quedó vacía.
+    """Cierra los jobs vivos de esas máquinas en una corrida, y la termina si quedó vacía.
 
-    Para quien corta por su cuenta y no por el reloj: la cuota agotada (D60).
+    Para quien corta por su cuenta y no por el reloj: la cuota agotada (D60,
+    D65), que desde que la cuenta es una corta a todas juntas.
     """
     cortados = await _cortar(
-        base, corrida, maquinas=[maquina], codigo=codigo, motivo=motivo, ahora=ahora
+        base, corrida, maquinas=maquinas, codigo=codigo, motivo=motivo, ahora=ahora
     )
     await _terminar_si_quedo_vacia(base, corrida, ahora)
     return cortados

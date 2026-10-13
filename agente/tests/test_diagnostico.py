@@ -63,11 +63,11 @@ def correr(hogar: Path, carpeta: Path, **extra) -> Diagnostico:
 # ---------------------------------------------------------------------------
 
 
-def test_son_diez_chequeos(hogar: Path, carpeta_agente: Path) -> None:
-    assert len(correr(hogar, carpeta_agente).chequeos) == 10
+def test_son_once_chequeos(hogar: Path, carpeta_agente: Path) -> None:
+    assert len(correr(hogar, carpeta_agente).chequeos) == 11
 
 
-def test_estan_los_siete_del_mvp_mas_los_tres_nuevos(hogar: Path, carpeta_agente: Path) -> None:
+def test_estan_los_siete_del_mvp_mas_los_cuatro_nuevos(hogar: Path, carpeta_agente: Path) -> None:
     nombres = set(por_nombre(correr(hogar, carpeta_agente)))
     assert nombres == {
         "claude_bin",
@@ -80,6 +80,7 @@ def test_estan_los_siete_del_mvp_mas_los_tres_nuevos(hogar: Path, carpeta_agente
         "claude_md",
         "permisos_macos",
         "selectores",
+        "perfiles",
     }
 
 
@@ -371,3 +372,62 @@ def test_no_se_lee_del_env_porque_todavia_no_existe(monkeypatch, tmp_path) -> No
     monkeypatch.delenv("CLAUDE_BIN", raising=False)
 
     assert diagnostico.encontrar_claude() == str(ejecutable.resolve())
+
+
+# ---------------------------------------------------------------------------
+# D66.4: el perfil de Chrome, y su detalle para el panel
+# ---------------------------------------------------------------------------
+
+
+def test_el_chequeo_de_perfiles_dice_que_hacer(monkeypatch) -> None:
+    from agente import perfiles
+
+    monkeypatch.setattr(
+        perfiles,
+        "listar",
+        lambda: [
+            perfiles.Perfil("Default", tiene_extension=True, tiene_whatsapp=False),
+            perfiles.Perfil("Profile 1", tiene_extension=False, tiene_whatsapp=True),
+        ],
+    )
+
+    chequeo = diagnostico._perfiles("")
+
+    assert chequeo.estado is Estado.FALLA
+    assert "perfiles distintos" in chequeo.detalle
+    assert "Profile 1" in chequeo.detalle
+
+
+def test_el_chequeo_de_perfiles_avisa_si_el_id_en_uso_no_es_el_del_disco(monkeypatch) -> None:
+    from agente import perfiles
+
+    monkeypatch.setattr(
+        perfiles,
+        "listar",
+        lambda: [perfiles.Perfil("Profile 3", True, True, device_id="nuevo")],
+    )
+
+    chequeo = diagnostico._perfiles("viejo")
+
+    assert chequeo.estado is Estado.OK
+    assert "Profile 3" in chequeo.detalle
+    assert "se usa viejo" in chequeo.detalle
+
+
+def test_sin_chrome_el_chequeo_de_perfiles_no_aplica(monkeypatch) -> None:
+    from agente import perfiles
+
+    monkeypatch.setattr(perfiles, "listar", lambda: [])
+    assert diagnostico._perfiles("").estado is Estado.NO_APLICA
+
+
+def test_los_detalles_son_solo_de_lo_que_falla() -> None:
+    revision = Diagnostico(
+        (
+            Chequeo("perfiles", Estado.FALLA, "x" * 900),
+            Chequeo("chrome", Estado.OK, "anda"),
+            Chequeo("claude_md", Estado.FALLA, ""),
+        )
+    )
+
+    assert revision.detalles() == {"perfiles": "x" * 600}

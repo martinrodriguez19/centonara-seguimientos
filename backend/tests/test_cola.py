@@ -427,6 +427,125 @@ async def test_recuperar_no_resetea_los_intentos(base) -> None:
     assert job["intentos"] == 2
 
 
+# ---------------------------------------------------------------------------
+# D67.1: una tanda que vuelve a la cola deja borradores, no envía
+# ---------------------------------------------------------------------------
+
+
+@sin_mongo
+async def test_una_tanda_que_envia_se_reintenta_sin_enviar(base) -> None:
+    job_id = await encolar(
+        base,
+        tipo=Tipo.BORRADORES,
+        maquina="mac-1",
+        payload={"enviar": True, "no_escribir": ["Ana"]},
+        ahora=AHORA,
+    )
+    await tomar(base, "mac-1", ahora=AHORA)
+
+    reporte = await reportar(
+        base,
+        job_id,
+        ok=False,
+        codigo=Codigo.TIMEOUT,
+        detalle={
+            "chats": [
+                {"contacto_nombre": "Beto", "borrador_dejado": True, "enviado": True},
+                {"contacto_nombre": "Caro", "borrador_dejado": True, "enviado": False},
+                {"contacto_nombre": "Dani", "borrador_dejado": False, "motivo": "sin_tema"},
+                "basura",
+            ]
+        },
+        ahora=AHORA,
+    )
+
+    assert reporte.reintenta
+    job = await base["jobs"].find_one({"_id": job_id})
+    assert job["payload"]["enviar"] is False
+    assert job["envio_quitado_en_reintento"] is True
+    #  Los que ya quedaron escritos, adelante: la lista tiene tope.
+    assert job["payload"]["no_escribir"] == ["Beto", "Caro", "Ana"]
+
+
+@sin_mongo
+async def test_una_tanda_que_no_enviaba_se_reintenta_igual(base) -> None:
+    job_id = await encolar(
+        base, tipo=Tipo.BORRADORES, maquina="mac-1", payload={"enviar": False}, ahora=AHORA
+    )
+    await tomar(base, "mac-1", ahora=AHORA)
+
+    await reportar(base, job_id, ok=False, codigo=Codigo.ERROR_INESPERADO, ahora=AHORA)
+
+    job = await base["jobs"].find_one({"_id": job_id})
+    assert job["payload"] == {"enviar": False}
+    assert "envio_quitado_en_reintento" not in job
+
+
+@sin_mongo
+async def test_el_no_escribir_del_reintento_respeta_el_tope(base) -> None:
+    antes = [f"contacto {i}" for i in range(120)]
+    job_id = await encolar(
+        base,
+        tipo=Tipo.BORRADORES,
+        maquina="mac-1",
+        payload={"enviar": False, "no_escribir": antes},
+        ahora=AHORA,
+    )
+    await tomar(base, "mac-1", ahora=AHORA)
+
+    await reportar(
+        base,
+        job_id,
+        ok=False,
+        codigo=Codigo.TIMEOUT,
+        detalle={"chats": [{"contacto_nombre": "Nuevo", "borrador_dejado": True}]},
+        ahora=AHORA,
+    )
+
+    lista = (await base["jobs"].find_one({"_id": job_id}))["payload"]["no_escribir"]
+    assert len(lista) == 120
+    assert lista[0] == "Nuevo"
+
+
+@sin_mongo
+async def test_otros_jobs_se_reintentan_sin_tocar_el_payload(base) -> None:
+    job_id = await encolar(
+        base, tipo=Tipo.LISTAR, maquina="mac-1", payload={"enviar": True}, ahora=AHORA
+    )
+    await tomar(base, "mac-1", ahora=AHORA)
+
+    await reportar(
+        base,
+        job_id,
+        ok=False,
+        codigo=Codigo.TIMEOUT,
+        detalle={"chats": [{"contacto_nombre": "Beto", "borrador_dejado": True}]},
+        ahora=AHORA,
+    )
+
+    job = await base["jobs"].find_one({"_id": job_id})
+    assert job["payload"] == {"enviar": True}
+
+
+@sin_mongo
+async def test_una_tanda_colgada_vuelve_a_la_cola_sin_enviar(base) -> None:
+    job_id = await encolar(
+        base, tipo=Tipo.BORRADORES, maquina="mac-1", payload={"enviar": True}, ahora=AHORA
+    )
+    otro = await encolar(
+        base, tipo=Tipo.ENVIAR, maquina="mac-2", payload={"enviar": True}, ahora=AHORA
+    )
+    await tomar(base, "mac-1", ahora=AHORA)
+    await tomar(base, "mac-2", ahora=AHORA)
+
+    assert await recuperar_colgados(base, ahora=AHORA + timedelta(hours=2)) == 2
+
+    job = await base["jobs"].find_one({"_id": job_id})
+    assert job["estado"] == EstadoJob.PENDIENTE
+    assert job["payload"]["enviar"] is False
+    assert (await base["jobs"].find_one({"_id": otro}))["payload"]["enviar"] is True
+
+
 @sin_mongo
 async def test_encolar_envios_baraja_y_espacia(base) -> None:
     from bson import ObjectId

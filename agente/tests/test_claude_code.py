@@ -330,3 +330,98 @@ def test_el_timeout_del_pase_unico_queda_debajo_del_techo_del_backend() -> None:
     margen = 10 * 60
     assert TIMEOUT_BORRADORES + margen <= techo
     assert TIMEOUT_LISTAR + margen <= techo
+
+
+# ---------------------------------------------------------------------------
+# D65.4 y D67.2: la salida en vivo, y lo que queda de un TIMEOUT
+# ---------------------------------------------------------------------------
+
+
+def en_vivo(*eventos: dict, cortado: str = "") -> str:
+    return "\n".join(json.dumps(e) for e in eventos) + ("\n" + cortado if cortado else "")
+
+
+def dijo(texto: str) -> dict:
+    return {"type": "assistant", "message": {"content": [{"type": "text", "text": texto}]}}
+
+
+async def test_en_vivo_pide_stream_json_y_lee_el_sobre_del_final() -> None:
+    salida = en_vivo(
+        {"type": "system", "subtype": "init"},
+        dijo("abriendo el primer chat"),
+        {"type": "result", "result": '{"status": "ok"}', "total_cost_usd": 0.5},
+    )
+    espia = Espia(Salida(0, salida, ""))
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia, en_vivo=True
+    )
+
+    assert espia.comando == [
+        BIN, "-p", "--chrome", "--output-format", "stream-json", "--verbose"
+    ]  # fmt: skip
+    assert resultado.ok
+    assert resultado.datos == {"status": "ok"}
+    assert resultado.costo_usd == 0.5
+
+
+async def test_en_vivo_sin_sobre_final_es_un_fallo_con_el_crudo() -> None:
+    espia = Espia(Salida(0, en_vivo(dijo("a medias")), ""))
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia, en_vivo=True
+    )
+
+    assert not resultado.ok
+    assert "a medias" in resultado.raw
+
+
+async def test_el_timeout_guarda_la_cola_de_lo_que_dijo() -> None:
+    """D65.4: en macOS el `TimeoutExpired` trae bytes; en Windows, texto."""
+    largo = "x" * 5000 + "lo ultimo"
+    espia = Espia(
+        revienta=subprocess.TimeoutExpired("claude", 600, output=largo.encode(), stderr=b"aviso")
+    )
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia, en_vivo=True
+    )
+
+    assert resultado.codigo == "TIMEOUT"
+    assert len(resultado.detalle["salida"]) == 2048
+    assert resultado.detalle["salida"].endswith("lo ultimo\naviso")
+    assert resultado.raw == largo
+    assert resultado.stderr == "aviso"
+
+
+async def test_un_timeout_mudo_lo_dice_con_la_salida_vacia() -> None:
+    espia = Espia(revienta=subprocess.TimeoutExpired("claude", 600))
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia
+    )
+
+    assert resultado.detalle == {"segundos": 600.0, "salida": ""}
+
+
+async def test_una_marca_de_chat_en_la_respuesta_final_no_rompe_el_json() -> None:
+    interior = 'CHAT_TERMINADO {"contacto_nombre": "Ana"}\n{"status": "ok"}'
+    espia = Espia(sobre(interior))
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia
+    )
+
+    assert resultado.ok
+    assert resultado.datos == {"status": "ok"}
+
+
+async def test_en_vivo_la_cuota_se_reconoce_aunque_no_haya_sobre() -> None:
+    salida = en_vivo(dijo("You've hit your session limit · resets 10:30pm"))
+    espia = Espia(Salida(1, salida, ""))
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia, en_vivo=True
+    )
+
+    assert resultado.codigo == "LIMITE_USO"

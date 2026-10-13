@@ -171,6 +171,51 @@ async def test_el_latido_actualiza_el_diagnostico(cliente, base, maquina_activa)
     assert documento["diagnostico"]["whatsapp_sesion"] == "pide_qr"
 
 
+@sin_mongo
+async def test_el_latido_guarda_el_detalle_de_lo_que_falla(cliente, base, maquina_activa) -> None:
+    """D66.4: lo que la máquina sabe decir de un chequeo caído llega al panel.
+    El de un chequeo sano no se guarda: sería el texto de una falla vieja."""
+    respuesta = await cliente.post(
+        "/api/agente/latido",
+        json={
+            "diagnostico": {"perfiles": "falla", "chrome": "ok"},
+            "detalles": {"perfiles": "la extensión está en Default", "chrome": "viejo"},
+        },
+        headers=auth(maquina_activa.token),
+    )
+
+    assert respuesta.status_code == 200
+    documento = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert documento["diagnostico_detalle"] == {"perfiles": "la extensión está en Default"}
+
+
+@sin_mongo
+async def test_el_registro_tambien_trae_el_detalle(cliente, base, maquina_activa) -> None:
+    respuesta = await cliente.post(
+        "/api/agente/registrar",
+        json={
+            "version": "abc1234 2026-10-10",
+            "diagnostico": {"perfiles": "falla"},
+            "detalles": {"perfiles": "falta la extensión"},
+        },
+        headers=auth(maquina_activa.token),
+    )
+
+    assert respuesta.status_code == 200
+    documento = await base["vendedores"].find_one({"maquina": "mac-rocio"})
+    assert documento["diagnostico_detalle"] == {"perfiles": "falta la extensión"}
+
+
+@sin_mongo
+async def test_un_detalle_desmedido_se_rechaza(cliente, maquina_activa) -> None:
+    respuesta = await cliente.post(
+        "/api/agente/latido",
+        json={"diagnostico": {"perfiles": "falla"}, "detalles": {"perfiles": "x" * 601}},
+        headers=auth(maquina_activa.token),
+    )
+    assert respuesta.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # Pedir trabajo
 # ---------------------------------------------------------------------------

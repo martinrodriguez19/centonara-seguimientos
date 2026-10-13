@@ -169,9 +169,9 @@ export const textos = {
       `El envío automático sólo envía dentro del horario de envío (${inicio} a ${fin}, en los días marcados). Para que la repesca también envíe, adelantala o extendé el horario de envío más abajo.`,
     pausaCuotaTitulo: "Pausa sin cuota de Claude",
     pausaCuotaAyuda:
-      "Si Claude se queda sin cuota en una máquina, esa máquina se pausa sola. Si el aviso dice a qué hora vuelve, se usa esa hora.",
+      "Si Claude se queda sin cuota, se pausan todas las máquinas, porque comparten la cuenta. Si el aviso dice a qué hora vuelve, se usa esa hora.",
     pausaCuotaQueHace:
-      "Esto es lo que dura la pausa cuando el aviso no dice la hora. Mientras tanto la máquina no gasta nada, y lo que le faltó lo completa la repesca.",
+      "Esto es lo que dura la pausa cuando el aviso no dice la hora. Mientras tanto no se gasta nada, y cuando vuelve la cuota se completa solo lo que faltó, salvo que ya sea de noche.",
     hoyTitulo: "Cómo terminó el día",
     hoyResultado: {
       completa: "completa",
@@ -368,6 +368,13 @@ export const textos = {
       detalle:
         "El agente no sabe cuál de los Chrome abiertos es el de esta computadora.",
       queHacer: "Correr el instalador de nuevo: lo averigua solo.",
+    },
+    perfiles: {
+      nombre: "Perfil de Chrome",
+      detalle:
+        "Ningún perfil de Chrome tiene la extensión de Claude y WhatsApp juntos, y la máquina no lo puede arreglar sola.",
+      queHacer:
+        "Hacer lo que dice la máquina, abajo, en esa computadora.",
     },
     chrome: {
       nombre: "Chrome responde",
@@ -601,7 +608,7 @@ export const textos = {
     cancelado: "Se canceló la corrida antes de que saliera.",
     CANCELADO: "Se canceló la corrida antes de que saliera.",
     LIMITE_USO:
-      "Claude se quedó sin cuota en esa máquina. Se pausó sola hasta que vuelva, y la repesca completa lo que faltó.",
+      "Claude se quedó sin cuota. Como la cuenta es una sola, se pausaron todas las máquinas hasta que vuelva, y ahí se completa solo lo que faltó.",
     MAQUINA_AUSENTE:
       "La computadora dejó de dar señales a mitad de la corrida y su trabajo se cortó para que la corrida termine.",
     VENCIDO: "La corrida pasó su límite de horas y se cerró lo que quedaba.",
@@ -830,6 +837,7 @@ export const textos = {
     avisoReiniciado: "Listo. La próxima corrida arranca de nuevo.",
     chequeosBajada:
       "Lo que reportó la máquina en su último latido. Se actualiza solo cada treinta segundos, mientras esté conectada.",
+    chequeoDiceLaMaquina: "La máquina dice:",
     sinChequeos: "Todavía no reportó ningún chequeo.",
     sinActividad: "No participó de ninguna de las últimas corridas.",
     actividadBajada: (cuantas: number) => `Sus tandas en las últimas ${cuantas} corridas.`,

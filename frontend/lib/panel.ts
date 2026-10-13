@@ -21,6 +21,8 @@ export type Maquina = {
   /** Qué chequeo falló, por nombre. Es lo único accionable de un diagnóstico. */
   chequeos_fallando: string[];
   diagnostico: Record<string, string>;
+  /** D66.4: qué dice la máquina de cada chequeo que falla. Un backend viejo no lo manda. */
+  diagnostico_detalle?: Record<string, string>;
   version_agente: string | null;
   /** El commit que deberían correr todas (D45), y si ésta lo corre. `null` en
    * `actualizada` = no hay con qué comparar (nunca reportó un sha). */

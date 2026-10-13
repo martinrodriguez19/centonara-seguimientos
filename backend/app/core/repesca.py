@@ -128,8 +128,26 @@ async def revisar(base, *, ahora: datetime | None = None) -> str | None:
 
     if not await programacion._tomar_el_dia(base, dia, marca=MARCA):
         return None
+    return await completar(
+        base, config=config, quien=MARCA, que=auditoria.Que.REPESCA_REVISADA, ahora=momento
+    )
 
-    resumen = await resumen_del_dia(base, config, momento)
+
+async def completar(
+    base,
+    *,
+    config: dict[str, Any],
+    quien: str,
+    que: auditoria.Que,
+    ahora: datetime,
+) -> str:
+    """Revisa el día y le larga una corrida a cada máquina que quedó corta.
+
+    Lo comparten la repesca y la vuelta de la cuota (D65.3): las dos quieren lo
+    mismo —completar lo que faltó, con el presupuesto del pase único y la regla
+    de envío de siempre— y difieren en cuándo y en cómo queda anotado.
+    """
+    resumen = await resumen_del_dia(base, config, ahora)
     faltan = [r["maquina"] for r in resumen if r["resultado"] == "repescada"]
 
     por_que_no = None
@@ -145,11 +163,11 @@ async def revisar(base, *, ahora: datetime | None = None) -> str | None:
         try:
             disparo = await corridas.disparar(
                 base,
-                quien=MARCA,
+                quien=quien,
                 tipo=corridas.TipoCorrida.GENERACION,
                 solo=faltan,
-                extra={"motivo": MARCA, "revision_del_dia": resumen},
-                ahora=momento,
+                extra={"motivo": quien, "revision_del_dia": resumen},
+                ahora=ahora,
             )
         except corridas.NoHayMaquinas:
             por_que_no = "sin_maquinas"
@@ -158,14 +176,15 @@ async def revisar(base, *, ahora: datetime | None = None) -> str | None:
 
     await auditoria.registrar(
         base,
-        que=auditoria.Que.REPESCA_REVISADA,
-        quien=MARCA,
+        que=que,
+        quien=quien,
         corrida_id=disparo.corrida_id if disparo else None,
         detalle={"resumen": resumen, "sin_disparo": por_que_no},
-        ahora=momento,
+        ahora=ahora,
     )
     log.info(
-        "repesca_revisada",
+        "dia_revisado",
+        quien=quien,
         repescadas=faltan,
         corrida=str(disparo.corrida_id) if disparo else None,
         sin_disparo=por_que_no,

@@ -50,6 +50,9 @@ class Que(StrEnum):
     REPESCA_REVISADA = "repesca_revisada"
     """La repesca revisó qué hizo cada máquina hoy, y a cuáles les largó una
     corrida para completar (D61)."""
+    CUOTA_RETOMADA = "cuota_retomada"
+    """Volvió la cuota de Claude: se revisó el día y se les largó una corrida a
+    las máquinas que no llegaron a su tope (D65.3)."""
     CORRIDA_REANUDADA = "corrida_reanudada"
     """Alguien miró por qué el canario frenó la corrida y decidió continuar
     (D31). Suelta también el kill switch."""

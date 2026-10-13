@@ -1,4 +1,4 @@
-"""Los diez chequeos que el agente corre sobre su propia máquina.
+"""Los once chequeos que el agente corre sobre su propia máquina.
 
 Siete vienen del historial del MVP: son problemas que **ya ocurrieron** y que
 van a volver a ocurrir en cada instalación nueva. Los otros son nuevos.
@@ -68,6 +68,10 @@ class Diagnostico:
     def a_dict(self) -> dict[str, str]:
         """Lo que viaja al backend y termina en el panel."""
         return {c.nombre: str(c.estado) for c in self.chequeos}
+
+    def detalles(self) -> dict[str, str]:
+        """Qué dice cada chequeo que falla, para el panel (D66.4). Acotado como el backend."""
+        return {c.nombre: c.detalle[:600] for c in self.fallas if c.detalle}
 
     def resumen(self) -> str:
         if self.puede_enviar:
@@ -312,6 +316,36 @@ def _permisos_macos() -> Chequeo:
     )
 
 
+def _perfiles(device_id: str) -> Chequeo:
+    """¿Hay un perfil de Chrome con la extensión y WhatsApp juntos? (D66.4)
+
+    Si lo hay, el agente lo abre solo antes de cada tanda (D66.3). Si no, es
+    algo que tiene que hacer una persona en la máquina, y `recomendar` sabe
+    decir qué: eso es lo que viaja al panel.
+    """
+    from agente import perfiles
+
+    origen = "D66"
+    todos = perfiles.listar()
+    if not todos:
+        return Chequeo(
+            "perfiles", Estado.NO_APLICA, f"no hay Chrome en {perfiles.carpeta_chrome()}", origen
+        )
+    recomendacion = perfiles.recomendar(todos)
+    if not recomendacion.listo or recomendacion.perfil is None:
+        return Chequeo(
+            "perfiles",
+            Estado.FALLA,
+            f"{recomendacion.problema}. {recomendacion.solucion}",
+            origen,
+        )
+    perfil = recomendacion.perfil
+    en_disco = perfil.device_id or "sin deviceId todavía"
+    if device_id and perfil.device_id and device_id != perfil.device_id:
+        en_disco += f", pero se usa {device_id}"
+    return Chequeo("perfiles", Estado.OK, f"{perfil.nombre} (deviceId {en_disco})", origen)
+
+
 def con_chequeo(diagnostico: Diagnostico, chequeo: Chequeo) -> Diagnostico:
     """Un diagnóstico con un chequeo reemplazado por su versión más fresca.
 
@@ -341,7 +375,7 @@ def ejecutar(
     con_navegador: bool = True,
     navegador_dir: str = "",
 ) -> Diagnostico:
-    """Corre los diez chequeos.
+    """Corre los once chequeos.
 
     `con_navegador=False` saltea el que lanza un proceso —`claude --version`—:
     lo usan los tests, y sirve para un arranque rápido porque tarda.
@@ -356,6 +390,11 @@ def ejecutar(
         _permiso_sitio(),
         _device_id(device_id),
         _chrome(claude_bin) if con_navegador else Chequeo("chrome", Estado.NO_APLICA, "salteado"),
+        #  Lee la carpeta de Chrome de la máquina: los tests no tienen por qué
+        #  depender de los perfiles de quien los corre.
+        _perfiles(device_id)
+        if con_navegador
+        else Chequeo("perfiles", Estado.NO_APLICA, "salteado"),
         _navegador_envio(conexion.carpeta_dedicada(navegador_dir)),
         _whatsapp_sesion(),
         _claude_md(carpeta_agente),

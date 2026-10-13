@@ -281,6 +281,41 @@ async def test_la_sesion_dedicada_vencida_tiene_alerta_propia(base) -> None:
 
 
 @sin_mongo
+async def test_el_perfil_de_chrome_tiene_alerta_propia_con_lo_que_dice_la_maquina(base) -> None:
+    """D66.4: la máquina ya probó abrir el perfil bueno; lo que queda es de una
+    persona, y la máquina sabe decir qué."""
+    await vendedores.registrar_latido(
+        base,
+        "mac-rocio",
+        diagnostico={"perfiles": "falla", "claude_bin": "falla"},
+        detalles={"perfiles": "la extensión está en Default y WhatsApp en Profile 1"},
+        ahora=AHORA,
+    )
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+    alerta = next(a for a in encontradas if a.codigo == "chrome_sin_perfil")
+
+    assert alerta.nivel is alertas.Nivel.AVISO
+    assert "Profile 1" in alerta.detalle
+    assert alerta.maquina == "mac-rocio"
+    degradada = next(a for a in encontradas if a.codigo == "maquina_degradada")
+    assert "perfiles" not in degradada.detalle, "no se duplica en la genérica"
+
+
+@sin_mongo
+async def test_el_perfil_sin_detalle_igual_dice_algo(base) -> None:
+    """Un agente que no manda el detalle: la alerta no queda vacía."""
+    await vendedores.registrar_latido(
+        base, "mac-rocio", diagnostico={"perfiles": "falla"}, ahora=AHORA
+    )
+
+    encontradas = await alertas.revisar(base, ahora=AHORA)
+    alerta = next(a for a in encontradas if a.codigo == "chrome_sin_perfil")
+    assert "extensión" in alerta.detalle
+    assert "maquina_degradada" not in codigos(encontradas)
+
+
+@sin_mongo
 async def test_la_sesion_vencida_convive_con_otros_chequeos_caidos(base) -> None:
     await vendedores.registrar_latido(
         base,

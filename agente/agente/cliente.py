@@ -58,19 +58,40 @@ class Cliente:
             headers={"Authorization": f"Bearer {token}"},
             timeout=timeout,
         )
+        #  El backend no conoce `detalles` (D66.4): se dejó de mandar.
+        self._sin_detalles = False
 
     async def cerrar(self) -> None:
         await self._http.aclose()
 
     async def registrar(
-        self, *, version: str, diagnostico: dict[str, str], modo: str = ""
+        self,
+        *,
+        version: str,
+        diagnostico: dict[str, str],
+        modo: str = "",
+        detalles: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        respuesta = await self._http.post(
-            "/api/agente/registrar",
-            json={"version": version, "diagnostico": diagnostico, "modo": modo},
-        )
+        cuerpo: dict[str, Any] = {"version": version, "diagnostico": diagnostico, "modo": modo}
+        respuesta = await self._post_con_detalles("/api/agente/registrar", cuerpo, detalles)
         self._revisar(respuesta)
         return respuesta.json()
+
+    async def _post_con_detalles(
+        self, ruta: str, cuerpo: dict[str, Any], detalles: dict[str, str] | None
+    ) -> httpx.Response:
+        """Manda `detalles` (D66.4) si el backend lo conoce.
+
+        Un backend anterior rechaza los campos que no conoce con 422, y las
+        máquinas se actualizan solas, a veces antes que él. Al primer 422 se
+        reintenta sin el campo y no se lo vuelve a mandar en este proceso.
+        """
+        if detalles and not self._sin_detalles:
+            respuesta = await self._http.post(ruta, json={**cuerpo, "detalles": detalles})
+            if respuesta.status_code != 422:
+                return respuesta
+            self._sin_detalles = True
+        return await self._http.post(ruta, json=cuerpo)
 
     async def proximo_job(self) -> Job:
         """Un job, o `SinTrabajo`. Nunca `None`: el llamador no puede olvidarse."""
@@ -124,6 +145,7 @@ class Cliente:
         *,
         horario: str | None = None,
         descanso: str | None = None,
+        detalles: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         cuerpo: dict[str, Any] = {"diagnostico": diagnostico or {}}
         #  D63 y D64: sólo si hay algo que decir. Un backend anterior rechaza
@@ -133,7 +155,7 @@ class Cliente:
             cuerpo["horario_actualizador"] = horario
         if descanso is not None:
             cuerpo["descanso"] = descanso
-        respuesta = await self._http.post("/api/agente/latido", json=cuerpo)
+        respuesta = await self._post_con_detalles("/api/agente/latido", cuerpo, detalles)
         self._revisar(respuesta)
         return respuesta.json()
 

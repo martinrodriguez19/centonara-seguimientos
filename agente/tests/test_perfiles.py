@@ -304,3 +304,35 @@ def test_sin_nada_en_ningun_lado_queda_vacio_y_no_memoriza_basura(chrome, tmp_pa
     armar(chrome, "Default", extension=True, whatsapp=True)
     assert perfiles.resolver_device_id("", perfil_dir="Default", casa=tmp_path) == ""
     assert not (tmp_path / ".centonara" / "estado" / "device_id").exists()
+
+
+# ---------------------------------------------------------------------------
+# D66.3: qué perfil se abre antes de una tanda
+# ---------------------------------------------------------------------------
+
+
+def test_abre_el_configurado_si_sirve(chrome) -> None:
+    armar(chrome, "Default", extension=True, whatsapp=True)
+    armar(
+        chrome,
+        "Profile 1",
+        extension=True,
+        whatsapp=True,
+        device_id="1" * 8 + "-1111-1111-1111-" + "1" * 12,
+    )
+
+    assert perfiles.perfil_a_usar("Default") == "Default"
+
+
+def test_si_el_configurado_no_sirve_abre_el_recomendado(chrome) -> None:
+    armar(chrome, "Default", whatsapp=True)
+    armar(chrome, "Profile 3", extension=True, whatsapp=True)
+
+    assert perfiles.perfil_a_usar("Default") == "Profile 3"
+
+
+def test_si_ninguno_sirve_se_queda_con_el_configurado(chrome) -> None:
+    armar(chrome, "Default", extension=True)
+    armar(chrome, "Profile 1", whatsapp=True)
+
+    assert perfiles.perfil_a_usar("Default") == "Default"

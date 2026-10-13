@@ -1576,8 +1576,13 @@ dejó escrito como causa para revertir su punto 5.
    marca diaria en `programacion` (`_id: "cuota"`) evita lanzarla dos veces; no corre durante el
    descanso (D64) ni con una corrida en curso o el sistema frenado. Si la cuota vuelve después
    del comienzo del descanso, queda salteada en la auditoría.
+   *Implementado así:* el documento `programacion._id:"cuota"` guarda además `vuelve_en` (el
+   `$max` de las pausas registradas). Con una corrida en curso se espera hasta 2 h y después se
+   saltea; si `vuelve_en` es de otro día, se saltea como `dia_terminado`. La revisión y la
+   corrida son las de la repesca (`repesca.completar`), y quedan en la auditoría como
+   `cuota_retomada`. Una pausa por cuota más larga que ya tuviera una máquina no se acorta.
 4. *(sprint 3)* Un `TIMEOUT` guarda los últimos 2 KB de lo que alcanzó a decir el proceso, para
-   distinguir un Chrome colgado de cualquier otra cosa.
+   distinguir un Chrome colgado de cualquier otra cosa (`detalle.salida`).
 
 **Qué la revertiría.** Volver a una cuenta por máquina: ahí la pausa vuelve a ser por máquina.
 
@@ -1607,6 +1612,11 @@ al modelo para que descubra lo mismo. Regla del dueño: nada de esto puede pedir
 4. *(sprint 2)* El DIAGNOSTICO suma un chequeo `perfiles` —por perfil: extensión, WhatsApp,
    `deviceId` en disco y en uso— y el panel muestra lo que `perfiles.recomendar()` ya sabe decir
    cuando no se puede arreglar solo (extensión y WhatsApp en perfiles distintos, sesión cerrada).
+   *Implementado así:* el latido y el registro llevan `detalles` —`{chequeo: texto}` de los que
+   fallan— y el backend los guarda en `diagnostico_detalle`. Un `perfiles` en falla tiene alerta
+   propia (`chrome_sin_perfil`, aviso) con ese texto. El agente deja de mandar el campo al
+   primer 422, para convivir con un backend sin desplegar. Pedir el perfil a un Chrome ya
+   abierto abre una ventana, así que se hace a lo sumo cada 3 h por perfil.
 
 **Qué la revertiría.** Un perfil donde el disco tenga un id que la extensión no usa. Ahí queda
 `AGENTE_DEVICE_ID` en el `.env`, que se vuelve a respetar con `AGENTE_DEVICE_ID_FIJO=1`.
@@ -1625,9 +1635,15 @@ criterio del modelo—. El dueño pide: si el envío falla, que deje borradores.
 1. *(sprint 3)* Un `BORRADORES` que vuelve a la cola por un fallo vuelve con `enviar=false`: un
    reintento nunca envía, deja borradores. No aplica a `LIMITE_USO` ni a `NAVEGADOR_AUSENTE`
    (no se reintentan) ni a `TEXTO_ENVIADO` (lo mira una persona).
-2. *(sprint 3)* El prompt pide registrar cada chat terminado en un archivo de la tanda; con
-   `TIMEOUT`, el agente lo lee y lo reporta como `detalle.chats`, y `procesar_reporte` lo registra
-   igual que en una tanda fallida. Sin `enviar`, el prompt sigue idéntico salvo ese registro.
+   El reintento lleva además, al frente de su `no_escribir`, los chats que la tanda fallida
+   reportó escritos o enviados. Vale también para una tanda devuelta por `recuperar_colgados`.
+2. *(sprint 3)* El prompt pide anotar cada chat terminado en una línea `CHAT_TERMINADO {…}`
+   **en la salida**, no en un archivo: en modo headless escribir un archivo pide un permiso más
+   en cada máquina. BORRADORES corre con `--output-format stream-json --verbose`, así esas
+   líneas salen en vivo; con `TIMEOUT` el agente las lee de lo que alcanzó a salir y las reporta
+   como `detalle.chats`, y `procesar_reporte` las registra igual que en una tanda fallida. El
+   sobre final del stream es el mismo de `--output-format json` (verificado el 12/10). Sin
+   `enviar`, el prompt sigue idéntico salvo ese registro.
 
 **Qué la revertiría.** Que los reintentos de tandas fallidas resulten ser las que más envían
 bien: ahí el reintento vuelve a enviar dentro de la ventana.

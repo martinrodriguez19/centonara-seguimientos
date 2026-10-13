@@ -192,6 +192,23 @@ def recomendar(perfiles: list[Perfil] | None = None) -> Recomendacion:
     )
 
 
+def perfil_a_usar(configurado: str, perfiles: list[Perfil] | None = None) -> str:
+    """El perfil de Chrome que el agente abre antes de una tanda (D66.3).
+
+    El configurado, si sirve; si no, el que recomienda `recomendar` —el `.env`
+    puede decir Default y la extensión vivir en Profile 3—; y si ninguno sirve,
+    el configurado igual: abrir otro a ciegas no arregla nada.
+    """
+    todos = listar() if perfiles is None else perfiles
+    propio = next((p for p in todos if p.nombre == configurado), None)
+    if propio is not None and propio.sirve:
+        return configurado
+    recomendado = recomendar(todos)
+    if recomendado.listo and recomendado.perfil is not None:
+        return recomendado.perfil.nombre
+    return configurado
+
+
 # ---------------------------------------------------------------------------
 # El deviceId en caliente (D47)
 # ---------------------------------------------------------------------------

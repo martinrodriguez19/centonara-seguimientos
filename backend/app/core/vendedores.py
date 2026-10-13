@@ -158,6 +158,7 @@ async def registrar_latido(
     maquina: str,
     *,
     diagnostico: dict[str, str] | None = None,
+    detalles: dict[str, str] | None = None,
     version_agente: str | None = None,
     modo_agente: str | None = None,
     horario_actualizador: str | None = None,
@@ -174,6 +175,13 @@ async def registrar_latido(
     cambios: dict[str, Any] = {"ultimo_latido": ahora or datetime.now(UTC)}
     if diagnostico is not None:
         cambios["diagnostico"] = diagnostico
+        #  El detalle viaja con el diagnóstico que lo explica (D66.4): uno sin
+        #  el otro mostraría el texto de una falla que ya se arregló.
+        cambios["diagnostico_detalle"] = {
+            nombre: texto
+            for nombre, texto in (detalles or {}).items()
+            if diagnostico.get(nombre) == "falla"
+        }
     if version_agente is not None:
         cambios["version_agente"] = version_agente
         #  Cuándo la reportó: las alertas le dan un margen desde acá antes de

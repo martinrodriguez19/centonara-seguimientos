@@ -508,7 +508,9 @@ async def reportar(
                     "estado": str(EstadoJob.PENDIENTE),
                     "disponible_desde": momento + timedelta(seconds=30 * job["intentos"]),
                     "tomado_en": None,
-                }
+                    **_reintento_sin_envio(job),
+                    **_ya_escritos(job, detalle or {}),
+                },
             },
         )
         log.info("job_reintenta", job=str(job_id), intentos=job["intentos"], codigo=str(codigo))
@@ -531,6 +533,46 @@ async def reportar(
         reintenta=False,
         frena_corrida=bool(codigo and codigo.frena_corrida),
     )
+
+
+# D67.1: lo que cambia en una tanda que vuelve a la cola. El reintento deja
+# borradores y no envía: si la tanda falló entera, no se sabe qué salió y qué
+# no, y la regla contra el doble envío quedaría sólo en el criterio del modelo.
+_SIN_ENVIO = {"payload.enviar": False, "envio_quitado_en_reintento": True}
+
+
+def _reintento_sin_envio(job: dict[str, Any]) -> dict[str, Any]:
+    """Los campos que apagan el envío de una tanda que se reintenta."""
+    if job.get("tipo") != Tipo.BORRADORES or not (job.get("payload") or {}).get("enviar"):
+        return {}
+    return dict(_SIN_ENVIO)
+
+
+def _ya_escritos(job: dict[str, Any], detalle: dict[str, Any]) -> dict[str, Any]:
+    """Los chats que la tanda fallida alcanzó a escribir, al frente de su `no_escribir`.
+
+    El reintento lleva el payload de la primera vuelta, calculado antes de que
+    esos borradores existieran: sin esto, volvería a pasar por los mismos chats.
+    Van adelante porque la lista tiene tope y lo que se corta es la cola.
+    """
+    if job.get("tipo") != Tipo.BORRADORES:
+        return {}
+    escritos = [
+        str(chat["contacto_nombre"]).strip()[:120]
+        for chat in detalle.get("chats") or []
+        if isinstance(chat, dict)
+        and str(chat.get("contacto_nombre") or "").strip()
+        and (chat.get("borrador_dejado") or chat.get("enviado"))
+    ]
+    if not escritos:
+        return {}
+    antes = [str(n) for n in (job.get("payload") or {}).get("no_escribir") or []]
+    juntos = list(dict.fromkeys([*escritos, *antes]))[:MAX_NO_ESCRIBIR_REINTENTO]
+    return {"payload.no_escribir": juntos}
+
+
+# El tope de `no_escribir` en el payload (`modelos.jobs`, `pase_unico.MAX_NO_ESCRIBIR`).
+MAX_NO_ESCRIBIR_REINTENTO = 120
 
 
 class JobDesconocido(Exception):
@@ -565,9 +607,15 @@ async def recuperar_colgados(
     entraría en un bucle infinito.
     """
     corte = _ahora(ahora) - timedelta(seconds=segundos)
+    colgados = {"estado": str(EstadoJob.TOMADO), "tomado_en": {"$lt": corte}}
+    #  D67.1: una tanda que vuelve a la cola no envía, tampoco si volvió porque
+    #  el agente se murió en el medio.
+    await base["jobs"].update_many(
+        {**colgados, "tipo": str(Tipo.BORRADORES), "payload.enviar": True},
+        {"$set": _SIN_ENVIO},
+    )
     resultado = await base["jobs"].update_many(
-        {"estado": str(EstadoJob.TOMADO), "tomado_en": {"$lt": corte}},
-        {"$set": {"estado": str(EstadoJob.PENDIENTE), "tomado_en": None}},
+        colgados, {"$set": {"estado": str(EstadoJob.PENDIENTE), "tomado_en": None}}
     )
     if resultado.modified_count:
         log.warning("jobs_colgados_recuperados", cantidad=resultado.modified_count)

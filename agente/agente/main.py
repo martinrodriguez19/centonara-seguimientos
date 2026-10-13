@@ -541,9 +541,12 @@ def _asegurar_navegador(config: Configuracion):
     async def asegurar():
         from agente.adaptadores import navegador
 
+        #  D66.3: el perfil que tiene la extensión y WhatsApp, aunque Chrome ya
+        #  esté abierto en otro. Se vuelve a mirar en cada tanda.
         return await navegador.asegurar_abierto(
             chrome_bin=config.chrome_bin,
-            perfil_dir=config.chrome_perfil_dir,
+            perfil_dir=perfiles.perfil_a_usar(config.chrome_perfil_dir),
+            reabrir=True,
         )
 
     return asegurar

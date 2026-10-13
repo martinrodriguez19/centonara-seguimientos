@@ -128,6 +128,13 @@ PASOS:
       el resumen de una linea de que se hablaba, quien mando el ultimo mensaje,
       hace cuantos dias, el tema en pocas palabras, la cita literal del chat en
       la que se apoya el borrador, y el texto EXACTO que dejaste escrito.
+      Y apenas lo terminas -con borrador o salteado-, antes de pasar al
+      siguiente, escribi en tu mensaje de ese momento UNA linea que empiece
+      con CHAT_TERMINADO y siga con el objeto de ese chat en una sola linea,
+      con los mismos campos que lleva en "chats" del FORMATO DE SALIDA:
+      CHAT_TERMINADO {"contacto_nombre": "...", "borrador_dejado": true, ...}
+      Es el registro de lo hecho si la tanda se corta por tiempo. Esas lineas
+      NO van en la respuesta final, que sigue siendo solo el JSON.
 <<SI_NO_ENVIA>>
    g. Pasa al siguiente chat CLICKEANDO en el en la lista. Al salir, WhatsApp
       guarda lo escrito como borrador de esa conversacion: eso es exactamente

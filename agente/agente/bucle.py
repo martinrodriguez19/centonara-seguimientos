@@ -162,6 +162,7 @@ class Bucle:
                 version=self._version,
                 diagnostico=self.estado.diagnostico.a_dict(),
                 modo=self._modo,
+                detalles=self.estado.diagnostico.detalles(),
             )
             self.estado.conectado = True
             self.estado.pausado = bool(respuesta.get("pausada"))
@@ -325,6 +326,7 @@ async def latir(
                 estado.diagnostico.a_dict(),
                 horario=horario() if horario else None,
                 descanso=descanso() if descanso else None,
+                detalles=estado.diagnostico.detalles(),
             )
             mandados += 1
             #  D63: los horarios vuelven en cada latido; un cambio en el panel

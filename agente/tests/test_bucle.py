@@ -32,9 +32,13 @@ class ClienteFalso:
         self.horarios_mandados: list = []
         self.consultas = 0
         self.registros = 0
+        self.detalles_mandados: list = []
 
-    async def registrar(self, *, version: str, diagnostico: dict, modo: str = "") -> dict:
+    async def registrar(
+        self, *, version: str, diagnostico: dict, modo: str = "", detalles=None
+    ) -> dict:
         self.registros += 1
+        self.detalles_mandados.append(detalles)
         if isinstance(self._registro, Exception):
             raise self._registro
         return self._registro
@@ -50,8 +54,9 @@ class ClienteFalso:
         self.reportes.append({"job_id": job_id, **datos})
         return {"estado": "listo"}
 
-    async def latido(self, diagnostico=None, *, horario=None, descanso=None) -> dict:
+    async def latido(self, diagnostico=None, *, horario=None, descanso=None, detalles=None) -> dict:
         self.latidos += 1
+        self.detalles_mandados.append(detalles)
         self.horarios_mandados.append(horario)
         return {"ok": True, "horarios": {"disparadores": [], "actualizar_ya": False}}
 
@@ -361,7 +366,7 @@ async def test_un_latido_que_falla_no_rompe_nada_y_el_bucle_termina() -> None:
     """
 
     class LatidoRoto(ClienteFalso):
-        async def latido(self, diagnostico=None, *, horario=None, descanso=None) -> dict:
+        async def latido(self, diagnostico=None, *, horario=None, descanso=None, **_) -> dict:
             raise httpx.ConnectError("sin red")
 
     dormir, _ = sin_dormir()
@@ -457,7 +462,7 @@ async def test_el_latido_deja_la_marca_de_vida_aunque_no_llegue() -> None:
     marcas: list[int] = []
 
     class ClienteSinRed(ClienteFalso):
-        async def latido(self, diagnostico=None, *, horario=None, descanso=None) -> dict:
+        async def latido(self, diagnostico=None, *, horario=None, descanso=None, **_) -> dict:
             raise httpx.ConnectError("sin red")
 
     mandados = await latir(

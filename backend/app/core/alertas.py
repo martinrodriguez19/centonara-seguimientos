@@ -341,6 +341,25 @@ async def _maquinas(base, ahora: datetime) -> list[Alerta]:
                 )
             )
 
+        # D66.4: el Chrome de la máquina no tiene la extensión y WhatsApp en el
+        # mismo perfil. El agente ya probó abrir el bueno; lo que queda lo tiene
+        # que hacer una persona, y la máquina sabe decir qué.
+        if "perfiles" in fallando:
+            fallando.remove("perfiles")
+            que_dice = (vendedor.get("diagnostico_detalle") or {}).get("perfiles")
+            alertas.append(
+                Alerta(
+                    Nivel.AVISO,
+                    "chrome_sin_perfil",
+                    f"El Chrome de {vendedor.get('nombre') or maquina} no está listo",
+                    que_dice
+                    or "Ningún perfil de Chrome tiene la extensión de Claude y WhatsApp juntos.",
+                    "Lo tiene que arreglar alguien en esa computadora: la máquina ya "
+                    "probó abrir sola el perfil correcto.",
+                    maquina=maquina,
+                )
+            )
+
         if fallando:
             alertas.append(
                 Alerta(

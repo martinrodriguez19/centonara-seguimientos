@@ -267,3 +267,83 @@ async def test_sin_chrome_bin_el_error_habla_del_perfil(tmp_path, monkeypatch) -
         await conexion.conectar_perfil(_PlaywrightQueNoLanza(), carpeta=tmp_path / "perfil")
 
     assert "CHROME_BIN" not in str(detalle.value)
+
+
+# ---------------------------------------------------------------------------
+# D66.3: el perfil bueno, aunque Chrome ya esté abierto
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def abierto(monkeypatch, tmp_path):
+    """Chrome corriendo, un ejecutable que existe, y sin esperas ni memoria previa."""
+    falso_chrome = tmp_path / "chrome"
+    falso_chrome.write_text("")
+    monkeypatch.setattr(navegador, "_chrome_corriendo", lambda: True)
+    monkeypatch.setattr(navegador, "ESPERA_EXTENSION_S", 0.0)
+    monkeypatch.setattr(navegador, "_reabierto_en", {})
+    return falso_chrome
+
+
+async def test_con_reabrir_pide_el_perfil_aunque_chrome_este_abierto(abierto) -> None:
+    lanzador = Lanzador()
+
+    resultado = await navegador.asegurar_abierto(
+        chrome_bin=str(abierto), perfil_dir="Profile 3", lanzar=lanzador, reabrir=True
+    )
+
+    assert resultado.estado is Estado.YA_ESTABA
+    assert lanzador.comando == [str(abierto), "--profile-directory=Profile 3"]
+    assert "Profile 3" in resultado.detalle
+
+
+async def test_no_abre_una_ventana_por_tanda(abierto) -> None:
+    """Chrome abre una ventana por pedido: una por tanda llenaría el del vendedor."""
+    lanzador = Lanzador()
+    ahora = {"t": 1000.0}
+
+    async def pedir():
+        return await navegador.asegurar_abierto(
+            chrome_bin=str(abierto),
+            perfil_dir="Profile 3",
+            lanzar=lanzador,
+            reabrir=True,
+            reloj=lambda: ahora["t"],
+        )
+
+    await pedir()
+    ahora["t"] += 600
+    await pedir()
+    assert lanzador.veces == 1
+
+    ahora["t"] += navegador.REABRIR_CADA_S
+    await pedir()
+    assert lanzador.veces == 2
+
+
+async def test_si_pedir_el_perfil_falla_la_tanda_sigue(abierto) -> None:
+    def revienta(comando):
+        raise OSError("no se pudo")
+
+    resultado = await navegador.asegurar_abierto(
+        chrome_bin=str(abierto), lanzar=revienta, reabrir=True
+    )
+
+    assert resultado.utilizable
+    assert navegador._reabierto_en == {}
+
+
+async def test_restaura_las_minimizadas_y_lo_dice(abierto, monkeypatch) -> None:
+    monkeypatch.setattr(navegador, "restaurar_minimizadas", lambda: 2)
+    monkeypatch.setattr(navegador, "_reabierto_en", {"Default": 0.0})
+
+    resultado = await navegador.asegurar_abierto(
+        chrome_bin=str(abierto), lanzar=Lanzador(), reabrir=True, reloj=lambda: 1.0
+    )
+
+    assert "2 ventanas minimizadas" in resultado.detalle
+
+
+def test_fuera_de_windows_no_restaura_nada(monkeypatch) -> None:
+    monkeypatch.setattr(navegador.sys, "platform", "darwin")
+    assert navegador.restaurar_minimizadas() == 0

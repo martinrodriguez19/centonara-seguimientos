@@ -46,12 +46,13 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
     Desde D51 también es el reloj de la corrida programada: cada vuelta
     pregunta si es la hora (`programacion.revisar`), y dispara a lo sumo una
     vez por día. Cinco minutos de granularidad alcanzan para "a las 17". La
-    repesca de D61 usa el mismo reloj, con su propia marca diaria.
+    repesca de D61 usa el mismo reloj, con su propia marca diaria, y también la
+    vuelta de la cuota de D65.3.
 
     Cada vuelta se protege sola: un hipo de Mongo se loguea y se vuelve a
     intentar en la próxima — el watchdog no puede ser otra cosa que se muere.
     """
-    from app.core import cola, corridas, mensajes, programacion, repesca
+    from app.core import cola, corridas, cuota, mensajes, programacion, repesca
 
     while True:
         await asyncio.sleep(intervalo_s)
@@ -65,7 +66,8 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
             largas = await corridas.vencer_largas(base)
             programada = await programacion.revisar(base)
             repescada = await repesca.revisar(base)
-            if recuperados or vencidos or ausentes or largas or programada or repescada:
+            con_cuota = await cuota.revisar_vuelta(base)
+            if any((recuperados, vencidos, ausentes, largas, programada, repescada, con_cuota)):
                 log.info(
                     "mantenimiento_corrido",
                     recuperados=recuperados,
@@ -74,6 +76,7 @@ async def mantenimiento_periodico(*, intervalo_s: float = INTERVALO_MANTENIMIENT
                     largas=largas,
                     programada=programada,
                     repesca=repescada,
+                    cuota=con_cuota,
                 )
         except Exception as error:
             log.warning("mantenimiento_fallo", error=str(error), tipo=type(error).__name__)

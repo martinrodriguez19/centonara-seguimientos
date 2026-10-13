@@ -231,6 +231,12 @@ export function Chequeos({ maquina }: { maquina: Maquina }) {
                     {texto.detalle} <span className="text-foreground">{texto.queHacer}</span>
                   </p>
                 )}
+                {resultado === "falla" && maquina.diagnostico_detalle?.[clave] && (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">{t.chequeoDiceLaMaquina}</span>{" "}
+                    {maquina.diagnostico_detalle[clave]}
+                  </p>
+                )}
               </li>
             );
           })}

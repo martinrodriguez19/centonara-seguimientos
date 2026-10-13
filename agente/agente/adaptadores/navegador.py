@@ -45,6 +45,7 @@ import contextlib
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -198,14 +199,23 @@ def _lanzar(comando: list[str]) -> None:
     )
 
 
+# D66.3: con Chrome ya corriendo, el perfil bueno se vuelve a pedir a lo sumo
+# cada tanto. Chrome le pasa el pedido a la instancia abierta, que abre una
+# ventana de ese perfil: una por tanda llenaría el Chrome del vendedor.
+REABRIR_CADA_S = 3 * 3600.0
+_reabierto_en: dict[str, float] = {}
+
+
 async def asegurar_abierto(
     *,
     chrome_bin: str = "",
     perfil_dir: str = "Default",
     espera_s: float = 20.0,
     lanzar=_lanzar,
+    reabrir: bool = False,
+    reloj=time.monotonic,
 ) -> Resultado:
-    """Que el Chrome del vendedor esté abierto. **Sin puerto** (D24).
+    """Que el Chrome del vendedor esté abierto, en el perfil bueno. **Sin puerto** (D24).
 
     Es lo que `LISTAR` necesita: la extensión Claude in Chrome vive en ese
     navegador, y si el vendedor lo cerró con Cmd+Q la extensión no existe para
@@ -217,26 +227,57 @@ async def asegurar_abierto(
     viejo de CDP, que Chrome 136+ mató. Acá sólo hace falta que la ventana esté
     abierta, con el perfil que tiene la extensión.
 
+    Con `reabrir` (D66.3), un Chrome que ya corría también recibe el pedido de
+    abrir ese perfil —estaba abierto en otro, y la extensión no aparecía— y en
+    Windows se le restauran las ventanas minimizadas. No se cierra nada.
+
     Después de lanzarlo se espera un poco más de lo que tarda el proceso: la
     extensión necesita unos segundos para registrarse, y un `select_browser`
     contra un Chrome recién abierto encuentra la lista vacía.
     """
-    if _chrome_corriendo():
-        return Resultado(Estado.YA_ESTABA, "Chrome ya estaba abierto")
-
     ejecutable = Path(chrome_bin) if chrome_bin else encontrar_chrome()
+    comando = [str(ejecutable), f"--profile-directory={perfil_dir}"]
+
+    if _chrome_corriendo():
+        if not reabrir:
+            return Resultado(Estado.YA_ESTABA, "Chrome ya estaba abierto")
+        restauradas = restaurar_minimizadas()
+        hecho = []
+        if restauradas:
+            hecho.append(f"se restauraron {restauradas} ventanas minimizadas")
+        ultima = _reabierto_en.get(perfil_dir)
+        if (
+            ejecutable is not None
+            and ejecutable.exists()
+            and (ultima is None or reloj() - ultima >= REABRIR_CADA_S)
+        ):
+            try:
+                lanzar(comando)
+            except (OSError, subprocess.SubprocessError) as error:
+                #  No es para frenar la tanda: Chrome está abierto, y puede que
+                #  ya en el perfil bueno.
+                log.warning("perfil_no_reabierto", perfil_dir=perfil_dir, error=str(error))
+            else:
+                _reabierto_en[perfil_dir] = reloj()
+                hecho.append(f"se pidió el perfil {perfil_dir}")
+                log.info("perfil_de_chrome_pedido", perfil_dir=perfil_dir)
+        if hecho:
+            await asyncio.sleep(ESPERA_EXTENSION_S)
+        sumado = f"; {', '.join(hecho)}" if hecho else ""
+        return Resultado(Estado.YA_ESTABA, f"Chrome ya estaba abierto{sumado}")
+
     if ejecutable is None or not ejecutable.exists():
         return Resultado(
             Estado.NO_SE_PUDO,
             f"no se encontró el ejecutable de Chrome{f': {chrome_bin}' if chrome_bin else ''}",
         )
 
-    comando = [str(ejecutable), f"--profile-directory={perfil_dir}"]
     log.info("abriendo_chrome_del_vendedor", perfil_dir=perfil_dir)
     try:
         lanzar(comando)
     except (OSError, subprocess.SubprocessError) as error:
         return Resultado(Estado.NO_SE_PUDO, f"no se pudo lanzar Chrome: {error}")
+    _reabierto_en[perfil_dir] = reloj()
 
     limite = asyncio.get_running_loop().time() + espera_s
     while asyncio.get_running_loop().time() < limite:
@@ -247,6 +288,64 @@ async def asegurar_abierto(
         await asyncio.sleep(0.5)
 
     return Resultado(Estado.NO_SE_PUDO, f"Chrome no arrancó en {espera_s:.0f}s")
+
+
+def restaurar_minimizadas() -> int:
+    """Restaura las ventanas de Chrome minimizadas, en Windows. Devuelve cuántas (D66.3).
+
+    Con la ventana minimizada la extensión no puede leer la página: el 03/10
+    windows-ignacio falló así, con Chrome abierto. Se restauran **sin darles
+    foco** —el vendedor puede estar escribiendo en otra cosa— y sólo las de
+    `chrome.exe`: la clase de ventana la comparten WhatsApp de escritorio, VS
+    Code y cualquier app de Electron. En macOS y Linux no hace nada.
+    """
+    if sys.platform != "win32":
+        return 0
+    try:
+        return _restaurar_en_windows()
+    except (OSError, AttributeError, ValueError) as error:  # pragma: no cover - sólo Windows
+        log.warning("ventanas_no_restauradas", error=str(error))
+        return 0
+
+
+def _restaurar_en_windows() -> int:  # pragma: no cover - sólo Windows
+    import ctypes
+    from ctypes import wintypes
+
+    windll = getattr(ctypes, "windll")  # noqa: B009 - no existe fuera de Windows
+    user32, kernel32 = windll.user32, windll.kernel32
+    sw_shownoactivate = 4
+    consultar = 0x1000  # PROCESS_QUERY_LIMITED_INFORMATION
+    restauradas = 0
+    clase = ctypes.create_unicode_buffer(64)
+
+    def es_de_chrome(hwnd) -> bool:
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        proceso = kernel32.OpenProcess(consultar, False, pid.value)
+        if not proceso:
+            return False
+        try:
+            ruta = ctypes.create_unicode_buffer(1024)
+            largo = wintypes.DWORD(1024)
+            if not kernel32.QueryFullProcessImageNameW(proceso, 0, ruta, ctypes.byref(largo)):
+                return False
+            return ruta.value.lower().endswith("\\chrome.exe")
+        finally:
+            kernel32.CloseHandle(proceso)
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visitar(hwnd, _):
+        nonlocal restauradas
+        if user32.IsWindowVisible(hwnd) and user32.IsIconic(hwnd):
+            user32.GetClassNameW(hwnd, clase, 64)
+            if clase.value == "Chrome_WidgetWin_1" and es_de_chrome(hwnd):
+                user32.ShowWindow(hwnd, sw_shownoactivate)
+                restauradas += 1
+        return True
+
+    user32.EnumWindows(visitar, 0)
+    return restauradas
 
 
 async def asegurar_chrome(

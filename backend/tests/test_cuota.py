@@ -126,21 +126,27 @@ async def sin_cuota(http, token: str, detalle: dict | None = None):
 
 
 @sin_mongo
-async def test_el_reporte_pausa_a_esa_maquina_y_a_ninguna_otra(base, http) -> None:
+async def test_el_reporte_pausa_a_todas_las_activas(base, http) -> None:
+    """D65.2: la cuenta de Claude es una; la segunda máquina no tiene que
+    enterarse pagando una llamada fallida."""
     token = await maquina(base, "pc-sin-cuota")
     await maquina(base, "pc-con-cuota")
+    await maquina(base, "pc-de-baja")
+    await base["vendedores"].update_one({"maquina": "pc-de-baja"}, {"$set": {"activo": False}})
     await corridas.disparar(base, quien="panel")
 
     reinicio = datetime.now(UTC) + timedelta(hours=1)
     respuesta = await sin_cuota(http, token, {"reinicia_en": reinicio.isoformat()})
 
     assert respuesta.json() == {"estado": "fallido", "reintenta": False, "frena_corrida": False}
-    pausada = await base["vendedores"].find_one({"maquina": "pc-sin-cuota"})
-    assert abs(pausada["pausa_cuota_hasta"] - (reinicio + cuota.MARGEN_REINICIO)) < timedelta(
-        seconds=1
-    )
-    otra = await base["vendedores"].find_one({"maquina": "pc-con-cuota"})
-    assert otra.get("pausa_cuota_hasta") is None
+    for nombre in ("pc-sin-cuota", "pc-con-cuota"):
+        pausada = await base["vendedores"].find_one({"maquina": nombre})
+        esperado = reinicio + cuota.MARGEN_REINICIO
+        assert abs(pausada["pausa_cuota_hasta"] - esperado) < timedelta(seconds=1)
+    #  La que el dueño dio de baja no se toca: no es del sistema pausarla.
+    de_baja = await base["vendedores"].find_one({"maquina": "pc-de-baja"})
+    assert de_baja.get("pausa_cuota_hasta") is None
+    #  No es la pausa global del dueño: se va sola.
     assert not await configuracion.esta_pausado(base)
 
     # Durante la pausa no recibe nada.
@@ -149,7 +155,24 @@ async def test_el_reporte_pausa_a_esa_maquina_y_a_ninguna_otra(base, http) -> No
 
     evento = await base["auditoria"].find_one({"que": "cuota_agotada"})
     assert evento["detalle"]["maquina"] == "pc-sin-cuota"
+    assert evento["detalle"]["pausadas"] == ["pc-con-cuota", "pc-sin-cuota"]
     assert evento["detalle"]["dijo_cuando"] is True
+
+
+@sin_mongo
+async def test_una_pausa_mas_larga_no_se_acorta(base) -> None:
+    await maquina(base, "pc-1")
+    await maquina(base, "pc-2")
+    larga = datetime.now(UTC) + timedelta(days=2)
+    await vendedores.pausar_por_cuota(base, "pc-2", hasta=larga)
+
+    hasta = await cuota.registrar(base, maquina="pc-1", detalle={})
+
+    assert hasta < larga
+    pc2 = await base["vendedores"].find_one({"maquina": "pc-2"})
+    assert abs(pc2["pausa_cuota_hasta"] - larga) < timedelta(seconds=1)
+    marca = await base["programacion"].find_one({"_id": cuota.MARCA})
+    assert abs(marca["vuelve_en"] - hasta) < timedelta(seconds=1)
 
 
 @sin_mongo
