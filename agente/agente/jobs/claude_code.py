@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agente.config import obtener_configuracion
 from agente.jobs import cuota
 from agente.logging import obtener_logger
 
@@ -74,6 +76,14 @@ COLA_DEL_TIMEOUT = 2048
 # en una línea propia, mientras trabaja. Se lee de la salida en vivo si la
 # tanda se corta por tiempo, y se borra de la respuesta final si se coló ahí.
 MARCA_CHAT = "CHAT_TERMINADO"
+
+# Cuánto de lo último que dijo el modelo se copia al log y al detalle cuando no
+# devolvió JSON. Alcanza para ver cómo terminó la respuesta sin volcar la tanda.
+COLA_SIN_JSON = 500
+
+# La variable con la que Claude Code toma el token de larga duración de
+# `claude setup-token`, en vez de la sesión de `/login` que vence.
+VARIABLE_TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
 
 
 @dataclass(frozen=True)
@@ -131,9 +141,24 @@ def _correr(comando: list[str], prompt: str, *, timeout: float, cwd: Path) -> Sa
         errors="replace",
         timeout=timeout,
         cwd=str(cwd),
+        env=_entorno_de_claude(),
         check=False,
     )
     return Salida(proceso.returncode, proceso.stdout or "", proceso.stderr or "")
+
+
+def _entorno_de_claude() -> dict[str, str]:
+    """El entorno del subproceso: el del agente, más el token de larga duración si hay.
+
+    El token vive en el `.env` de la máquina y `Configuracion` lo lee, pero no lo
+    exporta al proceso: hay que pasárselo a `claude` a mano. Sin token configurado
+    el entorno es el heredado, idéntico al de antes. **El valor nunca se loguea.**
+    """
+    entorno = dict(os.environ)
+    token = obtener_configuracion().claude_oauth_token.strip()
+    if token:
+        entorno[VARIABLE_TOKEN] = token
+    return entorno
 
 
 Correr = Callable[..., Salida]
@@ -330,12 +355,20 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         datos = json.loads(_sin_backticks(_sin_marcas(interior)))
     except json.JSONDecodeError as error:
         # El caso más probable cuando alguien toca el prompt. El crudo entero se
-        # reporta: sin eso, "no devolvió JSON" es un callejón sin salida.
-        log.error("claude_no_devolvio_json", con_navegador=con_navegador, error=str(error))
+        # reporta: sin eso, "no devolvió JSON" es un callejón sin salida. Y el
+        # final de lo que dijo va también al log y al detalle, para leerlo sin
+        # abrir el crudo.
+        dijo = _cola_saneada(interior)
+        log.error(
+            "claude_no_devolvio_json",
+            con_navegador=con_navegador,
+            error=str(error),
+            dijo=dijo,
+        )
         return Invocacion(
             False,
             codigo="ERROR_INESPERADO",
-            detalle={"motivo": "el modelo no devolvió JSON", "error": str(error)},
+            detalle={"motivo": "el modelo no devolvió JSON", "error": str(error), "dijo": dijo},
             raw=crudo,
             stderr=salida.stderr,
             costo_usd=costo,
@@ -352,6 +385,16 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         )
 
     return Invocacion(True, datos=datos, raw=crudo, stderr=salida.stderr, costo_usd=costo)
+
+
+def _cola_saneada(texto: str) -> str:
+    """Los últimos `COLA_SIN_JSON` caracteres, sin caracteres de control salvo `\\n`.
+
+    Es texto del modelo que termina en un log y en el panel: un escape de
+    terminal o un `\\r` no tienen que llegar ahí.
+    """
+    limpio = "".join(c for c in texto if c == "\n" or c.isprintable())
+    return limpio.strip()[-COLA_SIN_JSON:]
 
 
 def _sin_cuota(texto: str, salida: Salida) -> Invocacion:

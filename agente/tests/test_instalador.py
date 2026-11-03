@@ -146,3 +146,27 @@ def test_el_instalador_de_mac_no_toma_por_desarrollo_la_carpeta_del_vendedor() -
     """Corrido por ruta desde ~/centonara-seguimientos tiene que aplicar D53, no saltearlo."""
     sh = (INSTALADOR / "instalar.sh").read_text(encoding="utf-8")
     assert '[ "$posible" != "$REPO" ]' in sh
+
+
+def test_los_instaladores_conservan_el_token_de_claude_y_nunca_lo_imprimen() -> None:
+    """`CLAUDE_CODE_OAUTH_TOKEN`: entra por entorno o prompt, vive en el .env, no se muestra."""
+    sh = (INSTALADOR / "instalar.sh").read_text(encoding="utf-8")
+    ps1 = (INSTALADOR / "instalar.ps1").read_text(encoding="utf-8-sig")
+
+    for nombre, texto in (("instalar.sh", sh), ("instalar.ps1", ps1)):
+        assert "CLAUDE_CODE_OAUTH_TOKEN" in texto, nombre
+        #  No cae en "Conservado de la instalación anterior" duplicado: es una clave conocida.
+        conocida = r"AGENTE_TOKEN\|CLAUDE_CODE_OAUTH_TOKEN\)=|\"CLAUDE_CODE_OAUTH_TOKEN\"\)"
+        assert re.search(conocida, texto)
+        #  Ninguna línea que imprime puede llevar el valor dentro del mensaje.
+        imprime = re.compile(r"\b(echo|Write-Host|Ok|Mal)\b[^|;]*\$\{?TOKEN_CLAUDE\b")
+        for numero, linea in enumerate(texto.splitlines(), 1):
+            if imprime.search(linea):
+                pytest.fail(f"{nombre}:{numero} imprime el token de Claude: {linea.strip()}")
+
+    #  Con token, el .env queda restringido al usuario: chmod 600 en Mac, ACL en Windows.
+    assert "chmod 600" in sh
+    assert "icacls" in ps1 and "/inheritance:r" in ps1
+    #  Sin teclado no se pregunta; con teclado el prompt no repite lo escrito.
+    assert "read -rs" in sh
+    assert "-AsSecureString" in ps1

@@ -49,6 +49,7 @@ NO_CORRER = {
     "/Applications/Google": "solo macOS",
     "instalar-mac.sh": "solo macOS",
     "uv sync": "ya está sincronizado",
+    "setup-token": "abre el inicio de sesión de la cuenta y emite un token nuevo",
 }
 
 # Salidas distintas de 0 que igual significan que el comando anduvo. Sin esto,

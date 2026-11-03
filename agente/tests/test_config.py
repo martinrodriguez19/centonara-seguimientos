@@ -99,3 +99,19 @@ def test_env_example_no_comenta_al_lado_de_un_valor_vacio() -> None:
     assert not culpables, "estas variables quedan con el comentario como valor: " + "; ".join(
         culpables
     )
+
+
+def test_el_token_de_claude_se_lee_y_nunca_aparece_en_el_resumen_del_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Es opcional; con valor, el resumen dice que está y nunca cuál es."""
+    assert Configuracion().claude_oauth_token == ""
+    assert Configuracion().resumen_para_log()["claude_token_definido"] is False
+
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-secreto")
+    config = Configuracion()
+
+    assert config.claude_oauth_token == "sk-ant-oat01-secreto"
+    resumen = config.resumen_para_log()
+    assert resumen["claude_token_definido"] is True
+    assert "sk-ant-oat01-secreto" not in repr(resumen)

@@ -127,7 +127,8 @@ const PREPARAR_CHROME = [
 
 const INSTALAR_ITEMS = [
   "Pregunta el identificador y el token de la máquina.",
-  "Si Claude Code no tiene sesión iniciada, se detiene y dice cómo iniciarla: correr «claude», entrar con la cuenta de esta máquina, salir con /exit, y volver a pegar el mismo comando. En una máquina nueva esto pasa siempre: se pega dos veces y no es una falla.",
+  "Token de larga duración de Claude (opcional, recomendado): se genera una sola vez con «claude setup-token» (una cuenta compartida, un solo token para todas las máquinas) y se le pasa al instalador con la variable CLAUDE_CODE_OAUTH_TOKEN, o se pega cuando lo pregunta (Enter para saltear). Queda en el .env de la máquina, que reinstalar y actualizar conservan; nunca se imprime. Con token no se usa /login en esas máquinas.",
+  "Si Claude Code no tiene sesión iniciada y no se dio el token, se detiene y dice cómo iniciarla: correr «claude», entrar con la cuenta de esta máquina, salir con /exit, y volver a pegar el mismo comando. En una máquina nueva esto pasa siempre: se pega dos veces y no es una falla.",
   "Al final ofrece vincular el navegador que escribe los mensajes (paso 4). Conviene decir que sí ahí mismo, con el teléfono a mano.",
   "Termina diciendo QUEDÓ AL DÍA con el commit y INSTALACIÓN COMPLETA. Si dice NO QUEDÓ AL DÍA, dice qué falta: hacer eso y volver a pegar el mismo comando. Recién con «completa» se sigue con la pestaña «En el panel», paso 3.",
 ];
