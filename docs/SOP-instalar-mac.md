@@ -158,7 +158,8 @@ arranque automático y lo enciende. En el camino:
 - **Pregunta el identificador y el token** — los de la nota de la parte 1.
 - **Pide iniciar sesión en Claude Code**, una única vez, y se detiene: correr
   `claude` en la Terminal, entrar con la cuenta de esta máquina, salir escribiendo
-  `/exit`, y volver a pegar el mismo comando de arriba.
+  `/exit`, y volver a pegar el mismo comando de arriba. **Con el token de larga
+  duración (abajo) no hace falta**: el instalador lo prueba, lo guarda y sigue.
 - **Al final ofrece vincular el navegador de envío** (paso 2.3). Conviene decir
   que sí ahí mismo, con el teléfono a mano.
 - **Termina esperando la señal de vida del agente** y dice **QUEDÓ AL DÍA** con
@@ -178,6 +179,36 @@ El detalle de cada máquina (Máquinas → la máquina) muestra qué versión co
 Si la Mac tenía el proyecto clonado con `git` (la guía original decía eso), el
 instalador aparta ese `.git` a `~/.centonara/git-viejo-<fecha>` y sigue solo.
 No hay que hacer nada a mano.
+
+### Token de larga duración de Claude (opcional, recomendado)
+
+La sesión de `/login` vence cada tanto y hay que volver a entrar máquina por máquina. Como
+todas comparten **una sola cuenta de Claude**, se puede evitar con un token de larga duración:
+
+1. **Generarlo una sola vez**, en cualquier máquina con Claude Code y la sesión de esa cuenta:
+
+   ```bash
+   claude setup-token
+   ```
+
+   Imprime un token (`sk-ant-oat…`) **una sola vez**. Guardarlo en el gestor de contraseñas
+   del equipo; no en un chat, un mail ni el repositorio.
+2. **Pasárselo al instalador** de cada Mac, con la variable de entorno (va **después** del
+   `|`, delante de `bash`):
+
+   ```bash
+   curl -fsSL --http1.1 https://github.com/martinrodriguez19/centonara-seguimientos/raw/main/instalar.sh | CLAUDE_CODE_OAUTH_TOKEN='sk-ant-oat…' bash
+   ```
+
+   O pegarlo cuando el instalador lo pregunta (no se ve al escribir; **Enter** para saltear).
+   Sólo lo pregunta si la Mac no tiene sesión de Claude.
+3. Queda en `~/centonara-seguimientos/.env` (permisos `600`) y el agente se lo pasa a
+   `claude`. **Reinstalar y actualizar lo conservan.** El instalador sólo dice "token de Claude
+   configurado": nunca lo imprime ni lo loguea.
+
+Con el token puesto, **no se usa `/login` en esas máquinas**: una sesión iniciada a mano no lo
+reemplaza y vuelve a vencer. Sin token, todo sigue como antes. Para rotarlo (se filtró, o se
+revocó): generar otro con `claude setup-token` y volver a correr el instalador con el nuevo.
 
 ## 2.3 — Vincular el navegador que escribe los mensajes
 
@@ -336,7 +367,7 @@ vendedor tenía escrito.
 |---|---|---|
 | La sesión de WhatsApp del vendedor | Chrome pide el QR | Escanearlo de nuevo |
 | La sesión del navegador de envío | El panel avisa *"venció la sesión del motor"* — lo revisa solo, antes de que falle una corrida | Correr el comando del paso 2.3 (`RUNBOOK-revincular-whatsapp.md`) |
-| La sesión de Claude Code | La corrida falla con *"la sesión de Claude Code venció"* u *"OAuth session expired"* | En la Terminal: `claude`, iniciar sesión (o `/login`), `/exit`. Después, cancelar la corrida frenada en el panel y volver a disparar |
+| La sesión de Claude Code | La corrida falla con *"la sesión de Claude Code venció"* u *"OAuth session expired"* | Con token de larga duración: generar otro con `claude setup-token` y volver a correr el instalador con `CLAUDE_CODE_OAUTH_TOKEN` (ver 2.2). Sin token: en la Terminal, `claude`, iniciar sesión (o `/login`), `/exit`. Después, cancelar la corrida frenada en el panel y volver a disparar |
 
 ---
 

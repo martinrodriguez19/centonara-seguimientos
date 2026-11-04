@@ -55,7 +55,8 @@ En el camino:
 - **Pregunta el identificador y el token** — los de la nota de la Parte 1.
 - **Pide iniciar sesión en Claude Code**, una única vez, y se detiene: correr `claude` en la
   PowerShell, entrar con la cuenta de esta máquina, salir con `/exit`, y volver a pegar el
-  mismo comando.
+  mismo comando. **Con el token de larga duración (abajo) no hace falta**: el instalador lo
+  prueba, lo guarda y sigue.
 - **Al final ofrece vincular el navegador de envío** (2.3). Conviene decir que sí ahí mismo,
   con el teléfono a mano.
 - **Termina esperando la señal de vida del agente** y dice **QUEDÓ AL DÍA** con el commit, y
@@ -82,6 +83,36 @@ Sólo notebooks, para que cerrar la tapa no suspenda:
 ```powershell
 powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0; powercfg /setdcvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0; powercfg /setactive SCHEME_CURRENT
 ```
+
+### Token de larga duración de Claude (opcional, recomendado)
+
+La sesión de `/login` vence cada tanto y hay que volver a entrar PC por PC. Como todas comparten
+**una sola cuenta de Claude**, se puede evitar con un token de larga duración:
+
+1. **Generarlo una sola vez**, en cualquier máquina con Claude Code y la sesión de esa cuenta:
+
+   ```powershell
+   claude setup-token
+   ```
+
+   Imprime un token (`sk-ant-oat…`) **una sola vez**. Guardarlo en el gestor de contraseñas del
+   equipo; no en un chat, un mail ni el repositorio.
+2. **Pasárselo al instalador** de cada PC, con la variable de entorno en la misma línea:
+
+   ```powershell
+   $env:CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat…'; irm https://raw.githubusercontent.com/martinrodriguez19/centonara-seguimientos/main/agente/instalador/instalar.ps1 -OutFile "$env:TEMP\instalar.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\instalar.ps1"
+   ```
+
+   O pegarlo cuando el instalador lo pregunta (no se ve al escribir; **Enter** para saltear).
+   Sólo lo pregunta si la PC no tiene sesión de Claude.
+3. Queda en `~\centonara-seguimientos\.env`, que el instalador deja legible **sólo para el
+   usuario** de la PC (permisos de Windows sin herencia), y el agente se lo pasa a `claude`.
+   **Reinstalar y actualizar lo conservan.** El instalador sólo dice "token de Claude
+   configurado": nunca lo imprime ni lo loguea.
+
+Con el token puesto, **no se usa `/login` en esas máquinas**: una sesión iniciada a mano no lo
+reemplaza y vuelve a vencer. Sin token, todo sigue como antes. Para rotarlo: generar otro con
+`claude setup-token` y volver a correr el instalador con el nuevo.
 
 ## 2.3 — Vincular el navegador que escribe los mensajes
 
@@ -182,7 +213,7 @@ reinstalar:
 |---|---|---|
 | La sesión de WhatsApp del vendedor | Chrome pide el QR | Escanearlo de nuevo |
 | La sesión del navegador de envío | El panel avisa *"venció la sesión del motor"* | El comando de vincular de 2.3 |
-| La sesión de Claude Code | La corrida falla con *"la sesión de Claude Code venció"* u *"OAuth session expired"* | En PowerShell: `claude`, iniciar sesión (o `/login`), `/exit`. Después, cancelar la corrida frenada en el panel y volver a disparar |
+| La sesión de Claude Code | La corrida falla con *"la sesión de Claude Code venció"* u *"OAuth session expired"* | Con token de larga duración: generar otro con `claude setup-token` y volver a correr el instalador con `CLAUDE_CODE_OAUTH_TOKEN` (ver 2.2). Sin token: en PowerShell, `claude`, iniciar sesión (o `/login`), `/exit`. Después, cancelar la corrida frenada en el panel y volver a disparar |
 
 ---
 

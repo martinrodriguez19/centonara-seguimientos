@@ -1,7 +1,8 @@
 # instalador
 
 - **`instalar.sh`** — el de un solo comando, para Mac: instala herramientas, baja el
-  proyecto, arma el `.env` (pregunta sólo identificador y token), registra los tres
+  proyecto, arma el `.env` (pregunta sólo identificador y token; y, opcional, el token de
+  larga duración de Claude `CLAUDE_CODE_OAUTH_TOKEN`, que conserva y nunca imprime), registra los tres
   LaunchAgents y arranca todo. Idempotente: correrlo de nuevo arregla lo que falte.
   Es el que usa `docs/SOP-instalar-mac.md`.
   Al final espera la señal de vida del agente (`~/.centonara/estado/vivo.json`) y dice

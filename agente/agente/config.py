@@ -100,6 +100,12 @@ class Configuracion(BaseSettings):
     # (problema #2 del MVP). Lo verifica el chequeo `claude_bin`.
     claude_bin: str = Field("", validation_alias="CLAUDE_BIN")
 
+    # El token de larga duración de `claude setup-token`: uno para la cuenta
+    # compartida, el mismo en todas las máquinas. Es opcional; sin él, Claude Code
+    # usa la sesión de `/login` de la máquina, que vence. Es una credencial: el
+    # agente se lo pasa a `claude` en el entorno del subproceso y nada más.
+    claude_oauth_token: str = Field("", validation_alias="CLAUDE_CODE_OAUTH_TOKEN")
+
     # --- Chrome, para el motor de envío -------------------------------------
     #
     # El motor de envío usa un navegador DEDICADO (D24): una carpeta de datos
@@ -144,6 +150,7 @@ class Configuracion(BaseSettings):
             "chrome_perfil_dir": self.chrome_perfil_dir,
             "chrome_puerto": self.chrome_puerto,
             "token_definido": bool(self.token),
+            "claude_token_definido": bool(self.claude_oauth_token),
         }
 
 

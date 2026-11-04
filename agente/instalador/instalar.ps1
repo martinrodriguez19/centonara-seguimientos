@@ -181,15 +181,62 @@ Ok "claude: $CLAUDE_BIN"
 # ---------------------------------------------------------------------------
 Titulo "[2/8] La sesión de Claude Code"
 
-$sesionOk = $false
-if (Test-Path "$HOME\.claude\.credentials.json") {
-    Write-Host "  comprobando que la sesión siga viva (unos segundos)..."
-    try {
-        $null = "Contestá una sola palabra: ok" | & $CLAUDE_BIN -p 2>$null
-        if ($LASTEXITCODE -eq 0) { $sesionOk = $true }
-    } catch { }
+# El token de larga duración (`claude setup-token`) es opcional: uno para toda la
+# cuenta, el mismo en todas las PC, y no vence como la sesión de `/login`. Sale, en
+# este orden, de la variable de entorno al correr el instalador, o del .env de
+# una instalación anterior (reinstalar no lo pierde). NUNCA se imprime.
+$TOKEN_CLAUDE = "$env:CLAUDE_CODE_OAUTH_TOKEN".Trim()
+if (-not $TOKEN_CLAUDE) {
+    $envViejo = Join-Path $Repo ".env"
+    if (Test-Path $envViejo) {
+        foreach ($linea in Get-Content $envViejo) {
+            if ($linea -match '^\s*CLAUDE_CODE_OAUTH_TOKEN\s*=\s*(.*?)\s*(#.*)?$') { $TOKEN_CLAUDE = $matches[1] }
+        }
+    }
 }
-if ($sesionOk) { Ok "sesión iniciada y viva" } else {
+# Que no se herede suelto: sólo se le pasa a `claude` donde se lo prueba.
+Remove-Item Env:\CLAUDE_CODE_OAUTH_TOKEN -ErrorAction SilentlyContinue
+if ($TOKEN_CLAUDE -match '\s') { $TOKEN_CLAUDE = "" }
+
+function ClaudeResponde {
+    # Con token, la comprobación usa el token. Sin token, la sesión de `/login`.
+    try {
+        if ($TOKEN_CLAUDE) { $env:CLAUDE_CODE_OAUTH_TOKEN = $TOKEN_CLAUDE }
+        $null = "Contestá una sola palabra: ok" | & $CLAUDE_BIN -p 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } catch { return $false }
+    finally { Remove-Item Env:\CLAUDE_CODE_OAUTH_TOKEN -ErrorAction SilentlyContinue }
+}
+
+$sesionOk = $false
+if ($TOKEN_CLAUDE) {
+    Write-Host "  comprobando el token de larga duración (unos segundos)..."
+    if (ClaudeResponde) { $sesionOk = $true; Ok "token de Claude configurado y vivo" }
+    else {
+        Write-Host "  El token de Claude que se dio NO sirve (¿está completo, o se revocó?)."
+        Write-Host "  Se vuelve a la sesión de esta máquina."
+        $TOKEN_CLAUDE = ""
+    }
+}
+if (-not $sesionOk -and (Test-Path "$HOME\.claude\.credentials.json")) {
+    Write-Host "  comprobando que la sesión siga viva (unos segundos)..."
+    if (ClaudeResponde) { $sesionOk = $true }
+}
+# Sin sesión y con teclado: se ofrece el token, que se puede saltear con Enter.
+if (-not $sesionOk -and [Environment]::UserInteractive) {
+    Write-Host ""
+    Write-Host "  Si tenés el token de larga duración de la cuenta (el que sale de"
+    Write-Host "  ``claude setup-token``), pegalo acá. No se ve al escribir. Enter para saltear."
+    $seguro = Read-Host "    Token de Claude (opcional)" -AsSecureString
+    $TOKEN_CLAUDE = [System.Net.NetworkCredential]::new("", $seguro).Password.Trim()
+    if ($TOKEN_CLAUDE -match '\s') { Write-Host "    Tiene espacios: no se usa."; $TOKEN_CLAUDE = "" }
+    if ($TOKEN_CLAUDE) {
+        Write-Host "  comprobando el token (unos segundos)..."
+        if (ClaudeResponde) { $sesionOk = $true; Ok "token de Claude configurado y vivo" }
+        else { Write-Host "    No sirve: ¿está completo? Se sigue sin él."; $TOKEN_CLAUDE = "" }
+    }
+}
+if ($sesionOk) { if (-not $TOKEN_CLAUDE) { Ok "sesión iniciada y viva" } } else {
     Write-Host "  Nunca se inició sesión en Claude Code en esta máquina, o la sesión venció."
     Write-Host ""
     Write-Host "  Cómo se arregla:"
@@ -332,10 +379,13 @@ AGENTE_DEVICE_ID=$DEVICE_ID
 AGENTE_MACHINE_ID=$MACHINE_ID
 AGENTE_TOKEN=$TOKEN
 "@
+# El token de larga duración de Claude, sólo si hay. Sin él, el .env queda
+# idéntico al de siempre. Se dice "configurado" y nada más: el valor no se muestra.
+if ($TOKEN_CLAUDE) { $contenidoEnv += "`nCLAUDE_CODE_OAUTH_TOKEN=$TOKEN_CLAUDE`n" }
 # Lo que alguien puso a mano en el .env y el instalador no conoce (otro
 # navegador de envío, otro repositorio) se conserva: antes se perdía en cada
 # reinstalación, y la PC volvía en silencio a la configuración de fábrica.
-$conocidas = @("AGENTE_BACKEND_URL", "CLAUDE_BIN", "CHROME_PERFIL_DIR", "AGENTE_DEVICE_ID", "AGENTE_MACHINE_ID", "AGENTE_TOKEN")
+$conocidas = @("AGENTE_BACKEND_URL", "CLAUDE_BIN", "CHROME_PERFIL_DIR", "AGENTE_DEVICE_ID", "AGENTE_MACHINE_ID", "AGENTE_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
 $ajenas = @($viejo.Keys | Where-Object { $conocidas -notcontains $_ } | ForEach-Object { "$_=$($viejo[$_])" })
 if ($ajenas.Count -gt 0) {
     $contenidoEnv += "`n# Conservado de la instalación anterior:`n" + ($ajenas -join "`n") + "`n"
@@ -346,6 +396,17 @@ if ($ajenas.Count -gt 0) {
 # el agente arranca contra localhost sin decir por qué.
 [System.IO.File]::WriteAllText($ENV_ARCHIVO, $contenidoEnv.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 Ok ".env escrito: $ENV_ARCHIVO"
+if ($TOKEN_CLAUDE) {
+    # Tiene el token: que sólo lo lea este usuario (el equivalente del chmod 600).
+    # Sin herencia, y con control total sólo para el usuario actual.
+    $aclOk = $false
+    try {
+        & icacls $ENV_ARCHIVO /inheritance:r /grant:r "${env:USERNAME}:(F)" *> $null
+        $aclOk = ($LASTEXITCODE -eq 0)
+    } catch { }
+    if ($aclOk) { Ok "token de Claude configurado (el .env queda sólo para este usuario)" }
+    else { Write-Host "  aviso: no se pudieron restringir los permisos del .env. Token de Claude configurado igual." }
+}
 
 # ---------------------------------------------------------------------------
 Titulo "[6/8] El arranque automático"

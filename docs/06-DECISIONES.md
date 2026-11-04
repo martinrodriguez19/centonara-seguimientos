@@ -1648,6 +1648,29 @@ criterio del modelo—. El dueño pide: si el envío falla, que deje borradores.
 **Qué la revertiría.** Que los reintentos de tandas fallidas resulten ser las que más envían
 bien: ahí el reintento vuelve a enviar dentro de la ventana.
 
+### D68 — El token de larga duración de Claude y el final del "no devolvió JSON" a ciegas *(03/11/2026; completa el 401 de D60)*
+
+**Contexto.** Las máquinas comparten una sola cuenta de Claude (D65) y la sesión de `/login` vence
+cada tanto: cada vencimiento es una máquina parada hasta que alguien entra a mano. Y cuando el
+modelo no devolvía JSON, el log decía sólo "no devolvió JSON": el crudo viajaba en `raw`, pero
+había que ir a buscarlo.
+
+**Decisión.**
+1. `claude setup-token` se corre **una vez** y el token resultante se reparte a todas las
+   máquinas. Es opcional: entra por la variable de entorno `CLAUDE_CODE_OAUTH_TOKEN` al correr el
+   instalador, o por un prompt sin eco que se saltea con Enter (sólo si la máquina no tiene
+   sesión). Sin token, todo queda idéntico.
+2. Vive en el `.env` de la máquina (ya `chmod 600`, y en Windows con ACL sólo para el usuario),
+   no en un archivo aparte ni en el plist: es donde ya está `AGENTE_TOKEN`, y el "Conservado de la
+   instalación anterior" lo mantiene al reinstalar. `Configuracion.claude_oauth_token` lo lee y
+   `claude_code._correr` se lo pasa a `claude` en el `env` del subproceso. Nunca se imprime, ni
+   se loguea, ni va como argumento: el log sólo dice si está definido.
+3. `claude_no_devolvio_json` suma `dijo` —los últimos 500 caracteres del modelo, sin caracteres de
+   control salvo `\n`— al log y a `detalle`. El código sigue siendo `ERROR_INESPERADO`.
+
+**Qué lo revertiría.** Que el token filtrado resulte más caro que un `/login` vencido: ahí se
+vuelve a la sesión por máquina, que es sacar la variable.
+
 ---
 
 ## Descartadas

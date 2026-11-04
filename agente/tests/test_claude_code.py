@@ -187,6 +187,78 @@ async def test_una_salida_que_no_parsea_se_reporta_con_el_crudo_entero() -> None
     assert "Claro, con gusto" in resultado.raw
 
 
+async def test_sin_json_el_final_de_lo_que_dijo_va_al_detalle_y_al_log(monkeypatch) -> None:
+    """El detalle lleva la cola saneada: sin controles salvo `\\n`, y recortada."""
+    from agente.jobs import claude_code
+
+    registrado: dict = {}
+    monkeypatch.setattr(
+        claude_code.log, "error", lambda evento, **datos: registrado.update(datos, evento=evento)
+    )
+    dicho = "relleno " * 200 + "Lo que leí:\x1b[31m\r\nlinea dos\x00"
+    espia = Espia(sobre(dicho))
+
+    resultado = await invocar(
+        "x", claude_bin=BIN, carpeta=CARPETA, con_navegador=True, correr=espia
+    )
+
+    assert resultado.codigo == "ERROR_INESPERADO"
+    assert resultado.detalle["motivo"] == "el modelo no devolvió JSON"
+    cola = resultado.detalle["dijo"]
+    assert len(cola) <= 500
+    assert cola.endswith("linea dos")
+    assert "\n" in cola
+    assert not any(c != "\n" and not c.isprintable() for c in cola)
+    assert registrado["evento"] == "claude_no_devolvio_json"
+    assert registrado["dijo"] == cola
+
+
+# ---------------------------------------------------------------------------
+# El token de larga duración (CLAUDE_CODE_OAUTH_TOKEN)
+# ---------------------------------------------------------------------------
+
+
+def _entorno_que_ve_claude(monkeypatch, capturado: dict) -> None:
+    """Reemplaza `subprocess.run` y anota el `env` con el que lanzarían `claude`."""
+    from agente.jobs import claude_code
+
+    def falso(comando, **opciones):
+        capturado.update(opciones)
+        return subprocess.CompletedProcess(comando, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(claude_code.subprocess, "run", falso)
+
+
+def test_el_token_de_larga_duracion_viaja_en_el_entorno_del_subproceso(monkeypatch) -> None:
+    from agente.jobs import claude_code
+
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-secreto")
+    capturado: dict = {}
+    _entorno_que_ve_claude(monkeypatch, capturado)
+
+    claude_code._correr([BIN, "-p"], "x", timeout=5, cwd=CARPETA)
+
+    assert capturado["env"]["CLAUDE_CODE_OAUTH_TOKEN"] == "sk-ant-oat01-secreto"
+    #  Y no pisa el resto del entorno: PATH y compañía siguen.
+    assert capturado["env"].get("PATH") == __import__("os").environ.get("PATH")
+    #  Nunca como argumento de la línea de comandos.
+    assert "sk-ant-oat01-secreto" not in " ".join(capturado.get("args", []))
+
+
+def test_sin_token_el_entorno_es_el_de_siempre(monkeypatch) -> None:
+    import os
+
+    from agente.jobs import claude_code
+
+    capturado: dict = {}
+    _entorno_que_ve_claude(monkeypatch, capturado)
+
+    claude_code._correr([BIN, "-p"], "x", timeout=5, cwd=CARPETA)
+
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in capturado["env"]
+    assert capturado["env"] == dict(os.environ)
+
+
 async def test_un_json_que_no_es_objeto_se_rechaza() -> None:
     espia = Espia(sobre("[1, 2, 3]"))
     resultado = await invocar(

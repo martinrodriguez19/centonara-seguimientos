@@ -86,6 +86,16 @@ preguntar() {
   printf '%s' "$respuesta"
 }
 
+# Igual que `preguntar`, pero sin repetir en pantalla lo que se escribe: es para
+# el token de Claude, que no tiene que quedar a la vista ni en el historial.
+preguntar_secreto() {
+  local respuesta
+  printf '%s' "$1" >/dev/tty
+  IFS= read -rs respuesta </dev/tty
+  printf '\n' >/dev/tty
+  printf '%s' "$respuesta"
+}
+
 # ---------------------------------------------------------------------------
 titulo "[1/8] Las herramientas"
 
@@ -143,11 +153,47 @@ titulo "[2/8] La sesión de Claude Code"
 # segundo sólo se sabe preguntando de verdad: una llamada mínima, que tarda
 # unos segundos y cuesta centavos.
 
+# El token de larga duración (`claude setup-token`) es opcional: uno para toda la
+# cuenta, el mismo en todas las máquinas, y no vence como la sesión de `/login`.
+# Sale, en este orden, de la variable de entorno al correr el instalador, o del
+# .env de una instalación anterior (reinstalar no lo pierde). **Nunca se imprime.**
+TOKEN_CLAUDE="${CLAUDE_CODE_OAUTH_TOKEN:-}"
+if [ -z "$TOKEN_CLAUDE" ] && [ -f "$REPO/.env" ]; then
+  TOKEN_CLAUDE=$(sed -n 's/^CLAUDE_CODE_OAUTH_TOKEN=//p' "$REPO/.env" | head -1 \
+    | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//')
+fi
+# Que no se herede suelto: sólo se le pasa a `claude` donde se lo prueba.
+unset CLAUDE_CODE_OAUTH_TOKEN
+case "$TOKEN_CLAUDE" in *[[:space:]]*) TOKEN_CLAUDE="" ;; esac
+
+# Con token, la comprobación usa el token. Sin token, la sesión de `/login`.
+claude_responde() {
+  if [ -n "$TOKEN_CLAUDE" ]; then
+    printf 'Contestá una sola palabra: ok' \
+      | CLAUDE_CODE_OAUTH_TOKEN="$TOKEN_CLAUDE" "$CLAUDE_BIN" -p >/dev/null 2>&1
+  else
+    printf 'Contestá una sola palabra: ok' | "$CLAUDE_BIN" -p >/dev/null 2>&1
+  fi
+}
+
 sesion_ok=no
-if security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1 \
+if [ -n "$TOKEN_CLAUDE" ]; then
+  echo "  comprobando el token de larga duración (unos segundos)..."
+  if claude_responde; then
+    sesion_ok=si
+    echo "  ok  token de Claude configurado y vivo"
+  else
+    echo "  El token de Claude que se dio NO sirve (¿está completo, o se revocó?)."
+    echo "  Se vuelve a la sesión de esta máquina."
+    TOKEN_CLAUDE=""
+  fi
+fi
+if [ "$sesion_ok" = si ]; then
+  :
+elif security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1 \
    || [ -f "$HOME/.claude/.credentials.json" ]; then
   echo "  comprobando que la sesión siga viva (unos segundos)..."
-  if printf 'Contestá una sola palabra: ok' | "$CLAUDE_BIN" -p >/dev/null 2>&1; then
+  if claude_responde; then
     sesion_ok=si
     echo "  ok  sesión iniciada y viva"
   else
@@ -155,6 +201,27 @@ if security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1 \
   fi
 else
   echo "  Nunca se inició sesión en Claude Code en esta máquina."
+fi
+
+# Sin sesión y con teclado: se ofrece el token, que se puede saltear con Enter.
+if [ "$sesion_ok" = no ] && [ "$TECLADO" = si ]; then
+  echo
+  echo "  Si tenés el token de larga duración de la cuenta (el que sale de"
+  echo "  \`claude setup-token\`), pegalo acá. No se ve al escribir. Enter para saltear."
+  TOKEN_CLAUDE=$(preguntar_secreto "    Token de Claude (opcional): ")
+  case "$TOKEN_CLAUDE" in
+    "") ;;
+    *[[:space:]]*) echo "    Tiene espacios: no se usa."; TOKEN_CLAUDE="" ;;
+    *)
+      echo "  comprobando el token (unos segundos)..."
+      if claude_responde; then
+        sesion_ok=si
+        echo "  ok  token de Claude configurado y vivo"
+      else
+        echo "    No sirve: ¿está completo? Se sigue sin él."
+        TOKEN_CLAUDE=""
+      fi ;;
+  esac
 fi
 
 if [ "$sesion_ok" = no ]; then
@@ -360,10 +427,13 @@ fi
 AJENAS=""
 if [ -f "$ENV_ARCHIVO" ]; then
   AJENAS=$(grep -E '^[A-Z_]+=' "$ENV_ARCHIVO" \
-    | grep -Ev '^(AGENTE_BACKEND_URL|CLAUDE_BIN|CHROME_PERFIL_DIR|CHROME_PUERTO|AGENTE_DEVICE_ID|AGENTE_MACHINE_ID|AGENTE_TOKEN)=' \
+    | grep -Ev '^(AGENTE_BACKEND_URL|CLAUDE_BIN|CHROME_PERFIL_DIR|CHROME_PUERTO|AGENTE_DEVICE_ID|AGENTE_MACHINE_ID|AGENTE_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)=' \
     || true)
 fi
 
+# Que el archivo nazca ya sin permisos para otros: el chmod de abajo llega tarde
+# para el instante en que se escribe.
+umask 077
 cat > "$ENV_ARCHIVO" <<ENV_EOF
 # Escrito por agente/instalador/instalar.sh. Volver a correr el instalador lo
 # regenera conservando estos valores. NO se comparte: tiene el token.
@@ -375,6 +445,12 @@ AGENTE_DEVICE_ID=$DEVICE_ID
 AGENTE_MACHINE_ID=$MACHINE_ID
 AGENTE_TOKEN=$TOKEN
 ENV_EOF
+# El token de larga duración de Claude, sólo si hay. Sin él, el .env queda
+# idéntico al de siempre. Se dice "configurado" y nada más: el valor no se muestra.
+if [ -n "$TOKEN_CLAUDE" ]; then
+  printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOKEN_CLAUDE" >> "$ENV_ARCHIVO"
+  echo "  ok  token de Claude configurado (se conserva en el .env)"
+fi
 if [ -n "$AJENAS" ]; then
   printf '# Conservado de la instalación anterior:\n%s\n' "$AJENAS" >> "$ENV_ARCHIVO"
   echo "  ok  conservadas del .env anterior: $(printf '%s\n' "$AJENAS" | cut -d= -f1 | tr '\n' ' ')"
