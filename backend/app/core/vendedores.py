@@ -27,6 +27,7 @@ from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 
+from app.core import conexiones
 from app.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -285,9 +286,12 @@ def esta_pausada(vendedor: dict[str, Any], *, ahora: datetime | None = None) -> 
     envíos de esta Mac en una corrida fallaron — D35). El freno del canario no
     vence solo: lo suelta reanudar o cancelar la corrida, porque lo que hace
     falta es que alguien mire, no que pase el tiempo. La cuarta es la cuota de
-    Claude agotada (D60), ver `sin_cuota_hasta`.
+    Claude agotada (D60), ver `sin_cuota_hasta`. La quinta, la línea
+    equivocada (D72): el WhatsApp vinculado no es el número de la máquina.
     """
     if not vendedor.get("activo"):
+        return True
+    if conexiones.linea_equivocada(vendedor):
         return True
     if vendedor.get("frenado_por_canario_en") is not None:
         return True

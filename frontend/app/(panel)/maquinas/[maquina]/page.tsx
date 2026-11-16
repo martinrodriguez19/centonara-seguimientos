@@ -9,6 +9,7 @@ import { ErrorDeCarga } from "@/components/error-de-carga";
 import { ListaDeErrores } from "@/components/errores/lista";
 import { MenuDeAcciones, useAccionesDeMaquina } from "@/components/maquinas/acciones";
 import { Actividad, Chequeos, HistorialDeMaquina, Mensajes, Resumen } from "@/components/maquinas/detalle";
+import { AvisoDeLinea, Sesiones } from "@/components/maquinas/sesiones";
 import { Pagina } from "@/components/navegacion/pagina";
 import { Button } from "@/components/ui/button";
 import { EsqueletoDelPanel } from "@/components/ui/esqueleto";
@@ -110,6 +111,8 @@ function Detalle({ maquina }: { maquina: Maquina }) {
       }
     >
       {tokenNuevo && <TokenReciente token={tokenNuevo} maquina={maquina.maquina} onCerrar={() => setTokenNuevo(null)} />}
+      {/* D72: arriba de las pestañas, porque la máquina no trabaja hasta que se resuelva. */}
+      <AvisoDeLinea maquina={maquina} />
 
       <Tabs.Root defaultValue="resumen" className="space-y-5">
         <Tabs.List aria-label={maquina.nombre} className="-mx-4 flex gap-1 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0">
@@ -127,6 +130,9 @@ function Detalle({ maquina }: { maquina: Maquina }) {
               {clave === "errores" && errores > 0 && (
                 <span className="rounded-full bg-muted-foreground/15 px-1.5 font-mono text-[10px] tabular-nums">{errores}</span>
               )}
+              {clave === "sesiones" && (maquina.semaforos?.whatsapp === "caida" || maquina.semaforos?.claude === "caida" || maquina.linea_equivocada) && (
+                <span className="size-2 rounded-full bg-critico" aria-hidden />
+              )}
               {clave === "chequeos" && maquina.chequeos_fallando.length > 0 && (
                 <span className="rounded-full bg-atencion-suave px-1.5 font-mono text-[10px] text-atencion tabular-nums">
                   {maquina.chequeos_fallando.length}
@@ -143,6 +149,9 @@ function Detalle({ maquina }: { maquina: Maquina }) {
             dejadosHoy={hoy.cargando ? undefined : dejadosHoy(hoy.corridas, maquina.maquina)}
             topeDelDia={config.data?.tope_diario_borradores}
           />
+        </Tabs.Content>
+        <Tabs.Content value="sesiones" className="outline-none">
+          <Sesiones maquina={maquina} />
         </Tabs.Content>
         <Tabs.Content value="chequeos" className="outline-none">
           <Chequeos maquina={maquina} />

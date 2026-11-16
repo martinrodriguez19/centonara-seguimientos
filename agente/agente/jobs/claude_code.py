@@ -35,7 +35,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agente.config import obtener_configuracion
 from agente.jobs import cuota
 from agente.logging import obtener_logger
 
@@ -154,8 +153,11 @@ def _entorno_de_claude() -> dict[str, str]:
     exporta al proceso: hay que pasárselo a `claude` a mano. Sin token configurado
     el entorno es el heredado, idéntico al de antes. **El valor nunca se loguea.**
     """
+    from agente import token_claude
+
     entorno = dict(os.environ)
-    token = obtener_configuracion().claude_oauth_token.strip()
+    #  D73: el que llegó del panel en este proceso gana sobre el del `.env`.
+    token = token_claude.vigente()
     if token:
         entorno[VARIABLE_TOKEN] = token
     return entorno
@@ -303,6 +305,17 @@ def textos_del_modelo(stdout: str) -> list[str]:
     return textos
 
 
+def _sin_sesion(texto: str) -> bool:
+    """¿Claude Code dijo que no tiene sesión? El 401 de siempre, y sus variantes."""
+    compacto = texto.replace(" ", "")
+    return (
+        "OAuth access token has expired" in texto
+        or '"api_error_status":401' in compacto
+        or "Invalid API key" in texto
+        or "Please run /login" in texto
+    )
+
+
 def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
     crudo = salida.stdout.strip()
 
@@ -319,13 +332,24 @@ def _leer(salida: Salida, *, con_navegador: bool) -> Invocacion:
         # El fallo con nombre propio: el token OAuth de Claude Code vence cada
         # tanto, y un 401 crudo no le dice a nadie qué hacer. Pasó en la
         # primera Mac, con todo lo demás en verde.
-        if "OAuth access token has expired" in crudo or '"api_error_status":401' in crudo:
-            motivo = (
-                "la sesión de Claude Code venció: correr `claude`, iniciar "
-                "sesión de nuevo, salir con /exit y volver a intentar"
+        if _sin_sesion(crudo) or _sin_sesion(salida.stderr):
+            #  D69.3: con nombre propio y sin reintentos. Lo resuelve el token
+            #  que el dueño carga en el panel (D73), que llega en el latido.
+            log.error("claude_sin_sesion", returncode=salida.returncode)
+            return Invocacion(
+                False,
+                codigo="CLAUDE_SIN_SESION",
+                detalle={
+                    "motivo": (
+                        "Claude Code no tiene sesión en esta máquina: cargá el token "
+                        "de Claude en el panel (Ajustes → Sistema) y llega solo"
+                    ),
+                    "returncode": salida.returncode,
+                },
+                raw=crudo,
+                stderr=salida.stderr,
             )
-        else:
-            motivo = f"claude devolvió {salida.returncode} y dijo: {dijo}"
+        motivo = f"claude devolvió {salida.returncode} y dijo: {dijo}"
         log.error(
             "claude_salio_mal",
             returncode=salida.returncode,

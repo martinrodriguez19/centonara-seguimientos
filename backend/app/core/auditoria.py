@@ -75,6 +75,12 @@ class Que(StrEnum):
     MAQUINA_ALTA = "maquina_alta"
     MAQUINA_BAJA = "maquina_baja"
     CONSENTIMIENTO_REGISTRADO = "consentimiento_registrado"
+    RECONEXION_PEDIDA = "reconexion_pedida"
+    """Alguien apretó "Volver a conectar" en la página pública (D71), o la
+    pidió el dueño desde el panel. Queda quién, la máquina y la IP."""
+    TOKEN_CLAUDE_CAMBIADO = "token_claude_cambiado"
+    """Se cargó o se borró el token de Claude del panel (D73). Nunca el valor:
+    sólo el hash corto."""
 
 
 # El sistema como autor, cuando no lo pidió una persona: un vencimiento, un

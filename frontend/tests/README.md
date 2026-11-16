@@ -30,6 +30,8 @@ lo que acaba de hacer:
 | `errores.test.tsx` | Que la lista de errores separe urgentes de avisos, filtre por el campo `maquina` de la alerta y que "Ya lo vi" saque de la vista sin hacer desaparecer |
 | `derivados.test.ts` | Las cuentas que hace el panel y no el backend: el "hoy" en hora argentina, los borradores por máquina y por día, y que una Mac apagada sin trabajo no cuente como problema |
 | `navegacion.test.ts` | Que la barra de tres grupos llegue a todas las pantallas y marque el grupo correcto en las subrutas |
+| `conectar.test.ts` | Los pasos de la página de conexiones (D71) sin montarla: que el "¡Listo!" gane siempre, que un "vencida" de un pedido anterior no reaparezca al reintentar, el reloj de cinco minutos de WhatsApp (y que Claude no lo tenga) y el "Revisando…" de "Ya terminé" |
+| `conectar.test.tsx` | La página montada: el botón sólo donde está caído, pedido → listo, vencida, el 429 dicho con el texto del servidor y la red caída sin códigos |
 | `comandos.test.ts` | La guía de instalación: ids únicos, sin saltos de línea, huecos declarados, los mismos pasos en Mac, Mac vieja y Windows, instalar y reinstalar en cada una, y **ningún comando de Windows con `irm \| iex`** |
 
 El recorrido de `e2e/` es el de la demostración: entrar, ver el modo, llegar a

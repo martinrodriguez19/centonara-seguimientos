@@ -290,6 +290,42 @@ async def asegurar_abierto(
     return Resultado(Estado.NO_SE_PUDO, f"Chrome no arrancó en {espera_s:.0f}s")
 
 
+def abrir_url(
+    url: str,
+    *,
+    chrome_bin: str = "",
+    perfil_dir: str = "Default",
+    lanzar=_lanzar,
+    plataforma: str | None = None,
+) -> Resultado:
+    """Abre `url` en el Chrome del vendedor, en el perfil bueno, al frente (D70).
+
+    Es lo que hace el botón "Volver a conectar": WhatsApp Web con su QR, o el
+    inicio de sesión de claude.ai. Con Chrome ya abierto, Chrome le pasa el
+    pedido a la instancia viva y abre una pestaña en ese perfil; no se cierra
+    nada. Sin puerto ni CDP (D24): es la misma línea de comandos que usa una
+    persona.
+    """
+    ejecutable = Path(chrome_bin) if chrome_bin else encontrar_chrome()
+    if ejecutable is None or not ejecutable.exists():
+        return Resultado(Estado.NO_SE_PUDO, "no se encontró el ejecutable de Chrome")
+    try:
+        lanzar([str(ejecutable), f"--profile-directory={perfil_dir}", url])
+    except (OSError, subprocess.SubprocessError) as error:
+        return Resultado(Estado.NO_SE_PUDO, f"no se pudo lanzar Chrome: {error}")
+
+    destino = plataforma or sys.platform
+    if destino == "win32":
+        restaurar_minimizadas()
+    elif destino == "darwin":
+        #  En Mac, abrir una pestaña no siempre trae Chrome adelante de lo que
+        #  el vendedor tenga abierto.
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            lanzar(["osascript", "-e", 'tell application "Google Chrome" to activate'])
+    log.info("url_abierta_en_chrome", url=url, perfil_dir=perfil_dir)
+    return Resultado(Estado.ABIERTO, f"se abrió {url}")
+
+
 def restaurar_minimizadas() -> int:
     """Restaura las ventanas de Chrome minimizadas, en Windows. Devuelve cuántas (D66.3).
 

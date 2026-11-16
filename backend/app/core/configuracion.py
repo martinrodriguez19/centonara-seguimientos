@@ -265,6 +265,11 @@ POR_DEFECTO: dict[str, Any] = {
     # ofrece, promociones, tono. Viaja al REDACTAR como dato acotado y el prompt
     # lo enmarca como referencia — no como instrucciones. Vacío = no se usa.
     "contexto_empresa": "",
+    # La cuenta compartida de Claude (D71). El mail viaja a la máquina para la
+    # notificación de "entrá con este mail" y NUNCA a la página pública; el
+    # nombre sí: es a quién la página le dice al vendedor que pida el código.
+    "cuenta_claude_mail": "",
+    "cuenta_claude_codigo_quien": "",
     "tope_diario_maquina": 20,
     # 30 y no 25: que no recorte los 20 del día cuando una tanda rinde bien.
     # Sigue siendo el paraguas de una corrida, no el volumen.

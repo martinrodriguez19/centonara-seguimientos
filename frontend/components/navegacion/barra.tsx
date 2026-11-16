@@ -211,7 +211,11 @@ function MenuDeGrupo({
             const esEste = esActual(destino, ruta);
             return (
               <DropdownMenu.Item key={destino.href} asChild className={ITEM_MENU}>
-                <Link href={destino.href} aria-current={esEste ? "page" : undefined}>
+                <Link
+                  href={destino.href}
+                  aria-current={esEste ? "page" : undefined}
+                  {...(destino.aparte ? { target: "_blank", rel: "noopener" } : {})}
+                >
                   <span
                     className={cn(
                       "grid size-8 shrink-0 place-items-center rounded-lg border",
@@ -255,6 +259,7 @@ function EnlaceDeDestino({
     <Link
       href={destino.href}
       aria-current={actual ? "page" : undefined}
+      {...(destino.aparte ? { target: "_blank", rel: "noopener" } : {})}
       className={cn(
         "flex items-center gap-3 rounded-lg px-2 py-2 text-sm",
         actual ? "bg-accion-suave font-medium text-accion-tinta" : "hover:bg-muted",

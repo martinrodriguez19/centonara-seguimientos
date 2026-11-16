@@ -84,6 +84,18 @@ export function chipsDeMaquina(maquina: Maquina): { texto: string; nivel: Nivel 
   if (maquina.modo_agente === "simulado") {
     chips.push({ texto: textos.maquinas.simulado, nivel: "atencion" });
   }
+  // D72: no toma trabajo hasta que se vincule la línea correcta.
+  if (maquina.linea_equivocada) {
+    chips.push({ texto: textos.sesiones.lineaEquivocadaTitulo, nivel: "critico" });
+  }
+  // D69: los semáforos de la página pública. "No se sabe" no es noticia: es lo
+  // normal en una máquina con un agente viejo o recién prendida.
+  if (maquina.semaforos?.whatsapp === "caida") {
+    chips.push({ texto: textos.sesiones.caida(textos.sesiones.whatsapp), nivel: "critico" });
+  }
+  if (maquina.semaforos?.claude === "caida") {
+    chips.push({ texto: textos.sesiones.caida(textos.sesiones.claude), nivel: "critico" });
+  }
   return chips;
 }
 

@@ -1,18 +1,29 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { CampoHora, Fila, HORA, Tarjeta, useGuardarConfiguracion } from "@/components/config/base";
 import { useAvisos } from "@/components/ui/avisos-flotantes";
 import { Button } from "@/components/ui/button";
 import { Campo } from "@/components/ui/campo";
+import { Confirmacion } from "@/components/ui/dialogo";
+import { Pildora } from "@/components/ui/estado";
 import { Interruptor } from "@/components/ui/interruptor";
-import { actualizarAhora, empezarDeCero, type Configuracion } from "@/lib/panel";
+import {
+  actualizarAhora,
+  borrarTokenClaude,
+  cargarTokenClaude,
+  empezarDeCero,
+  traerTokenClaude,
+  type Configuracion,
+  type TokenClaude,
+} from "@/lib/panel";
 import { textos } from "@/lib/textos";
 
 /**
- * Sistema: la versión del agente y, al final y aparte, empezar de cero.
+ * Sistema: la versión del agente, Claude (el token y la cuenta compartida) y,
+ * al final y aparte, empezar de cero.
  */
 export function SeccionSistema({ config }: { config: Configuracion }) {
   return (
@@ -21,6 +32,13 @@ export function SeccionSistema({ config }: { config: Configuracion }) {
         <VersionDelAgente key={config.version_agente_esperada ?? ""} valor={config.version_agente_esperada ?? ""} />
         <ActualizacionProgramada key={JSON.stringify(config.actualizacion)} config={config} />
         <ActualizarAhora />
+      </Tarjeta>
+      <Tarjeta titulo={textos.cuentaClaude.tarjeta} bajada={textos.cuentaClaude.ayuda}>
+        <TokenDeClaude />
+        <CuentaDeClaude
+          key={`${config.cuenta_claude_mail ?? ""}|${config.cuenta_claude_codigo_quien ?? ""}`}
+          config={config}
+        />
       </Tarjeta>
       {/* Última de la pantalla, y a propósito: es la que borra. */}
       <EmpezarDeCero />
@@ -136,6 +154,192 @@ function ActualizarAhora() {
         </Button>
       }
     />
+  );
+}
+
+/** "corré `claude setup-token`" con el comando en monoespaciada. */
+function conCodigo(texto: string) {
+  return texto.split("`").map((parte, i) =>
+    i % 2 === 1 ? (
+      <code key={i} className="font-mono text-foreground">
+        {parte}
+      </code>
+    ) : (
+      parte
+    ),
+  );
+}
+
+const dia = (iso: string) => new Date(iso).toLocaleDateString("es-AR", { dateStyle: "long" });
+
+/**
+ * El token de Claude (D73): se pega una vez y llega solo a todas las máquinas.
+ *
+ * **El panel nunca lo vuelve a mostrar.** Lo que se ve después de guardarlo es
+ * cuándo se cargó, cuándo vence y cuántas máquinas ya lo tienen: el backend no
+ * devuelve el valor, y el campo se vacía al guardar para que tampoco quede en
+ * la pantalla.
+ */
+function TokenDeClaude() {
+  const tt = textos.tokenClaude;
+  const clienteQuery = useQueryClient();
+  const { avisar } = useAvisos();
+  const resumen = useQuery({ queryKey: ["token-claude"], queryFn: traerTokenClaude });
+  const [token, setToken] = useState("");
+  const [borrando, setBorrando] = useState(false);
+
+  const limpio = token.trim();
+  // La misma regla gruesa que el backend: lo fino lo decide él (400).
+  const parece = limpio === "" || limpio.startsWith("sk-ant-");
+
+  const alTerminar = (nuevo: TokenClaude) => {
+    clienteQuery.setQueryData(["token-claude"], nuevo);
+    void clienteQuery.invalidateQueries({ queryKey: ["estado"] });
+  };
+
+  const guardar = useMutation({
+    mutationFn: () => cargarTokenClaude(limpio),
+    onSuccess: (nuevo) => {
+      setToken("");
+      alTerminar(nuevo);
+      avisar(tt.guardado);
+    },
+  });
+
+  const borrar = useMutation({
+    mutationFn: borrarTokenClaude,
+    onSuccess: (nuevo) => {
+      setBorrando(false);
+      alTerminar(nuevo);
+      avisar(tt.borrado);
+    },
+    onError: () => avisar(tt.fallo, "critico"),
+  });
+
+  const datos = resumen.data;
+
+  return (
+    <Fila
+      titulo={tt.titulo}
+      ayuda={conCodigo(tt.ayuda)}
+      queHace={tt.queHace}
+      control={
+        datos?.cargado ? (
+          <Button size="sm" variant="outline" disabled={borrar.isPending} onClick={() => setBorrando(true)}>
+            {tt.borrar}
+          </Button>
+        ) : undefined
+      }
+    >
+      {datos && (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          {datos.cargado && datos.cargado_en ? (
+            <>
+              <span>
+                {tt.cargado(dia(datos.cargado_en))}
+                {datos.vence_aprox && `, ${tt.vence(dia(datos.vence_aprox))}`}.
+              </span>
+              <Pildora nivel={datos.maquinas_al_dia >= datos.maquinas_activas ? "ok" : "atencion"}>
+                {tt.maquinas(datos.maquinas_al_dia, datos.maquinas_activas)}
+              </Pildora>
+            </>
+          ) : (
+            <span className="text-muted-foreground">{tt.sinCargar}</span>
+          )}
+        </p>
+      )}
+      {resumen.isError && <p className="text-sm text-destructive">{resumen.error.message}</p>}
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(evento) => {
+          evento.preventDefault();
+          if (limpio && parece) guardar.mutate();
+        }}
+      >
+        <Campo
+          etiqueta={tt.campo}
+          ayuda={tt.campoAyuda}
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="sk-ant-…"
+          className="w-80 max-w-full font-mono"
+          value={token}
+          onChange={(evento) => setToken(evento.target.value)}
+          error={!parece ? tt.noParece : guardar.isError ? guardar.error.message : null}
+        />
+        <Button type="submit" size="sm" className="mb-5" disabled={guardar.isPending || !limpio || !parece}>
+          {tt.guardar}
+        </Button>
+      </form>
+
+      <Confirmacion
+        abierto={borrando}
+        onCerrar={() => setBorrando(false)}
+        onConfirmar={() => borrar.mutate()}
+        titulo={tt.borrarTitulo}
+        confirmar={tt.borrar}
+        peligrosa
+        ocupado={borrar.isPending}
+      >
+        <p>{tt.borrarTexto}</p>
+      </Confirmacion>
+    </Fila>
+  );
+}
+
+const MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * La cuenta compartida de Claude (D71): el mail y a quién pedirle el código.
+ *
+ * El mail viaja sólo a la máquina, para el aviso en su pantalla; el nombre es
+ * lo único de la cuenta que ve la página pública. Se guardan juntos, con un
+ * botón, porque un mail a medio escribir no es un mail.
+ */
+function CuentaDeClaude({ config }: { config: Configuracion }) {
+  const tc = textos.cuentaClaude;
+  const { guardar, guardando, error } = useGuardarConfiguracion();
+  const guardadoMail = config.cuenta_claude_mail ?? "";
+  const guardadoQuien = config.cuenta_claude_codigo_quien ?? "";
+  const [mail, setMail] = useState(guardadoMail);
+  const [quien, setQuien] = useState(guardadoQuien);
+  const mailLimpio = mail.trim();
+  const mailValido = mailLimpio === "" || MAIL.test(mailLimpio);
+  const cambio = mailLimpio !== guardadoMail || quien.trim() !== guardadoQuien;
+
+  return (
+    <Fila titulo={tc.titulo}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Campo
+          etiqueta={tc.mail}
+          ayuda={tc.mailAyuda}
+          type="email"
+          autoComplete="off"
+          value={mail}
+          onChange={(evento) => setMail(evento.target.value)}
+          error={!mailValido ? tc.mailInvalido : null}
+        />
+        <Campo
+          etiqueta={tc.quien}
+          ayuda={tc.quienAyuda}
+          placeholder={tc.quienPlaceholder}
+          maxLength={60}
+          value={quien}
+          onChange={(evento) => setQuien(evento.target.value)}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          disabled={guardando || !cambio || !mailValido}
+          onClick={() => guardar({ cuenta_claude_mail: mailLimpio, cuenta_claude_codigo_quien: quien.trim() })}
+        >
+          {tc.guardar}
+        </Button>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
+    </Fila>
   );
 }
 

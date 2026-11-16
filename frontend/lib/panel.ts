@@ -49,6 +49,52 @@ export type Maquina = {
   /** El cursor de la ventana (D43), si esta máquina recorre del más viejo hacia hoy. */
   // prettier-ignore
   ventana?: { hasta_dias?: number | null; ultima_tanda?: string[]; completado_en?: string | null; actualizado_en?: string | null } | null;
+  /** D69: las cuatro sesiones como las ve la máquina. Falta la que nunca reportó. */
+  sesiones?: Partial<Record<NombreDeSesion, Sesion>>;
+  /** D69: los últimos cambios de estado de las sesiones, los más nuevos primero (hasta 30). */
+  sesiones_historial?: CambioDeSesion[];
+  /** Los dos semáforos de la página pública (D71): lo que ve el vendedor. */
+  semaforos?: { whatsapp: EstadoDeSesion; claude: EstadoDeSesion };
+  /** D72: el número de WhatsApp de la máquina, en E.164. `null` = no se verifica la línea. */
+  telefono_linea?: string | null;
+  /** D72: el número que WhatsApp Web tiene vinculado, sólo dígitos, según el disco del perfil. */
+  numero_vinculado?: string | null;
+  /** D72: los dos números no coinciden. La máquina no toma trabajo. */
+  linea_equivocada?: boolean;
+  /** D73: si usa el token de Claude cargado en el panel. `null` sin token cargado. */
+  claude_token_al_dia?: boolean | null;
+};
+
+/** Las cuatro sesiones de una máquina (D69). */
+export type NombreDeSesion = "whatsapp" | "claude_extension" | "claude_cli" | "whatsapp_motor";
+
+export type EstadoDeSesion = "ok" | "caida" | "desconocido";
+
+export type Sesion = {
+  estado: EstadoDeSesion;
+  /** Quién lo dijo: "job", "sonda" y "vigia" saben; "disco" es una heurística. */
+  fuente: string;
+  detalle: string;
+  /** Desde cuándo está en este estado, no cuándo se reportó por última vez. */
+  desde: string;
+};
+
+export type CambioDeSesion = {
+  sesion: NombreDeSesion;
+  antes: EstadoDeSesion | null;
+  estado: EstadoDeSesion;
+  fuente: string;
+  detalle: string;
+  cuando: string;
+};
+
+/** Lo que el panel sabe del token de Claude (D73). **Nunca el valor.** */
+export type TokenClaude = {
+  cargado: boolean;
+  cargado_en: string | null;
+  vence_aprox: string | null;
+  maquinas_al_dia: number;
+  maquinas_activas: number;
 };
 
 export type Corrida = {
@@ -58,7 +104,8 @@ export type Corrida = {
   estado: string;
   maquinas: string[];
   /** D59: las que no entraron al largar (sin señal de vida, pausadas o frenadas). Sólo en el detalle. */
-  maquinas_excluidas?: { maquina: string; motivo: "sin_latido" | "pausada" | "frenada" }[];
+  // prettier-ignore
+  maquinas_excluidas?: { maquina: string; motivo: "sin_latido" | "pausada" | "frenada" | "sin_cuota" | "linea_equivocada" | "sin_whatsapp" | "sin_claude" }[];
   /** D59: las que dejaron de dar señales a mitad de corrida y se les cortó el trabajo. Sólo en el detalle. */
   maquinas_ausentes?: { maquina: string; en: string }[];
   /** D61: "repesca" en la corrida que largó la repesca. Sólo en el detalle. */
@@ -234,6 +281,10 @@ export type Configuracion = {
   ventana: { inicio: string; fin: string; dias: number[] };
   /** Sólo lectura, en segundos: [mínimo, máximo] entre dos envíos. */
   pausa_entre_envios_s: [number, number];
+  /** La cuenta compartida de Claude (D71): el mail viaja a la pantalla de la máquina, nunca a la página pública. */
+  cuenta_claude_mail: string;
+  /** A quién le pide el código el vendedor. Es lo único de la cuenta que ve la página pública. */
+  cuenta_claude_codigo_quien: string;
   actualizado_en?: string;
 };
 
@@ -466,6 +517,8 @@ export const editarMaquina = (
     /** Borra el cursor de la ventana (D43): la próxima corrida vuelve al extremo viejo. */
     reiniciar_ventana?: boolean;
     quitar_pausa_cuota?: boolean;
+    /** D72: el número de la línea. "" lo borra; el backend lo pasa a E.164 o contesta 422. */
+    telefono_linea?: string;
   },
 ) =>
   pedir<{ ok: boolean }>(`/vendedores/${maquina}`, conCuerpo("PATCH", cambios));
@@ -486,6 +539,14 @@ export const empezarDeCero = (opciones: {
     configuracion_restablecida: boolean;
     maquinas_borradas: boolean;
   }>("/sistema/empezar-de-cero", conCuerpo("POST", opciones));
+
+/**
+ * Lo mismo que el botón de la página pública (D70), apretado por el dueño:
+ * abre la ventana en la computadora o le pide que verifique. 429 si ya se
+ * pidió hace menos de dos minutos.
+ */
+export const reconectarMaquina = (maquina: string, tipo: "whatsapp" | "claude" | "verificar") =>
+  pedir<{ ok: boolean }>(`/vendedores/${maquina}/reconectar/${tipo}`, conCuerpo("POST"));
 
 export const bajaMaquina = (maquina: string) =>
   pedir<{ ok: boolean }>(`/vendedores/${maquina}`, { method: "DELETE" });
@@ -588,6 +649,15 @@ export const pausarSistema = (pausado: boolean) =>
 /** D63: que todas las máquinas se actualicen ya, sin esperar su hora. */
 export const actualizarAhora = () =>
   pedir<{ hasta: string }>("/sistema/actualizar-ahora", conCuerpo("POST", {}));
+
+/** D73: el token de `claude setup-token`. Las tres devuelven sólo el resumen, nunca el valor. */
+export const traerTokenClaude = () => pedir<TokenClaude>("/sistema/token-claude");
+
+export const cargarTokenClaude = (token: string) =>
+  pedir<TokenClaude>("/sistema/token-claude", conCuerpo("POST", { token }));
+
+export const borrarTokenClaude = () =>
+  pedir<TokenClaude>("/sistema/token-claude", { method: "DELETE" });
 
 // --- Configuración e historial ---------------------------------------------
 

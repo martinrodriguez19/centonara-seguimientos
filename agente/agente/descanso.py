@@ -67,6 +67,11 @@ class Descanso:
         #  `None` hasta que haya algo.
         self.estado: str | None = None
 
+    @property
+    def descansando(self) -> bool:
+        """¿Es hora de descanso? (D64). La reconexión automática no abre nada de noche."""
+        return self._hasta is not None and self._ahora() < self._hasta
+
     # -- lo que manda el backend ----------------------------------------------
 
     def recibir(self, horarios: dict[str, Any] | None) -> None:

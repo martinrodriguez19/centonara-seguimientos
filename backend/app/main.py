@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from pymongo.errors import PyMongoError
 
 from app import db
-from app.api import agente, panel
+from app.api import agente, panel, publico
 from app.config import Configuracion, Entorno, obtener_configuracion
 from app.core.esquema import inicializar
 from app.logging import configurar_logs, obtener_logger
@@ -124,6 +124,7 @@ app = FastAPI(
 
 app.include_router(agente.router)
 app.include_router(panel.router)
+app.include_router(publico.router)
 
 
 # Dependencias, con nombre. `Annotated` en vez de `= Depends(...)`: es la forma

@@ -81,6 +81,7 @@ async def vigilar(
     parar: asyncio.Event | None = None,
     dormir: Callable[[float], Awaitable[None]] | None = None,
     vueltas: int | None = None,
+    sesiones=None,
 ) -> int:
     """Revisa al arrancar y después cada `intervalo`, en paralelo al bucle.
 
@@ -98,6 +99,12 @@ async def vigilar(
     while not fin.is_set():
         chequeo = await revisar_sesion(abrir_pagina)
         estado.diagnostico = diagnostico.con_chequeo(estado.diagnostico, chequeo)
+        if sesiones is not None:
+            #  D69: la misma respuesta, como sesión. `n/a` no afirma nada.
+            if chequeo.estado is diagnostico.Estado.OK:
+                sesiones.observar("whatsapp_motor", "ok", "vigia")
+            elif chequeo.estado is diagnostico.Estado.FALLA:
+                sesiones.observar("whatsapp_motor", "caida", "vigia", chequeo.detalle)
         hechas += 1
         log.info("sesion_dedicada_revisada", estado=str(chequeo.estado), detalle=chequeo.detalle)
 

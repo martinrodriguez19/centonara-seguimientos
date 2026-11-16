@@ -24,6 +24,7 @@ from app.config import Configuracion, obtener_configuracion
 from app.core import (
     alertas,
     auditoria,
+    conexiones,
     configuracion,
     contactos,
     corridas,
@@ -120,6 +121,7 @@ def _resumir_maquina(
     version_esperada: str = "",
     descanso_hasta: datetime | None = None,
     config: dict[str, Any] | None = None,
+    token_hash: str | None = None,
 ) -> dict[str, Any]:
     """Una máquina, como la necesita la pantalla.
 
@@ -178,6 +180,22 @@ def _resumir_maquina(
         "barrido": vendedor.get("barrido"),
         # El cursor de la ventana (D43), si recorre del más viejo hacia hoy.
         "ventana": vendedor.get("ventana"),
+        # D69: las cuatro sesiones como las ve la máquina, y sus últimos cambios
+        # (los más nuevos primero). Los dos semáforos son los de la página pública.
+        "sesiones": vendedor.get("sesiones") or {},
+        "sesiones_historial": list(reversed(vendedor.get("sesiones_historial") or []))[:30],
+        "semaforos": {
+            "whatsapp": conexiones.semaforo_whatsapp(vendedor, config or {}),
+            "claude": conexiones.semaforo_claude(vendedor),
+        },
+        # D72: la línea de la máquina y la que WhatsApp tiene vinculada.
+        "telefono_linea": vendedor.get("telefono_linea"),
+        "numero_vinculado": vendedor.get("numero_vinculado"),
+        "linea_equivocada": conexiones.linea_equivocada(vendedor),
+        # D73: si usa el token del panel. `None` sin token cargado.
+        "claude_token_al_dia": (
+            vendedor.get("claude_token_hash") == token_hash if token_hash else None
+        ),
     }
 
 
@@ -196,6 +214,7 @@ async def estado(
     esperada = await versiones.esperada(
         config, repo=ajustes.repo_github, rama=ajustes.rama_agente, token=ajustes.github_token
     )
+    token = await conexiones.leer_token(base)
     maquinas = [
         _resumir_maquina(
             v,
@@ -203,6 +222,7 @@ async def estado(
             version_esperada=esperada.sha,
             descanso_hasta=horarios.descanso_hasta(config, ahora),
             config=config,
+            token_hash=token["hash"] if token else None,
         )
         for v in await base["vendedores"].find({}).sort("maquina", 1).to_list(None)
     ]
@@ -267,6 +287,19 @@ class CambioMaquina(Estricto):
     # D60: suelta la pausa por cuota antes de tiempo (por ejemplo, porque se
     # cambió la cuenta de Claude de esa máquina).
     quitar_pausa_cuota: bool | None = None
+    # D72: el número de WhatsApp de la máquina, con el que se compara el
+    # vinculado. Vacío lo borra (y apaga la verificación).
+    telefono_linea: Annotated[str | None, Field(max_length=25)] = None
+
+    @field_validator("telefono_linea")
+    @classmethod
+    def _linea_a_e164(cls, numero: str | None) -> str | None:
+        if numero is None or not numero.strip():
+            return numero
+        try:
+            return contactos.normalizar(numero)
+        except contactos.NumeroInvalido as error:
+            raise ValueError(f"{numero!r}: {error}") from error
 
 
 @router.post("/vendedores", status_code=status.HTTP_201_CREATED)
@@ -320,6 +353,8 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
         cambios["pausado_hasta"] = cuerpo.pausado_hasta
     if cuerpo.quitar_pausa_cuota:
         cambios["pausa_cuota_hasta"] = None
+    if cuerpo.telefono_linea is not None:
+        cambios["telefono_linea"] = cuerpo.telefono_linea.strip() or None
 
     if cuerpo.acepto_condiciones is not None:
         # Se registra cuándo, no un booleano: el día que alguien pregunte "¿desde
@@ -358,6 +393,82 @@ async def editar_maquina(maquina: str, cuerpo: CambioMaquina, _: Autenticado) ->
             detalle={"maquina": maquina},
         )
     return {"ok": True, "cambios": sorted(cambios)}
+
+
+_ACCION_DE = {"whatsapp": "abrir_whatsapp", "claude": "abrir_claude", "verificar": "verificar"}
+
+
+@router.post("/vendedores/{maquina}/reconectar/{tipo}", status_code=status.HTTP_202_ACCEPTED)
+async def reconectar_maquina(
+    maquina: str, tipo: Literal["whatsapp", "claude", "verificar"], _: Autenticado
+) -> dict[str, Any]:
+    """Lo mismo que el botón de la página pública, apretado por el dueño (D70)."""
+    base = db.obtener_base()
+    vendedor = await base["vendedores"].find_one({"maquina": maquina})
+    if vendedor is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no existe la máquina '{maquina}'")
+    accion = _ACCION_DE[tipo]
+    config = await configuracion.obtener(base)
+    datos = (
+        {"mail": str(config.get("cuenta_claude_mail") or "")} if accion == "abrir_claude" else {}
+    )
+    try:
+        await conexiones.pedir(base, vendedor, accion, datos=datos, quien="panel")
+    except conexiones.DemasiadoPronto as error:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(error)) from error
+    await auditoria.registrar(
+        base,
+        que=auditoria.Que.RECONEXION_PEDIDA,
+        quien="panel",
+        detalle={"maquina": maquina, "tipo": tipo},
+    )
+    return {"ok": True}
+
+
+class TokenClaude(Estricto):
+    token: Annotated[str, Field(min_length=1, max_length=400)]
+
+
+async def _resumen_token(base) -> dict[str, Any]:
+    maquinas = await base["vendedores"].find({}).to_list(None)
+    return conexiones.resumen_token(await conexiones.leer_token(base), maquinas)
+
+
+@router.get("/sistema/token-claude")
+async def ver_token_claude(_: Autenticado) -> dict[str, Any]:
+    """Si hay token, desde cuándo y cuántas máquinas lo usan. **Nunca el valor** (D73)."""
+    return await _resumen_token(db.obtener_base())
+
+
+@router.post("/sistema/token-claude")
+async def cargar_token_claude(cuerpo: TokenClaude, _: Autenticado) -> dict[str, Any]:
+    """Guarda el token de `claude setup-token`; llega a las máquinas en su próximo latido."""
+    base = db.obtener_base()
+    try:
+        cargado = await conexiones.cargar_token(base, cuerpo.token)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+    await auditoria.registrar(
+        base,
+        que=auditoria.Que.TOKEN_CLAUDE_CAMBIADO,
+        quien="panel",
+        detalle={"accion": "cargado", "hash": cargado["hash"]},
+    )
+    return await _resumen_token(base)
+
+
+@router.delete("/sistema/token-claude")
+async def borrar_token_claude(_: Autenticado) -> dict[str, Any]:
+    """Saca el token del panel. Las máquinas que ya lo tienen lo siguen usando."""
+    base = db.obtener_base()
+    await conexiones.borrar_token(base)
+    await auditoria.registrar(
+        base,
+        que=auditoria.Que.TOKEN_CLAUDE_CAMBIADO,
+        quien="panel",
+        detalle={"accion": "borrado"},
+    )
+    return await _resumen_token(base)
 
 
 @router.delete("/vendedores/{maquina}")
@@ -918,6 +1029,12 @@ class CambioConfiguracion(Estricto):
     # que va a quedar guardado: acá puede venir un solo extremo.
     antiguedad_min_dias: Annotated[int | None, Field(ge=0, le=3650)] = None
     antiguedad_max_dias: Annotated[int | None, Field(ge=1, le=3650)] = None
+    # La cuenta compartida de Claude (D71): el mail con que se entra (viaja a la
+    # máquina, nunca a la página pública) y a quién pedirle el código.
+    cuenta_claude_mail: Annotated[
+        str | None, Field(max_length=120, pattern=r"^$|^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    ] = None
+    cuenta_claude_codigo_quien: Annotated[str | None, Field(max_length=60)] = None
     tope_diario_maquina: Annotated[int | None, Field(ge=1, le=100)] = None
     tope_por_corrida: Annotated[int | None, Field(ge=1, le=200)] = None
     largo_maximo: Annotated[int | None, Field(ge=50, le=1000)] = None

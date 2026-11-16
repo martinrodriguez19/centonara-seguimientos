@@ -108,6 +108,7 @@ class Bucle:
         debe_reiniciar: Callable[[], bool] | None = None,
         al_registrar: Callable[[], None] | None = None,
         al_horarios: Callable[[dict], None] | None = None,
+        al_terminar: Callable[[Job, dict], None] | None = None,
     ) -> None:
         self._cliente = cliente
         self._version = version
@@ -130,6 +131,8 @@ class Bucle:
         self._al_registrar = al_registrar
         # D63: los horarios que manda el backend, para la tarea del actualizador.
         self._al_horarios = al_horarios
+        # D69: lo que cada job dice de las sesiones que usó.
+        self._al_terminar = al_terminar
         self.estado = Estado()
         self._parar = asyncio.Event()
 
@@ -235,6 +238,12 @@ class Bucle:
         finally:
             self.estado.ocupado = False
 
+        if self._al_terminar is not None:
+            try:
+                self._al_terminar(job, resultado)
+            except Exception as error:  # anotar sesiones nunca frena el reporte
+                log.warning("al_terminar_fallo", error=str(error)[:200])
+
         try:
             await self._cliente.reportar(job.id, **resultado)
             self.estado.jobs_hechos += 1
@@ -293,6 +302,7 @@ async def latir(
     al_responder: Callable[[dict], None] | None = None,
     horario: Callable[[], str | None] | None = None,
     descanso: Callable[[], str | None] | None = None,
+    conexiones: Callable[[], dict] | None = None,
 ) -> int:
     """Manda un latido cada `intervalo`, en paralelo al bucle.
 
@@ -327,6 +337,7 @@ async def latir(
                 horario=horario() if horario else None,
                 descanso=descanso() if descanso else None,
                 detalles=estado.diagnostico.detalles(),
+                **({"conexiones": conexiones()} if conexiones else {}),
             )
             mandados += 1
             #  D63: los horarios vuelven en cada latido; un cambio en el panel

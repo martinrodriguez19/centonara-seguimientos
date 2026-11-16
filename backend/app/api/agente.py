@@ -13,7 +13,7 @@ cada 10 segundos, un `GET` alcanza y no depende de nadie.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +22,7 @@ from app import db
 from app.config import Configuracion, obtener_configuracion
 from app.core import (
     cola,
+    conexiones,
     configuracion,
     corridas,
     cuota,
@@ -92,6 +93,23 @@ class Registro(Estricto):
     modo: Annotated[str, Field(max_length=16)] = ""
 
 
+class Observacion(Estricto):
+    """Cómo ve la máquina una de sus sesiones (D69)."""
+
+    estado: Literal["ok", "caida", "desconocido"]
+    #  De dónde sale: "job", "sonda", "vigia", "disco". Sólo las tres primeras
+    #  sacan a una máquina de la corrida.
+    fuente: Annotated[str, Field(max_length=20)] = ""
+    detalle: Annotated[str, Field(max_length=300)] = ""
+
+
+class AccionHecha(Estricto):
+    """Una reconexión que el agente ya ejecutó (D70)."""
+
+    id: Annotated[str, Field(max_length=40)]
+    resultado: Annotated[str, Field(max_length=300)] = ""
+
+
 class Latido(Estricto):
     diagnostico: dict[str, str] = Field(default_factory=dict)
     # D66.4: el detalle de los chequeos que fallan, `{nombre: texto}`. Es lo que
@@ -105,6 +123,20 @@ class Latido(Estricto):
     horario_actualizador: Annotated[str | None, Field(max_length=200)] = None
     # Cómo le fue con el descanso (D64): "suspende" o "descansa_sin_suspender".
     descanso: Annotated[str | None, Field(max_length=200)] = None
+    # D69: las cuatro sesiones. Un agente viejo no las manda.
+    sesiones: (
+        dict[Literal["whatsapp", "claude_extension", "claude_cli", "whatsapp_motor"], Observacion]
+        | None
+    ) = None
+    # D72: el número que WhatsApp Web tiene vinculado, si la máquina lo pudo leer.
+    numero_vinculado: Annotated[str | None, Field(max_length=40)] = None
+    # D73: el hash corto del token de Claude que usa la máquina; "" si no tiene.
+    # Nunca el valor.
+    claude_token_hash: Annotated[str | None, Field(max_length=64)] = None
+    # D70: las reconexiones que ejecutó desde el latido anterior.
+    acciones_hechas: Annotated[list[AccionHecha], Field(max_length=20)] = Field(
+        default_factory=list
+    )
 
 
 class JobEntregado(BaseModel):
@@ -396,9 +428,11 @@ async def latido(cuerpo: Latido, maquina: Maquina) -> dict[str, Any]:
     """Cada 30 segundos, para que el panel sepa que sigue viva.
 
     La respuesta lleva los horarios (D63): si alguien los cambia en el panel,
-    la máquina se entera en el próximo latido.
+    la máquina se entera en el próximo latido. También las reconexiones
+    pedidas (D70) y, si la máquina usa otro, el token de Claude del panel (D73).
     """
     base = db.obtener_base()
+    ahora = datetime.now(UTC)
     await vendedores.registrar_latido(
         base,
         maquina["maquina"],
@@ -407,12 +441,33 @@ async def latido(cuerpo: Latido, maquina: Maquina) -> dict[str, Any]:
         horario_actualizador=cuerpo.horario_actualizador,
         descanso=cuerpo.descanso,
     )
+    await conexiones.registrar(
+        base,
+        maquina,
+        sesiones=(
+            {n: o.model_dump() for n, o in cuerpo.sesiones.items()} if cuerpo.sesiones else None
+        ),
+        numero_vinculado=cuerpo.numero_vinculado,
+        claude_token_hash=cuerpo.claude_token_hash,
+        acciones_hechas=[a.model_dump() for a in cuerpo.acciones_hechas],
+        ahora=ahora,
+    )
     config = await configuracion.obtener(base)
-    return {
+    hechas = {a.id for a in cuerpo.acciones_hechas}
+    respuesta: dict[str, Any] = {
         "ok": True,
         "pausada": vendedores.esta_pausada(maquina),
-        "horarios": horarios.para_agente(config, datetime.now(UTC)),
+        "horarios": horarios.para_agente(config, ahora),
+        "acciones": [
+            a for a in conexiones.pendientes(maquina, ahora=ahora) if a["id"] not in hechas
+        ],
     }
+    token = conexiones.token_para(
+        maquina, await conexiones.leer_token(base), cuerpo.claude_token_hash
+    )
+    if token is not None:
+        respuesta["claude_token"] = token
+    return respuesta
 
 
 @router.get("/version-esperada")

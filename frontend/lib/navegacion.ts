@@ -11,6 +11,7 @@ import {
   Send,
   Settings2,
   ShieldCheck,
+  Smartphone,
   Terminal,
   type LucideIcon,
 } from "lucide-react";
@@ -37,6 +38,8 @@ export type Destino = {
   prefijo?: string;
   /** El contador de "Errores y avisos". */
   contador?: "errores";
+  /** Se abre en otra pestaña: la página de conexiones no tiene la barra para volver. */
+  aparte?: boolean;
 };
 
 export type Grupo = {
@@ -66,6 +69,14 @@ export function grupos(ultimaCorrida: string | null = null): Grupo[] {
       titulo: textos.navegacion.maquinas,
       ayuda: textos.navegacion.maquinasAyuda,
       icono: Cpu,
+    },
+    // D71: la página pública, para abrirla y compartirle el enlace a los vendedores.
+    {
+      href: "/conectar",
+      titulo: textos.navegacion.conexiones,
+      ayuda: textos.navegacion.conexionesAyuda,
+      icono: Smartphone,
+      aparte: true,
     },
     {
       href: "/corridas",

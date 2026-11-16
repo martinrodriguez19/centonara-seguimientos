@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import type { AccionesDeMaquina } from "@/components/maquinas/acciones";
+import { Semaforo } from "@/components/maquinas/sesiones";
 import { Columnas } from "@/components/graficos/graficos";
 import { FilaDeEvento } from "@/components/historial/evento";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,15 @@ export function Resumen({
             </span>
           )}
         </Dato>
+        {/* D71: los mismos dos renglones que ve el vendedor en la página de conexiones. */}
+        {maquina.semaforos && (
+          <Dato nombre={textos.sesiones.semaforos}>
+            <span className="flex flex-wrap gap-2">
+              <Semaforo nombre={textos.sesiones.whatsapp} estado={maquina.semaforos.whatsapp} />
+              <Semaforo nombre={textos.sesiones.claude} estado={maquina.semaforos.claude} />
+            </span>
+          </Dato>
+        )}
         <Dato nombre={t.puedeEnviar}>
           {maquina.puede_enviar ? (
             t.si

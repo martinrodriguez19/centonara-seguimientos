@@ -24,13 +24,24 @@ from types import FrameType
 
 from pydantic import ValidationError
 
-from agente import __version__, diagnostico, perfiles, reinicio, sonda, vigia_sesion
+from agente import (
+    __version__,
+    diagnostico,
+    notificar,
+    perfiles,
+    reinicio,
+    sesiones,
+    sonda,
+    token_claude,
+    vigia_sesion,
+)
 from agente.bucle import Bucle, Estado, latir
 from agente.cliente import Cliente
 from agente.config import CARPETA_AGENTE, Configuracion, Modo, obtener_configuracion
 from agente.descanso import Descanso
 from agente.jobs import ejecutor
 from agente.logging import configurar_logs, obtener_logger
+from agente.reconexion import Reconexion
 from agente.tareas import Reprogramador
 
 log = obtener_logger(__name__)
@@ -604,6 +615,63 @@ def _abrir_pagina(config: Configuracion):
     return abrir
 
 
+# Cuánto espera el navegador dedicado a que alguien escanee su QR (D24, D70).
+ESPERA_VINCULAR_MOTOR_S = 5 * 60
+
+
+def _reconexion(
+    config: Configuracion,
+    estado_sesiones: sesiones.Sesiones,
+    *,
+    device_id,
+    ocupado,
+    descansando,
+    abrir_pagina,
+) -> Reconexion:
+    """Las reconexiones de esta máquina, atadas a su Chrome y a su navegador dedicado."""
+    from agente.adaptadores import navegador
+
+    asegurar = _asegurar_navegador(config)
+
+    def abrir_url(url: str):
+        return navegador.abrir_url(
+            url,
+            chrome_bin=config.chrome_bin,
+            perfil_dir=perfiles.perfil_a_usar(config.chrome_perfil_dir),
+        )
+
+    async def verificar():
+        #  El mismo camino que una tanda: Chrome abierto en el perfil bueno, y
+        #  la sonda por la extensión.
+        await asegurar()
+        return await sonda.probar(
+            device_id=device_id(), claude_bin=config.claude_bin, carpeta=CARPETA_AGENTE
+        )
+
+    async def vincular_motor() -> bool:
+        #  La misma página persistente del motor (no un segundo navegador sobre
+        #  la misma carpeta: chocarían contra el lock de Chromium).
+        pagina = await abrir_pagina()
+        await pagina.abrir_whatsapp()
+        limite = asyncio.get_running_loop().time() + ESPERA_VINCULAR_MOTOR_S
+        while asyncio.get_running_loop().time() < limite:
+            if await pagina.sesion_iniciada():
+                log.info("navegador_dedicado_vinculado", desde="reconexion")
+                return True
+            await asyncio.sleep(3)
+        return False
+
+    return Reconexion(
+        estado_sesiones,
+        abrir_url=abrir_url,
+        verificar=verificar if config.claude_bin else None,
+        avisar=notificar.avisar,
+        ocupado=ocupado,
+        descansando=descansando,
+        vincular_motor=vincular_motor if abrir_pagina is not None else None,
+    )
+
+
 async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str) -> Estado:
     """El bucle y el latido, en paralelo, hasta que alguien pida parar.
 
@@ -639,6 +707,10 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
     # persistente, no abrir dos.
     abrir_pagina = None if modo == "simulado" else _abrir_pagina(config)
 
+    # D69: las cuatro sesiones de esta máquina. Las alimentan los jobs, la
+    # sonda, la vigía y el disco; el latido las lleva al panel.
+    estado_sesiones = sesiones.Sesiones()
+
     # D63: los horarios del panel, copiados a la tarea del actualizador. En
     # simulado no se toca la máquina.
     reprogramador = None if modo == "simulado" else Reprogramador()
@@ -659,6 +731,7 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
         debe_reiniciar=lambda: reinicio.cambio_la_version(CARPETA_AGENTE, __version__),
         al_registrar=marcar_vivo,
         al_horarios=recibir_horarios,
+        al_terminar=lambda job, resultado: estado_sesiones.resultado_de_job(job.tipo, resultado),
         ejecutor=ejecutor.construir(
             claude_bin=config.claude_bin,
             device_id=device_id,
@@ -674,6 +747,42 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
         ),
     )
     fin = asyncio.Event()
+
+    # D70: las reconexiones. En simulado no se abre ningún navegador.
+    reconexion = (
+        None
+        if modo == "simulado"
+        else _reconexion(
+            config,
+            estado_sesiones,
+            device_id=device_id,
+            ocupado=lambda: trabajo.estado.ocupado,
+            descansando=lambda: descanso.descansando if descanso else False,
+            abrir_pagina=abrir_pagina,
+        )
+    )
+
+    def recibir_respuesta(respuesta: dict) -> None:
+        recibir_horarios(respuesta.get("horarios"))
+        if reconexion is not None:
+            reconexion.recibir(respuesta.get("acciones"))
+        nuevo = respuesta.get("claude_token")
+        #  D73: con el token nuevo, lo que dijo el último 401 ya no vale: lo
+        #  confirma el próximo job.
+        if (
+            isinstance(nuevo, str)
+            and nuevo
+            and token_claude.aplicar(nuevo)
+            and estado_sesiones.estado("claude_cli") == sesiones.CAIDA
+        ):
+            estado_sesiones.observar("claude_cli", sesiones.DESCONOCIDO, "token", "token nuevo")
+
+    def conexiones() -> dict:
+        return {
+            "sesiones": estado_sesiones.a_dict(),
+            "claude_token_hash": token_claude.reportado(),
+            "acciones_hechas": reconexion.hechas() if reconexion is not None else [],
+        }
 
     def vigilar_apagado() -> None:
         """Puente entre la señal (que llega a un hilo) y el bucle (que es async)."""
@@ -699,18 +808,23 @@ async def _trabajar(config: Configuracion, parar: threading.Event, *, modo: str)
             trabajo.estado,
             parar=fin,
             al_latir=marcar_vivo,
-            al_responder=lambda respuesta: recibir_horarios(respuesta.get("horarios")),
+            al_responder=recibir_respuesta,
             horario=lambda: reprogramador.estado if reprogramador else None,
             descanso=lambda: descanso.estado if descanso else None,
+            conexiones=conexiones,
         ),
     ]
+    if reconexion is not None:
+        tareas.append(reconexion.vigilar(parar=fin))
     if descanso is not None:
         tareas.append(descanso.vigilar(lambda: trabajo.estado.ocupado, parar=fin))
     if abrir_pagina is not None:
         # La vigía de la sesión dedicada (D24): revisa al arrancar y cada unas
         # horas, y el latido lleva el resultado al panel. En simulado no hay
         # navegador que mirar.
-        tareas.append(vigia_sesion.vigilar(abrir_pagina, trabajo.estado, parar=fin))
+        tareas.append(
+            vigia_sesion.vigilar(abrir_pagina, trabajo.estado, parar=fin, sesiones=estado_sesiones)
+        )
 
     try:
         await asyncio.gather(*tareas)

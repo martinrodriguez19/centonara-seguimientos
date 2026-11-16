@@ -18,6 +18,9 @@ log = obtener_logger(__name__)
 
 TIMEOUT = 30.0
 
+# Códigos que un backend anterior no conoce (D69.3).
+CODIGOS_NUEVOS = frozenset({"CLAUDE_SIN_SESION"})
+
 
 @dataclass(frozen=True)
 class Job:
@@ -60,6 +63,8 @@ class Cliente:
         )
         #  El backend no conoce `detalles` (D66.4): se dejó de mandar.
         self._sin_detalles = False
+        #  El backend no conoce las sesiones (D69-D73): se dejaron de mandar.
+        self._sin_sesiones = False
 
     async def cerrar(self) -> None:
         await self._http.aclose()
@@ -121,21 +126,27 @@ class Cliente:
         costo_usd: float = 0.0,
         borrador: bool = False,
     ) -> dict[str, Any]:
-        respuesta = await self._http.post(
-            f"/api/agente/jobs/{job_id}/resultado",
-            json={
-                "ok": ok,
-                "codigo": codigo,
-                "detalle": detalle or {},
-                # Se mandan siempre, también en éxito (R5). Cortados, porque un
-                # `raw` de megabytes no ayuda a nadie y sí llena la base.
-                "raw": raw[-100_000:],
-                "stderr": stderr[-100_000:],
-                "costo_usd": costo_usd,
-                # D30: sin esto, el backend daría por enviado un borrador.
-                "borrador": borrador,
-            },
-        )
+        cuerpo = {
+            "ok": ok,
+            "codigo": codigo,
+            "detalle": detalle or {},
+            # Se mandan siempre, también en éxito (R5). Cortados, porque un
+            # `raw` de megabytes no ayuda a nadie y sí llena la base.
+            "raw": raw[-100_000:],
+            "stderr": stderr[-100_000:],
+            "costo_usd": costo_usd,
+            # D30: sin esto, el backend daría por enviado un borrador.
+            "borrador": borrador,
+        }
+        ruta = f"/api/agente/jobs/{job_id}/resultado"
+        respuesta = await self._http.post(ruta, json=cuerpo)
+        if respuesta.status_code == 422 and codigo in CODIGOS_NUEVOS:
+            #  Las máquinas se actualizan antes que el backend: un código que
+            #  todavía no conoce perdería el reporte entero. Sale como el de
+            #  antes, con el nuevo en el detalle.
+            cuerpo["codigo"] = "ERROR_INESPERADO"
+            cuerpo["detalle"] = {**(detalle or {}), "codigo_nuevo": codigo}
+            respuesta = await self._http.post(ruta, json=cuerpo)
         self._revisar(respuesta)
         return respuesta.json()
 
@@ -146,6 +157,7 @@ class Cliente:
         horario: str | None = None,
         descanso: str | None = None,
         detalles: dict[str, str] | None = None,
+        conexiones: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         cuerpo: dict[str, Any] = {"diagnostico": diagnostico or {}}
         #  D63 y D64: sólo si hay algo que decir. Un backend anterior rechaza
@@ -155,6 +167,18 @@ class Cliente:
             cuerpo["horario_actualizador"] = horario
         if descanso is not None:
             cuerpo["descanso"] = descanso
+        if conexiones and not self._sin_sesiones:
+            #  D69-D73: sesiones, número vinculado, hash del token, acciones
+            #  hechas. Un backend anterior los rechaza con 422: se reintenta sin
+            #  ellos y no se vuelven a mandar en este proceso.
+            respuesta = await self._post_con_detalles(
+                "/api/agente/latido", {**cuerpo, **conexiones}, detalles
+            )
+            if respuesta.status_code != 422:
+                self._revisar(respuesta)
+                return respuesta.json()
+            self._sin_sesiones = True
+            log.info("backend_sin_sesiones")
         respuesta = await self._post_con_detalles("/api/agente/latido", cuerpo, detalles)
         self._revisar(respuesta)
         return respuesta.json()

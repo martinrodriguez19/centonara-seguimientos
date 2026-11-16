@@ -124,6 +124,10 @@ class Codigo(StrEnum):
     VENCIDO = "VENCIDO"
     """El techo de la corrida (D59): pasaron `horas_max_corrida` desde que se
     largó y el job seguía vivo. Lo escribe el mantenimiento."""
+    CLAUDE_SIN_SESION = "CLAUDE_SIN_SESION"
+    """Claude Code contestó 401: la sesión de `/login` venció o el token no
+    sirve (D69.3). No se reintenta: no se arregla solo. Lo resuelve el token del
+    panel (D73), que llega a la máquina en el próximo latido."""
     NAVEGADOR_AUSENTE = "NAVEGADOR_AUSENTE"
     """El Chrome con la extensión de Claude no estaba conectado (D66). No se
     reintenta: el segundo y el tercer intento le pagaban al modelo para volver
@@ -170,6 +174,7 @@ _NO_SE_REINTENTAN = frozenset(
         Codigo.MAQUINA_AUSENTE,
         Codigo.VENCIDO,
         Codigo.NAVEGADOR_AUSENTE,
+        Codigo.CLAUDE_SIN_SESION,
     }
 )
 

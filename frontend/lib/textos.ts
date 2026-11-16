@@ -469,6 +469,11 @@ export const textos = {
       sin_latido: "no daba señales cuando se largó la corrida",
       pausada: "estaba pausada",
       frenada: "estaba frenada por el canario",
+      sin_cuota: "estaba sin cuota de Claude",
+      // D72, D69.4: lo que dijo la máquina de sus sesiones.
+      linea_equivocada: "tiene vinculado un WhatsApp que no es el de su línea",
+      sin_whatsapp: "tenía WhatsApp desconectado",
+      sin_claude: "tenía Claude desconectado en Chrome",
     } as Record<string, string>,
     afueraAusente: (hora: string) => `dejó de dar señales a mitad de la corrida (${hora}) y se le cortó el trabajo`,
     afueraAccion:
@@ -614,6 +619,8 @@ export const textos = {
     VENCIDO: "La corrida pasó su límite de horas y se cerró lo que quedaba.",
     NAVEGADOR_AUSENTE:
       "El Chrome de esa máquina no estaba conectado a Claude: cerrado, en otro perfil o sin la extensión. No se reintentó para no gastar de más.",
+    // D69.3: un 401 de Claude Code. Se arregla cargando el token en Ajustes → Sistema (D73).
+    CLAUDE_SIN_SESION: "Claude Code no tiene sesión en esa computadora",
   } as Record<string, string>,
 
   // Los nombres técnicos no se le muestran a nadie.
@@ -714,6 +721,9 @@ export const textos = {
     erroresAyuda: "Lo que hay que mirar, en un solo lugar",
     historial: "Historial",
     historialAyuda: "Quién hizo qué y cuándo",
+    // D71: la página pública que se les pasa a los vendedores.
+    conexiones: "Página de conexiones",
+    conexionesAyuda: "La que abren los vendedores para reconectarse (se abre aparte)",
     comandos: "Instalar y reparar",
     comandosAyuda: "Instalar, comprobar, reinstalar desde cero",
     menu: "Menú",
@@ -810,6 +820,7 @@ export const textos = {
     volverALista: "Ver todas las máquinas",
     pestanas: {
       resumen: "Resumen",
+      sesiones: "Sesiones",
       chequeos: "Chequeos",
       actividad: "Actividad",
       mensajes: "Mensajes",
@@ -861,6 +872,154 @@ export const textos = {
       "El servidor guarda sólo el último latido de cada máquina, no un historial: por eso no hay gráfico de conexión.",
   },
 
+  /**
+   * Las sesiones de la máquina en el panel (D69-D73). Acá sí se puede hablar
+   * de fuentes y de Claude Code: lo lee el dueño, no el vendedor.
+   */
+  sesiones: {
+    titulo: "Sesiones",
+    bajada:
+      "Lo que reporta la máquina en cada latido. «Un trabajo», «la sonda» y «la vigía» saben; «el disco» es una lectura rápida que puede equivocarse, y por eso no saca a la máquina de una corrida.",
+    whatsapp: "WhatsApp",
+    claude: "Claude",
+    semaforos: "Lo que ve el vendedor",
+    semaforosAyuda: "Los mismos dos renglones de la página de conexiones.",
+    nombres: {
+      whatsapp: "WhatsApp en el Chrome del vendedor",
+      claude_extension: "Claude en Chrome (la extensión)",
+      claude_cli: "Claude Code",
+      whatsapp_motor: "WhatsApp del navegador dedicado",
+    } as Record<string, string>,
+    estados: { ok: "Conectado", caida: "Desconectado", desconocido: "No se sabe" } as Record<string, string>,
+    fuentes: {
+      job: "un trabajo",
+      sonda: "la sonda",
+      vigia: "la vigía",
+      disco: "el disco",
+    } as Record<string, string>,
+    segun: (fuente: string) => `según ${fuente}`,
+    caida: (cual: string) => `${cual} desconectado`,
+    desde: (cuando: string) => `desde ${cuando}`,
+    sinReporte: "Todavía no reportó",
+    historial: "Cambios recientes",
+    historialAyuda: "Los últimos cambios de estado, los más nuevos arriba.",
+    sinHistorial: "Sin cambios registrados todavía.",
+    reconectar: "Reconectar",
+    reconectarAyuda:
+      "Abre la ventana en la pantalla de la computadora, igual que el botón de la página de conexiones. Verificar le pide a la máquina que pruebe de verdad (gasta una llamada a Claude).",
+    reconectarWhatsapp: "Abrir WhatsApp (QR)",
+    reconectarClaude: "Abrir Claude",
+    verificar: "Verificar",
+    avisoPedido: "Pedido. La máquina lo toma en su próximo latido (hasta 30 s).",
+    avisoFallo: "No se pudo pedir. Probá de nuevo.",
+    // D72
+    linea: "Número de la línea",
+    lineaAyuda:
+      "El WhatsApp de este vendedor. Si el vinculado no coincide, la máquina no toma trabajo. Vacío: no se verifica.",
+    lineaGuardar: "Guardar",
+    lineaGuardada: "Número guardado.",
+    lineaBorrada: "Número borrado: ya no se verifica la línea.",
+    vinculado: "Vinculado ahora",
+    vinculadoNoSe: "no se sabe",
+    lineaEquivocadaTitulo: "Tiene vinculado otro WhatsApp",
+    lineaEquivocada: (vinculado: string, linea: string) =>
+      `WhatsApp Web está vinculado a +${vinculado}, y la línea de esta máquina es ${linea}. No toma trabajo hasta que se vincule la línea correcta.`,
+    lineaEquivocadaAccion:
+      "Desvinculá ese teléfono desde la computadora y escaneá el QR con el celular del vendedor. Si el número cargado es el que está mal, corregilo acá.",
+    // D73
+    token: "Token de Claude",
+    tokenAlDia: "usa el del panel",
+    tokenOtro: "todavía no recibió el del panel",
+    tokenSinCargar: "no hay token cargado en el panel",
+  },
+
+  tokenClaude: {
+    titulo: "Token de Claude",
+    ayuda:
+      "En una computadora con Claude Code corré `claude setup-token` una vez y pegá acá lo que devuelve. Llega solo a todas las máquinas.",
+    queHace:
+      "Reemplaza el inicio de sesión de Claude Code en cada computadora, que vence cada tanto. El token dura un año y se avisa un mes antes. Una vez guardado no se vuelve a mostrar: si lo perdés, generá otro.",
+    cargado: (cuando: string) => `Cargado el ${cuando}`,
+    vence: (cuando: string) => `vence aprox. el ${cuando}`,
+    maquinas: (alDia: number, activas: number) => `${alDia} de ${activas} máquinas al día`,
+    sinCargar: "No hay token cargado: cada computadora usa su propio inicio de sesión.",
+    campo: "Token",
+    campoAyuda: "Empieza con sk-ant-. No se muestra después de guardarlo.",
+    guardar: "Guardar",
+    noParece: "Eso no parece un token de Claude: empieza con sk-ant-.",
+    guardado: "Token guardado. Llega a cada máquina en su próximo latido.",
+    borrar: "Borrar",
+    borrarTitulo: "Borrar el token de Claude",
+    borrarTexto:
+      "Se saca del panel. Las máquinas que ya lo recibieron lo siguen usando; para cortarlo del todo hay que revocarlo en la cuenta de Claude.",
+    borrado: "Token borrado del panel.",
+    fallo: "No se pudo. Probá de nuevo.",
+  },
+
+  cuentaClaude: {
+    tarjeta: "Claude",
+    titulo: "Cuenta de Claude",
+    ayuda: "La cuenta compartida con la que entra Claude en Chrome en cada computadora.",
+    mail: "Mail de la cuenta",
+    mailAyuda:
+      "Aparece sólo en el aviso de la pantalla de la computadora, cuando se reconecta. Nunca en la página pública.",
+    mailInvalido: "Eso no parece un mail.",
+    quien: "A quién pedirle el código",
+    quienAyuda:
+      "El nombre que ve el vendedor en la página de conexiones. Sólo el nombre: el código lo pasa esa persona.",
+    quienPlaceholder: "ej. Martina, de administración",
+    guardar: "Guardar",
+  },
+
+  /**
+   * La página pública de conexiones (D71). La lee un vendedor desde el
+   * celular, sin saber de tecnología: frases cortas, nada de códigos, nada de
+   * nombres de piezas del sistema. "Claude" sí, porque es el ícono que ve en
+   * Chrome.
+   */
+  conectar: {
+    titulo: "Conexiones",
+    marca: "Centonara",
+    bajada: "Si algo está en rojo, tocá el botón y seguí los pasos.",
+    cargando: "Cargando…",
+    sinComputadoras: "No hay computadoras para mostrar.",
+    sinRed: "No se pudo actualizar. Revisá que el celular tenga internet: se vuelve a intentar solo.",
+    falloPedido: "No se pudo pedir. Revisá que el celular tenga internet y probá de nuevo.",
+    whatsapp: "WhatsApp",
+    claude: "Claude",
+    conectado: "Conectado",
+    desconectado: "Desconectado",
+    noSeSabe: "No se sabe todavía",
+    volverAConectar: "Volver a conectar",
+    dormida: "La computadora está dormida: mové el mouse",
+    apagada: "La computadora está apagada o sin internet",
+    volver: "Volver a la lista",
+    pidiendo: "Pidiendo…",
+    listo: "¡Listo! Ya está conectado",
+    vencida: "La computadora no respondió: fijate que esté prendida",
+    noSeCompleto: "No se completó. Probá de nuevo",
+    probarDeNuevo: "Probar de nuevo",
+    revisando: "Revisando…",
+    revisandoDetalle: "La computadora se está fijando. Tarda unos segundos.",
+    todaviaNo: "Todavía no aparece conectado. Revisá los pasos y tocá el botón otra vez.",
+    whatsappTitulo: (nombre: string) => `WhatsApp de ${nombre}`,
+    whatsappPasos: [
+      "Mirá la pantalla de la computadora: se abrió WhatsApp con un cuadrado.",
+      "En tu celular abrí WhatsApp → Dispositivos vinculados (en Android está en ⋮ arriba a la derecha; en iPhone en Configuración, abajo a la derecha).",
+      "Tocá Vincular un dispositivo y apuntá al cuadrado.",
+    ],
+    whatsappMaximo: "Si WhatsApp te dice que llegaste al máximo de dispositivos, borrá uno que no uses.",
+    yaEscanee: "Ya escaneé",
+    claudeTitulo: (nombre: string) => `Claude de ${nombre}`,
+    claudePasos: (quien: string) => [
+      "Mirá la computadora: se abrió Claude.",
+      "Escribí el mail que aparece en el aviso de la computadora y tocá Continuar.",
+      `Pedile el código a ${quien || "el encargado"} y escribilo.`,
+      "Arriba a la derecha de Chrome tocá el ícono de Claude y, si te lo pide, iniciá sesión.",
+    ],
+    yaTermine: "Ya terminé",
+  },
+
   estadisticas: {
     titulo: "Estadísticas",
     bajada: "Cómo viene el sistema. Los números del período salen del servidor; los gráficos, de las últimas corridas.",
@@ -894,7 +1053,7 @@ export const textos = {
       lectura: { titulo: "Qué chats y cuántos", ayuda: "Qué se lee, en qué orden y cuánto por tanda" },
       mensajes: { titulo: "Mensajes", ayuda: "Cómo se dejan y qué dicen" },
       seguridad: { titulo: "Seguridad", ayuda: "A quién se le puede escribir y qué lo frena" },
-      sistema: { titulo: "Sistema", ayuda: "Versión del agente y empezar de cero" },
+      sistema: { titulo: "Sistema", ayuda: "Versión del agente, Claude y empezar de cero" },
     },
     guardado: "Guardado.",
     deshacer: "Deshacer",

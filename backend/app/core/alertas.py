@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from app.core import cola, vendedores, versiones
+from app.core import cola, conexiones, vendedores, versiones
 from app.core.estados import Estado, Motivo
 from app.core.huso import HUSO_COMERCIAL
 from app.logging import obtener_logger
@@ -114,6 +114,7 @@ async def revisar(
     alertas += await _enviado_a_no_contactar(base, momento)
     alertas += await _canario(base)
     alertas += await _maquinas(base, momento)
+    alertas += await _sesiones(base, momento)
     alertas += await _no_volvieron_del_descanso(base, momento)
     alertas += await _fuera_de_corrida(base, momento)
     alertas += await _repesca_incompleta(base, momento)
@@ -416,6 +417,152 @@ async def _no_volvieron_del_descanso(base, ahora: datetime) -> list[Alerta]:
                 maquina=maquina,
             )
         )
+    return alertas
+
+
+def _ultimos(vendedor: dict, campo: str) -> str:
+    """Los últimos cuatro dígitos: alcanzan para reconocer el número sin escribirlo entero."""
+    return str(vendedor.get(campo) or "")[-4:]
+
+
+async def _sesiones(base, ahora: datetime) -> list[Alerta]:
+    """Las sesiones de cada máquina activa (D69-D73).
+
+    Urgente lo que frena trabajo o pide al dueño: la línea equivocada, Claude
+    Code sin sesión, un vendedor esperando el código de Claude, y WhatsApp o la
+    extensión caídos según un job (la máquina queda afuera de la corrida). Aviso
+    lo que dijo la lectura del disco: la máquina sigue trabajando.
+    """
+    from app.core import configuracion
+
+    config = await configuracion.obtener(base)
+    token = await conexiones.leer_token(base)
+    alertas: list[Alerta] = []
+
+    if token is not None:
+        cargado = conexiones._utc(token.get("cargado_en"))
+        if cargado is not None:
+            vence = cargado + timedelta(days=conexiones.DIAS_TOKEN)
+            if vence - ahora <= timedelta(days=conexiones.DIAS_AVISO_TOKEN):
+                alertas.append(
+                    Alerta(
+                        Nivel.AVISO,
+                        "token_claude_por_vencer",
+                        "El token de Claude está por vencer",
+                        f"Se cargó el {cargado.astimezone(HUSO_COMERCIAL):%d/%m/%Y} y dura un "
+                        "año. Cuando venza, ninguna máquina va a poder usar Claude Code.",
+                        "En una computadora con Claude Code: `claude setup-token`, y pegá el "
+                        "resultado en Ajustes → Sistema → Token de Claude.",
+                    )
+                )
+
+    for vendedor in await base["vendedores"].find({"activo": True}).to_list(None):
+        maquina = vendedor["maquina"]
+        nombre = vendedor.get("nombre") or maquina
+        sesiones = vendedor.get("sesiones") or {}
+
+        if conexiones.linea_equivocada(vendedor):
+            alertas.append(
+                Alerta(
+                    Nivel.URGENTE,
+                    "linea_equivocada",
+                    f"El WhatsApp de {nombre} no es su línea",
+                    f"La computadora tiene vinculado el …{_ultimos(vendedor, 'numero_vinculado')} "
+                    f"y la máquina es del …{_ultimos(vendedor, 'telefono_linea')}. "
+                    "Está frenada: no toma trabajo hasta que coincidan.",
+                    "Que el vendedor cierre esa sesión desde su teléfono y vuelva a conectar "
+                    "con el suyo. Si el número de la máquina está mal, corregilo en su tarjeta.",
+                    maquina=maquina,
+                )
+            )
+
+        pedido = conexiones.ultima_accion(
+            vendedor,
+            ("abrir_claude",),
+            desde=ahora - timedelta(minutes=conexiones.MINUTOS_RECONEXION_CLAUDE),
+        )
+        extension = sesiones.get("claude_extension") or {}
+        resuelta = (
+            pedido is not None
+            and extension.get("estado") == conexiones.OK
+            and (conexiones._utc(extension.get("desde")) or ahora)
+            >= conexiones._utc(pedido["pedida_en"])
+        )
+        if pedido is not None and not resuelta:
+            alertas.append(
+                Alerta(
+                    Nivel.URGENTE,
+                    "reconexion_claude",
+                    f"{nombre} está entrando a Claude",
+                    "Va a llegar un código por mail a la cuenta compartida de Claude. "
+                    "El vendedor lo está esperando frente a la computadora.",
+                    "Pasale el código que llegue al mail de la cuenta.",
+                    maquina=maquina,
+                )
+            )
+
+        if conexiones.estado_de(vendedor, "claude_cli") == conexiones.CAIDA:
+            alertas.append(
+                Alerta(
+                    Nivel.URGENTE,
+                    "claude_code_sin_sesion",
+                    f"Claude Code no tiene sesión en {nombre}",
+                    "Ningún trabajo de esa computadora puede usar Claude hasta resolverlo.",
+                    (
+                        "El token del panel le llega en el próximo latido; si sigue, "
+                        "renovalo en Ajustes → Sistema."
+                        if token is not None
+                        else "Cargá el token de Claude en Ajustes → Sistema: llega solo a "
+                        "todas las máquinas."
+                    ),
+                    maquina=maquina,
+                )
+            )
+
+        for sesion, codigo, que in (
+            ("whatsapp", "whatsapp_desconectado", "WhatsApp"),
+            ("claude_extension", "claude_desconectado", "la extensión de Claude"),
+        ):
+            observacion = sesiones.get(sesion) or {}
+            if observacion.get("estado") != conexiones.CAIDA:
+                continue
+            if sesion == "claude_extension" and pedido is not None and not resuelta:
+                continue  # ya la cubre "está entrando a Claude"
+            frena = observacion.get("fuente") in conexiones.CON_AUTORIDAD
+            alertas.append(
+                Alerta(
+                    Nivel.URGENTE if frena else Nivel.AVISO,
+                    codigo,
+                    f"Se desconectó {que} de {nombre}",
+                    (
+                        "Queda afuera de las corridas hasta que se reconecte."
+                        if frena
+                        else "La computadora lo detectó; sigue trabajando hasta confirmarlo."
+                    )
+                    + (f" ({observacion.get('detalle')})" if observacion.get("detalle") else ""),
+                    "Que el vendedor abra la página de Conexiones y apriete «Volver a conectar».",
+                    maquina=maquina,
+                )
+            )
+
+        if (
+            (config.get("modo_borrador") or "playwright") != "extension"
+            and conexiones.estado_de(vendedor, "whatsapp_motor") == conexiones.CAIDA
+            and "whatsapp_sesion" not in (vendedor.get("diagnostico") or {})
+        ):
+            #  Con el chequeo `whatsapp_sesion` en el diagnóstico, la alerta
+            #  `sesion_dedicada_vencida` de `_maquinas` ya lo dice.
+            alertas.append(
+                Alerta(
+                    Nivel.AVISO,
+                    "whatsapp_motor_desconectado",
+                    f"Se desconectó el WhatsApp del motor de {nombre}",
+                    "El navegador dedicado perdió su sesión.",
+                    "Que el vendedor apriete «Volver a conectar» en la página de Conexiones.",
+                    maquina=maquina,
+                )
+            )
+
     return alertas
 
 

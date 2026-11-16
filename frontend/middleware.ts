@@ -14,7 +14,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const COOKIE = "sesion";
-const PUBLICAS = ["/login", "/healthz"];
+/**
+ * Lo que se ve sin cookie.
+ *
+ * `/conectar` es la página de conexiones (D71): pública a pedido del dueño,
+ * sólo para conexiones. Lo que puede mostrar lo decide el backend
+ * (`api/publico.py`), no esto. `/icon` es el ícono de la pestaña: sin él, la
+ * página pública pedía el ícono, recibía un redirect al login y quedaba sin
+ * ícono al agregarla a la pantalla de inicio.
+ */
+const PUBLICAS = ["/login", "/healthz", "/conectar", "/icon"];
 
 export function middleware(pedido: NextRequest) {
   const { pathname } = pedido.nextUrl;

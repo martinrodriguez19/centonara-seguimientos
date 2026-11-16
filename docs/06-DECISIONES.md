@@ -1673,6 +1673,116 @@ vuelve a la sesión por máquina, que es sacar la variable.
 
 ---
 
+---
+
+### D69 — Las sesiones son un dato propio, no un chequeo más *(16/11/2026; `PLAN-SESIONES-AUTOSERVICIO.md`)*
+
+**Contexto.** A los vendedores se les cae WhatsApp Web una vez por mes y Claude cada 15 días, y
+cada caída era una visita del dueño a la oficina. "Se cerró la sesión" son cuatro cosas: WhatsApp
+en el Chrome del vendedor (S1, la ruta de producción), la extensión de Claude (S2), Claude Code
+(S3) y el WhatsApp del navegador dedicado (S4, D24). Sólo S4 tenía vigía; S1 y S2 se descubrían
+cuando fallaba una corrida, con un código (`SESION_CAIDA`, `NAVEGADOR_AUSENTE`) que no le dice
+nada a un vendedor.
+
+**Decisión.**
+1. El agente lleva el estado de las cuatro (`ok` | `caida` | `desconocido`, con la fuente) y lo
+   manda en el latido. Las fuentes son los resultados de los jobs, la sonda y la vigía. **El disco
+   del perfil no se lee**: se probó el 16/11 en la máquina de desarrollo y el WhatsApp Web actual
+   guarda su `localStorage` con los nombres de las claves cifrados (no hay `last-wid-md`). Lo que
+   avisa antes de la corrida es una **revisión diaria con la sonda** (una llamada corta por
+   máquina y por día, con la máquina libre y fuera del descanso), que se saltea si un job ya
+   confirmó las sesiones en las últimas 20 horas.
+2. El backend guarda el último estado y un historial corto por máquina (`sesiones_historial`,
+   las últimas 100 transiciones) **dentro de `vendedores`**: una colección nueva obligaría a
+   tocar el rol de Mongo de producción a mano (RUNBOOK-auditoria).
+3. Un 401 de Claude Code pasa a `CLAUDE_SIN_SESION`, sin reintentos. Si el backend todavía no lo
+   conoce, el agente lo reporta como `ERROR_INESPERADO` (las máquinas se actualizan antes que el
+   backend).
+4. Una máquina con WhatsApp o la extensión caídos **según un job o la sonda** queda afuera de la
+   corrida (`sin_whatsapp`, `sin_claude`), como una dormida (D59). La lectura del disco no
+   excluye a nadie: si se equivoca, la máquina sigue trabajando y el job dice la verdad.
+
+**Qué la revertiría.** Que la exclusión deje máquinas paradas por estados viejos. Ahí se vuelve a
+dejarlas entrar y fallar rápido.
+
+---
+
+### D70 — Reconectar va por el latido, no por la cola *(16/11/2026)*
+
+**Contexto.** `GET /jobs/proximo` contesta 423 con pausa global, descanso, máquina pausada o sin
+cuota: justo cuando una reconexión puede hacer falta.
+
+**Decisión.** Las acciones (`abrir_whatsapp`, `abrir_claude`, `verificar`) se guardan en
+`vendedores.acciones`, vencen a los 10 minutos y viajan en la **respuesta del latido**. El agente
+las ejecuta entre latidos y avisa en el siguiente cuáles hizo. Abrir es determinístico y no gasta
+tokens: Chrome con `--profile-directory` y la URL, al frente, más una notificación del sistema.
+`verificar` corre la sonda (cuesta una llamada) y sólo si no hay un job en curso. Además, si
+WhatsApp pasa de `ok` a `caida` con la máquina despierta y fuera del descanso, el agente abre la
+ventana del QR solo, a lo sumo una vez cada 2 horas.
+
+**Qué la revertiría.** Que abrir ventanas en el Chrome del vendedor moleste más de lo que ayuda;
+ahí queda sólo el botón.
+
+---
+
+### D71 — La página de conexiones es pública, sólo para conexiones *(16/11/2026)*
+
+**Contexto.** El dueño pide una página sin contraseña donde cada vendedor vea su estado y se
+reconecte, "pública pero sólo para conexiones".
+
+**Decisión.** `/conectar` en el panel y `/api/publico/conexiones` en el backend, con router y
+modelo de respuesta propios: nombre, estado de la máquina, dos semáforos (WhatsApp, Claude) y la
+reconexión en curso. Un test fija la lista exacta de campos. Los botones sólo encolan acciones,
+con un tope de una cada 2 minutos por máquina y tipo, y cada una queda en la auditoría. **El QR y
+el mail de la cuenta de Claude sólo aparecen en la pantalla física de la máquina**; el código de
+Claude lo pasa el dueño (D72 no lo toca). Claude Code (S3) no aparece: el vendedor no lo puede
+arreglar, y lo resuelve D73.
+
+**Qué la revertiría.** Abuso de los botones. Ahí se agrega un PIN por vendedor.
+
+---
+
+### D72 — La línea vinculada se verifica *(16/11/2026; extiende R2)*
+
+**Contexto.** Con reconexiones hechas por los vendedores, alguien puede escanear el QR con otro
+teléfono, y el sistema trabajaría sobre una línea que no es la de la máquina.
+
+**Decisión.** El agente manda en el latido el número vinculado, cuando lo puede leer. Si la máquina tiene `telefono_linea` cargado y no coincide (se comparan los
+últimos 10 dígitos, que absorben el `9` de los móviles argentinos), la máquina queda pausada
+(`linea_equivocada`, 423 en la cola, afuera de las corridas) con alerta urgente. Sin número
+cargado, o sin número leído, no se verifica nada: la verificación no puede frenar lo que hoy
+anda.
+
+**Estado (16/11): inerte.** El backend, el panel y las alertas están hechos y probados, pero el
+agente todavía no tiene de dónde leer el número: se pensaba sacarlo del disco del perfil, y el
+WhatsApp Web actual lo guarda cifrado (D69.1). Sin número leído, D72 no frena nada. Se enciende el
+día que haya una fuente confiable (por ejemplo, la sonda leyendo el perfil de WhatsApp Web).
+
+**Qué la revertiría.** Que la lectura del número resulte poco confiable en alguna máquina.
+
+---
+
+### D73 — El token de Claude se carga una vez en el panel y llega solo a las máquinas *(16/11/2026; completa D68)*
+
+**Contexto.** D68 dejó el token de larga duración como opción del instalador: llegaba sólo a la
+máquina donde alguien lo pegaba. "Claude cada 15 días" es, muy probablemente, el `/login` de
+Claude Code que ese token reemplaza.
+
+**Decisión.**
+1. El dueño pega el resultado de `claude setup-token` en el panel. Se guarda en
+   `configuracion` con `_id: "secretos"` —no en `unica`, que el panel lee entera— y el panel
+   nunca lo vuelve a mostrar: sólo cuándo se cargó y cuándo vence (un año).
+2. Cada latido manda el hash corto del token que la máquina usa (nunca el valor). Si no coincide
+   con el cargado, la respuesta del latido trae el token; el agente lo escribe en su `.env` y lo
+   usa desde la invocación siguiente, sin reiniciar.
+3. Alerta a los 11 meses para renovarlo, y alerta urgente si una máquina reporta Claude Code sin
+   sesión.
+
+**Qué la revertiría.** Lo mismo que a D68: que el token filtrado cueste más que un `/login`
+vencido. Ahí se borra del panel y de los `.env`.
+
+---
+
 ## Descartadas
 
 | Idea | Por qué no |

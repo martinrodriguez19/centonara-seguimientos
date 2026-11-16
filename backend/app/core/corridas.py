@@ -22,7 +22,7 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core import auditoria, cola, configuracion
+from app.core import auditoria, cola, conexiones, configuracion
 from app.core.vendedores import esta_pausada, sin_cuota_hasta
 from app.logging import obtener_logger
 
@@ -97,12 +97,16 @@ def motivo_de_exclusion(vendedor: dict[str, Any], *, ahora: datetime) -> str | N
         return "frenada"
     if sin_cuota_hasta(vendedor, ahora=ahora) is not None:
         return "sin_cuota"
+    if conexiones.linea_equivocada(vendedor):
+        return "linea_equivocada"
     if esta_pausada(vendedor, ahora=ahora):
         return "pausada"
     latido = vendedor.get("ultimo_latido")
     if latido is None or _utc(latido) < ahora - timedelta(minutes=MINUTOS_SIN_LATIDO):
         return "sin_latido"
-    return None
+    # D69.4: WhatsApp o la extensión caídos según un job o la sonda. Entrar sería
+    # fallar en la primera tanda; afuera, la repesca completa cuando se reconecte.
+    return conexiones.excluida_por_sesion(vendedor)
 
 
 def _utc(momento: datetime) -> datetime:

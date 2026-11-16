@@ -293,9 +293,10 @@ async def test_un_fallo_cuenta_lo_que_claude_dijo() -> None:
     assert "Invalid model name" in resultado.detalle["motivo"]
 
 
-async def test_la_sesion_vencida_tiene_un_motivo_con_nombre_propio() -> None:
+async def test_la_sesion_vencida_tiene_un_codigo_con_nombre_propio() -> None:
     """El token OAuth de Claude Code vence cada tanto. Un 401 crudo no le dice
-    a nadie qué hacer; el motivo sí: volver a iniciar sesión."""
+    a nadie qué hacer; desde D69.3 tiene código propio, que no se reintenta, y
+    el motivo dice qué hacer: cargar el token en el panel (D73)."""
     espia = Espia(
         Salida(
             1,
@@ -309,8 +310,8 @@ async def test_la_sesion_vencida_tiene_un_motivo_con_nombre_propio() -> None:
     )
 
     assert not resultado.ok
-    assert "venció" in resultado.detalle["motivo"]
-    assert "claude" in resultado.detalle["motivo"]
+    assert resultado.codigo == "CLAUDE_SIN_SESION"
+    assert "token" in resultado.detalle["motivo"]
 
 
 async def test_el_timeout_tiene_su_propio_codigo() -> None:

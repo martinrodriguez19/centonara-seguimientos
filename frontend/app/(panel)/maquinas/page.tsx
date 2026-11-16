@@ -1,12 +1,14 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 
 import { AltaMaquina, TokenReciente } from "@/components/alta-maquina";
 import { ErrorDeCarga } from "@/components/error-de-carga";
 import { GrillaDeMaquinas } from "@/components/maquinas/grilla";
 import { Pagina } from "@/components/navegacion/pagina";
+import { Button } from "@/components/ui/button";
 import { EsqueletoDelPanel } from "@/components/ui/esqueleto";
 import { useEstado } from "@/lib/consultas";
 import { textos } from "@/lib/textos";
@@ -31,7 +33,18 @@ export default function Maquinas() {
     <Pagina
       titulo={textos.maquinas.titulo}
       bajada={estado.data ? `${textos.maquinas.bajada} ${textos.maquinas.conectadas(conectadas, activas.length)}.` : textos.maquinas.bajada}
-      acciones={<AltaMaquina onToken={alToken} />}
+      acciones={
+        <>
+          {/* D71: la página que se les pasa a los vendedores. Aparte, porque
+              no tiene la barra del panel para volver. */}
+          <Button asChild variant="outline" size="sm">
+            <Link href="/conectar" target="_blank" rel="noopener">
+              {textos.navegacion.conexiones}
+            </Link>
+          </Button>
+          <AltaMaquina onToken={alToken} />
+        </>
+      }
     >
       {tokenNuevo && (
         <TokenReciente token={tokenNuevo.token} maquina={tokenNuevo.maquina} onCerrar={() => setTokenNuevo(null)} />
