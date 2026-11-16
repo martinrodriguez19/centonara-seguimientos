@@ -1080,4 +1080,64 @@ export const textos = {
     avisoPrendido: "Envío automático prendido. Los seguimientos salen solos.",
     avisoApagado: "Envío automático apagado. Se vuelven a dejar borradores.",
   },
+  // La guía de las conexiones en el inicio (D69-D73). Para el dueño: los dos
+  // Claude se manejan distinto y eso tiene que estar escrito donde se mira.
+  guiaConexiones: {
+    titulo: "Cómo manejar las conexiones de WhatsApp y Claude",
+    faltaConfigurar: "Falta configurar algo",
+    caidas: (n: number) => (n === 1 ? "Hay 1 computadora desconectada" : `Hay ${n} computadoras desconectadas`),
+    todoListo: "Todo configurado",
+    hecho: "Hecho",
+    pendiente: "Pendiente",
+    configurarTitulo: "Lo que se hace una sola vez",
+    paso1: "1. Cargar el token de Claude Code",
+    paso1Falta:
+      "En una computadora con Claude Code abrí una terminal y corré `claude setup-token`. Pegá lo que devuelve en Ajustes → Sistema → Claude. Llega solo a todas las máquinas y dura un año.",
+    paso1Hecho: (alDia: number, activas: number) =>
+      `Cargado. ${alDia} de ${activas} computadoras ya lo están usando.`,
+    paso1Repartiendo:
+      "Las que faltan lo reciben en su próximo latido (medio minuto) si están prendidas.",
+    paso2: "2. Cargar la cuenta de Claude",
+    paso2Falta:
+      "En Ajustes → Sistema → Claude: el mail de la cuenta compartida (sólo aparece en la pantalla de la computadora) y a quién le pide el código el vendedor (ese nombre sí lo ve en la página).",
+    paso2Hecho: (quien: string) => `Cargada. La página les dice que le pidan el código a ${quien}.`,
+    irASistema: "Ir a Ajustes → Sistema",
+    paso3: "3. Mandarles el link a los vendedores",
+    paso3Detalle:
+      "Es la página de conexiones: no pide contraseña y no muestra nada más que si están conectados. Desde el celular la pueden agregar a la pantalla de inicio.",
+    copiar: "Copiar",
+    copiado: "Copiado",
+    abrir: "Abrir",
+    dosClaudeTitulo: "Hay dos Claude, y se arreglan distinto",
+    extensionTitulo: "La extensión de Claude en Chrome",
+    extension: [
+      "Es la que lee los chats y deja los borradores en WhatsApp.",
+      "Se cierra cada tanto. La arregla el vendedor desde la página, con un código que llega al mail de la cuenta.",
+      "Es el renglón «Claude» de la página de conexiones.",
+    ],
+    claudeCodeTitulo: "Claude Code",
+    claudeCode: [
+      "Es el programa que corre por detrás en cada computadora. El vendedor no lo ve.",
+      "Es lo que antes se cerraba cada 15 días. Con el token del paso 1 no se cierra más.",
+      "No tiene botón en la página: si falla, te aparece una alerta acá y se arregla desde el panel.",
+      "El token dura un año: un mes antes te avisa para renovarlo (otra vez `claude setup-token`).",
+    ],
+    cuandoSeCaeTitulo: "Cuando se cae una conexión",
+    whatsappTitulo: "WhatsApp",
+    whatsapp: [
+      "La computadora abre sola la ventana con el código QR, si está prendida y en horario.",
+      "El vendedor escanea con su celular: WhatsApp → Dispositivos vinculados → Vincular un dispositivo.",
+      "Si la ventana no se abrió, aprieta «Volver a conectar» en la página y se abre.",
+      "No tenés que hacer nada. Si WhatsApp le dice que llegó al máximo de dispositivos, que borre uno viejo.",
+    ],
+    claudeCaeTitulo: "La extensión de Claude",
+    claudeCae: [
+      "El vendedor aprieta «Volver a conectar» en el renglón Claude.",
+      "En la computadora se abre Claude con un aviso que dice con qué mail entrar.",
+      "A vos te aparece una alerta urgente: «X está entrando a Claude». Te llega un código al mail de la cuenta: pasáselo.",
+      "Cuando termina, aprieta «Ya terminé» y la página le dice si quedó.",
+    ],
+    alertas:
+      "Mientras una computadora tenga WhatsApp o Claude caídos, queda afuera de las corridas y lo que no hizo lo completa la repesca cuando vuelve. Las alertas están en Errores y avisos. Desde Máquinas → la computadora → Sesiones podés ver el historial y reconectarla vos.",
+  },
 } as const;

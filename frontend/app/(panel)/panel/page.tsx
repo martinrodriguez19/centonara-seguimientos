@@ -8,6 +8,7 @@ import { TokenReciente } from "@/components/alta-maquina";
 import { BotonCorrida } from "@/components/boton-corrida";
 import { ErrorDeCarga } from "@/components/error-de-carga";
 import { GrillaDeMaquinas } from "@/components/maquinas/grilla";
+import { GuiaConexiones } from "@/components/guia-conexiones";
 import { RevisionDelDiaTarjeta } from "@/components/revision-del-dia";
 import { Pagina, Seccion } from "@/components/navegacion/pagina";
 import { Indicador } from "@/components/ui/indicador";
@@ -26,6 +27,7 @@ import { textos } from "@/lib/textos";
  *   2. El botón.
  *   3. Las máquinas.
  *   4. Una sola línea si hay algo **urgente** — nunca la lista.
+ *   5. Al pie, la guía de las conexiones (D69-D73): plegada si todo anda.
  *
  * **Lo que se fue, y adónde.** Las alertas, a "Errores y avisos" (antes se
  * pintaban todas acá arriba, cada una como un cartel grande). La banda de modo,
@@ -141,6 +143,8 @@ export default function Inicio() {
           onToken={(token, maquina) => setTokenNuevo({ token, maquina })}
         />
       </Seccion>
+
+      <GuiaConexiones maquinas={datos.maquinas} />
     </Pagina>
   );
 }
